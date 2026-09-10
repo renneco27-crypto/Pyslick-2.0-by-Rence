@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: pyslick
+Version: 0.2.0
+Summary: Local, no-LLM smart code query/patch agent (fuzzy match + AST call-graph)
+Requires-Python: >=3.10
+Requires-Dist: rapidfuzz>=3.0
+Provides-Extra: tsx
+Requires-Dist: tree-sitter>=0.21; extra == "tsx"
+Requires-Dist: tree-sitter-typescript>=0.21; extra == "tsx"

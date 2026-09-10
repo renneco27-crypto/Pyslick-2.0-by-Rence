@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyslick"
+version = "0.2.0"
+description = "Local, no-LLM smart code query/patch agent (fuzzy match + AST call-graph)"
+requires-python = ">=3.10"
+dependencies = [
+    "rapidfuzz>=3.0",
+]
+
+[project.optional-dependencies]
+tsx = ["tree-sitter>=0.21", "tree-sitter-typescript>=0.21"]
+
+[project.scripts]
+pyslick = "pyslick:main"
+
+[tool.setuptools]
+packages = ["pyslick"]

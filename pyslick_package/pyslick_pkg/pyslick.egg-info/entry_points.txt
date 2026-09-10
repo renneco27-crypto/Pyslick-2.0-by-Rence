@@ -1,0 +1,2 @@
+[console_scripts]
+pyslick = pyslick:main
