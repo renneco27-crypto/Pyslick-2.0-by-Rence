@@ -1122,34 +1122,42 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
             if matched:
                 return intent_name, 100.0, [(intent_name, 100.0)]
 
-    # ── Tier 2: Python fuzzy — word-level scoring × intent weight ──────────
+    # ── Tier 2: Python fuzzy — word overlap & token scoring × intent weight ─
     all_scores: list[tuple[str, float]] = []
     try:
         from rapidfuzz import fuzz
         import re as _re
         dl_words = _re.findall(r'\b\w+\b', dl)
+        user_weights = _load_user_weights()
 
         for intent_name in priority:
             cfg = intents.get(intent_name, {})
             patterns = cfg.get("require_any", [])
             excludes = cfg.get("exclude_if", [])
-            # Weight from vocab — patch is 0.70 (lowest), connect is 1.10 (highest).
-            # Weighted score = raw_fuzzy_score × weight, so connect always beats
-            # patch when the raw scores are close.
-            weight = float(cfg.get("weight", 1.0))
+            base_w = float(cfg.get("weight", 1.0))
+            weight = float(user_weights.get(intent_name, base_w))
 
             if any(ex in dl for ex in excludes):
                 continue
 
             best_raw = 0.0
             for pat in patterns:
-                if " " in pat:
-                    # Multi-word pattern → compare against full query (word order handled)
-                    score = max(fuzz.token_set_ratio(pat, dl), fuzz.WRatio(pat, dl))
+                pat_l = pat.lower()
+                if " " in pat_l:
+                    pat_words = set(_re.findall(r'\b\w+\b', pat_l))
+                    dl_word_set = set(dl_words)
+                    matched_words = sum(
+                        1 for pw in pat_words
+                        if any(fuzz.ratio(pw, dw) >= 80 for dw in dl_word_set)
+                    )
+                    overlap = matched_words / max(1, len(pat_words))
+                    if overlap >= 0.5:
+                        token_score = fuzz.token_sort_ratio(pat_l, dl)
+                        score = (overlap * 100 * 0.7) + (token_score * 0.3)
+                    else:
+                        score = 0.0
                 else:
-                    # Single-word pattern → compare against each query token so that
-                    # "conects" hits "connect" without "patch" winning on "autoloop conects"
-                    score = max(fuzz.ratio(pat, w) for w in dl_words) if dl_words else fuzz.ratio(pat, dl)
+                    score = max((fuzz.ratio(pat_l, w) for w in dl_words), default=0.0) if dl_words else fuzz.ratio(pat_l, dl)
 
                 if score > best_raw:
                     best_raw = score

@@ -7,12 +7,13 @@ Install once from the project root:
 
 Then run from your project directory in PowerShell:
 
-    pyslick agent  "make the mic button 40% larger"   # full AI agent session
-    pyslick query  "what changes the mic button size"  # fast fuzzy lookup
-    pyslick recon  "flashcard has too much padding"    # guided patch pipeline
+    pyslick "show me packagejson"                      # AI agent session (default)
+    pyslick "make the mic button 40% larger"           # AI code inspection / patch
+    pyslick query "what changes the mic button size"   # fast non-LLM fuzzy lookup
+    pyslick recon "flashcard has too much padding"     # guided patch pipeline
     pyslick ls                                         # list source files
-    pyslick lines  src/app/page.tsx                    # view with line numbers
-    pyslick grep   src/app/page.tsx className --context 3
+    pyslick lines src/app/page.tsx                     # view with line numbers
+    pyslick grep src/app/page.tsx className --context 3
     pyslick copy                                       # copy last output to clipboard
     pyslick --help                                     # full command reference
 """
@@ -442,9 +443,10 @@ Usage:
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Quick start:
+    pyslick "show me packagejson"                # inspect/scan files directly
+    pyslick "make the mic button bigger"         # let AI propose the fix
+    pyslick query "mic button size"              # fast non-LLM fuzzy lookup
     pyslick ls                                   # see what files exist
-    pyslick query "mic button size"              # find relevant code
-    pyslick agent "make the mic button bigger"   # let AI propose the fix
     pyslick copy                                 # paste output into your LLM
 """
     print(help_text)
@@ -703,7 +705,7 @@ def main():
 
             elif command == "agent":
                 if not args:
-                    print('Error: agent requires a directive, e.g. pyslick agent "resize the mic button"')
+                    print('Error: agent requires a directive, e.g. pyslick "resize the mic button"')
                     sys.exit(1)
                 try:
                     from .agent import main as agent_main
@@ -714,9 +716,16 @@ def main():
                     sys.exit(1)
 
             else:
-                print(f"Unknown command: {command}")
-                print_help()
-                sys.exit(1)
+                # Default: bare pyslick "<query>" (e.g. pyslick "show me packagejson")
+                # is routed directly to the AI agent.
+                directive_args = [command] + args
+                try:
+                    from .agent import main as agent_main
+                    sys.argv = ["agent"] + directive_args
+                    agent_main()
+                except Exception as e:
+                    print(f"Error: {e}")
+                    sys.exit(1)
 
         except Exception as e:
             print(f"ERROR: {e}")

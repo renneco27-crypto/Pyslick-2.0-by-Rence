@@ -149,8 +149,7 @@
         "how it connects to",
         "how does it connect",
         "connected to",
-        "how does x connect",
-        "how does the"
+        "how does this connect with"
       ],
       "exclude_if": []
     },
@@ -198,19 +197,23 @@
     "file_info": {
       "weight": 1.05,
       "require_any": [
+        "show me line",
+        "show line",
+        "show me lines",
         "show me file",
         "show file",
         "show me the file",
         "show me package",
         "show package",
-        "cat",
+        "scan package",
+        "scan file",
+        "scan of",
         "cat scan",
+        "cat",
         "open the file",
         "open file",
         "display file",
         "snippet",
-        "scan of",
-        "scan file",
         "part of",
         "view file",
         "print file",

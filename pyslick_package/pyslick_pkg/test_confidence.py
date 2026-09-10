@@ -21,6 +21,10 @@ queries = [
     ("show me the coments", "comments"),
     ("closest functon to line 20", "nearest"),
     ("how autoloop conects to patchit", "connect"),
+    ("show me line 24-72 of package.json", "file_info"),
+    ("scan package.json line 24-72", "file_info"),
+    ("show me packagejson", "file_info"),
+    ("show me package.json scan", "file_info"),
     ("whats the use of test_file", "file_info"),
 ]
 
