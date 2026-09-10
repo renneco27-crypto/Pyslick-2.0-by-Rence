@@ -161,11 +161,26 @@
         "graphify.md",
         "graphify markdown",
         "create graphify",
+        "create graph",
         "export graphify",
+        "export graph",
         "graphify report",
+        "graph report",
         "make graphify",
+        "make graph",
         "generate graphify",
-        "write graphify"
+        "generate graph",
+        "write graphify",
+        "write graph",
+        "graphmd",
+        "graph.md",
+        "graph md",
+        "graph txt",
+        "graphify notes",
+        "graph notes",
+        "graphify.",
+        "graphify output",
+        "graph output"
       ],
       "exclude_if": []
     },
@@ -250,7 +265,13 @@
         "project summary",
         "summarize this project",
         "summarize this app",
-        "what is this codebase"
+        "what is this codebase",
+        "whats this",
+        "what is this",
+        "whats this project",
+        "whats this app",
+        "whats this repo",
+        "whats this codebase"
       ],
       "exclude_if": [
         "run pyslick",

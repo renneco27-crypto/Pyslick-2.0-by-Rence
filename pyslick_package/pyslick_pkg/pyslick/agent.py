@@ -1711,6 +1711,9 @@ def _run_local_agent(directive: str) -> None:
             "app overview", "project overview", "app summary", "project summary",
             "summarize this project", "summarize this app", "what is this codebase",
             "purpose of this app", "purpose of this project",
+            "whats this", "what is this", "whats this project", "whats this app",
+            "whats this repo", "whats this codebase", "what's this",
+            "what's this project", "what's this app",
         }
         is_app_summary = any(t in dl for t in _APP_SUMMARY_TRIGGERS)
 
@@ -2147,8 +2150,11 @@ def _run_local_agent(directive: str) -> None:
         # ── GRAPHIFY.MD EXPORT (create graphify.md for Claude Web paste) ──
         _EXPORT_TRIGGERS = {
             "graphify md", "graphify.md", "graphify markdown", "create graphify",
-            "export graphify", "graphify report", "graphify file", "graphify output",
-            "make graphify", "generate graphify", "write graphify",
+            "create graph", "export graphify", "export graph", "graphify report",
+            "graph report", "graphify file", "graphify output", "graph output",
+            "make graphify", "make graph", "generate graphify", "generate graph",
+            "write graphify", "write graph", "graphmd", "graph.md", "graph md",
+            "graph txt", "graphify notes", "graph notes", "graphify.", "graphify",
         }
         is_export = any(t in dl for t in _EXPORT_TRIGGERS)
 
