@@ -52,7 +52,7 @@ TOOL VOCABULARY  (PowerShell-equivalent, all local, all read-only)
   ast_query(path, question)
       Run graphify's AST call-graph query on a .py file: returns matched
       functions/classes + their callers/callees, scored by relevance.
-      Equivalent to `pyslick graphify-query <path> <question>`.
+      Equivalent to `pyslick graphify-query <path> <question>`
 
   jsx_check(path)
       Validate JSX/HTML tag matching in a file.
@@ -78,6 +78,28 @@ FLOW
 The tool calls in steps 2-4 loop up to MAX_TOOL_ROUNDS times so the
 agent can react to what it finds (e.g. "that file had no className,
 let me check the CSS file instead").
+
+─────────────────────────────────────────────────────────────────────────
+LOCAL LLM MODE (no API key)
+─────────────────────────────────────────────────────────────────────────
+
+When no ANTHROPIC_API_KEY / NVIDIA_API_KEY is set, the agent falls back
+to _run_local_agent(). That function uses intent_vocab.json to route the
+query to the right handler — no reasoning required from the 124M model.
+
+Intent routing order (first match wins):
+  help         → print pyslick command docs
+  git          → show git status / push
+  list_files   → walk directory, show files + their main symbols
+  comments     → show every comment in the matched file
+  nearest      → find_nearest_nodes around a line or symbol
+  scan_function→ print a named function end-to-end with comments
+  graph        → ast_query / graphify call graph
+  connect      → cross-file call-graph walk
+  file_info    → purpose + key functions + first 3 lines per function
+  patch        → fuzzy match → LLM find/replace → diff → confirm
+
+The vocab file lives next to this file: intent_vocab.json
 """
 
 from __future__ import annotations
@@ -112,7 +134,7 @@ def ok(msg):   print(f"{GREEN}  ✔ {msg}{RST}")
 def warn(msg): print(f"{YELL}  ⚠ {msg}{RST}")
 def err(msg):  print(f"{RED}  ✖ {msg}{RST}")
 
-# API Providers
+# ── API providers ───────────────────────────────────────────────────────────
 PROVIDERS = {
     "anthropic": {
         "api_url": "https://api.anthropic.com/v1/messages",
@@ -129,7 +151,7 @@ PROVIDERS = {
 }
 
 DEFAULT_PROVIDER = "anthropic"
-MAX_TOOL_ROUNDS = 6
+MAX_TOOL_ROUNDS  = 6
 
 SKIP_DIRS = {
     "node_modules", ".git", ".next", "dist", "build", "__pycache__",
@@ -232,8 +254,7 @@ def tool_grep(path: str, patterns: list[str], context: int = 2) -> str:
 def tool_find_blocks(path: str) -> str:
     """Find named comment blocks and descriptive comment anchors."""
     try:
-        from comment_blocks import scan_file_for_comment_blocks, print_scan_report
-        import io, contextlib
+        from comment_blocks import scan_file_for_comment_blocks
         nodes = scan_file_for_comment_blocks(path)
         if not nodes:
             return f"(no comment blocks found in {path})"
@@ -277,7 +298,7 @@ def tool_ast_query(path: str, question: str) -> str:
                 out.append(f"    calls → {', '.join(callees)}")
             if callers:
                 out.append(f"    called by ← {', '.join(callers)}")
-            # Include first 20 lines of source
+            # First 20 lines of source
             src_lines = sym.get("code", "").splitlines()[:20]
             if src_lines:
                 out.append("    source (first 20 lines):")
@@ -581,7 +602,7 @@ TOOL_SCHEMA = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "directive": {"type": "string", "description": "The user's original directive."},
+                "directive":    {"type": "string", "description": "The user's original directive."},
                 "code_context": {"type": "string", "description": "The code context to analyze."},
             },
             "required": ["directive", "code_context"],
@@ -672,42 +693,34 @@ If you cannot find where to make the change, output:
 def _get_provider():
     """Detect which API provider to use based on available keys."""
     provider_name = os.environ.get("PYSLICK_API_PROVIDER", DEFAULT_PROVIDER).lower()
-    
-    # If provider specified but key not available, try other providers
+
     if provider_name in PROVIDERS:
         provider = PROVIDERS[provider_name]
         if os.environ.get(provider["key_env"]):
             return provider_name, provider
-    
-    # Try to find any provider with an available key
+
     for name, provider in PROVIDERS.items():
         if os.environ.get(provider["key_env"]):
             return name, provider
-    
+
     return None, None
 
 
 def _call_api(messages: list[dict], use_tools: bool = True, provider_name: str = None) -> dict:
     provider_name, provider = _get_provider()
     if not provider:
-        raise RuntimeError("No API key found. Set ANTHROPIC_API_KEY or NVIDIA_API_KEY, or use local LLM mode by unsetting all API keys.")
-    
+        raise RuntimeError(
+            "No API key found. Set ANTHROPIC_API_KEY or NVIDIA_API_KEY, "
+            "or use local LLM mode by unsetting all API keys."
+        )
+
     api_url = provider["api_url"]
-    model = provider["model"]
+    model   = provider["model"]
     key_env = provider["key_env"]
     api_key = os.environ.get(key_env)
-    
-    # Convert Anthropic format to OpenAI format for NVIDIA
+
     if provider_name == "nvidia":
-        # Convert messages format
-        openai_messages = []
-        for msg in messages:
-            openai_messages.append({
-                "role": msg["role"],
-                "content": msg["content"]
-            })
-        
-        # Convert tools format
+        openai_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
         openai_tools = []
         if use_tools:
             for tool in TOOL_SCHEMA:
@@ -716,10 +729,9 @@ def _call_api(messages: list[dict], use_tools: bool = True, provider_name: str =
                     "function": {
                         "name": tool["name"],
                         "description": tool["description"],
-                        "parameters": tool["input_schema"]
-                    }
+                        "parameters": tool["input_schema"],
+                    },
                 })
-        
         payload = {
             "model": model,
             "messages": openai_messages,
@@ -728,13 +740,11 @@ def _call_api(messages: list[dict], use_tools: bool = True, provider_name: str =
         }
         if openai_tools:
             payload["tools"] = openai_tools
-        
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
     else:
-        # Anthropic format
         payload = {
             "model": model,
             "max_tokens": 2048,
@@ -743,25 +753,17 @@ def _call_api(messages: list[dict], use_tools: bool = True, provider_name: str =
         }
         if use_tools:
             payload["tools"] = TOOL_SCHEMA
-        
         headers = {
             "Content-Type": "application/json",
             "x-api-key": api_key,
-            **provider["headers"]
+            **provider["headers"],
         }
 
     data = json.dumps(payload).encode()
-    req = urllib.request.Request(
-        api_url,
-        data=data,
-        headers=headers,
-        method="POST",
-    )
+    req  = urllib.request.Request(api_url, data=data, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             response = json.loads(resp.read())
-            
-            # Convert NVIDIA response to Anthropic format
             if provider_name == "nvidia":
                 return _convert_openai_to_anthropic(response)
             return response
@@ -774,24 +776,21 @@ def _call_api(messages: list[dict], use_tools: bool = True, provider_name: str =
 
 def _convert_openai_to_anthropic(response: dict) -> dict:
     """Convert OpenAI-format response (NVIDIA) to Anthropic format."""
-    choice = response.get("choices", [{}])[0]
+    choice  = response.get("choices", [{}])[0]
     message = choice.get("message", {})
-    
-    content = []
+
+    content      = []
     text_content = message.get("content", "")
-    
-    # Handle tool calls
-    tool_calls = message.get("tool_calls", [])
-    if tool_calls:
-        for tool_call in tool_calls:
-            content.append({
-                "type": "tool_use",
-                "id": tool_call.get("id", ""),
-                "name": tool_call.get("function", {}).get("name", ""),
-                "input": json.loads(tool_call.get("function", {}).get("arguments", "{}"))
-            })
-    
-    # Add text content if present
+    tool_calls   = message.get("tool_calls", [])
+
+    for tc in tool_calls:
+        content.append({
+            "type":  "tool_use",
+            "id":    tc.get("id", ""),
+            "name":  tc.get("function", {}).get("name", ""),
+            "input": json.loads(tc.get("function", {}).get("arguments", "{}")),
+        })
+
     if text_content:
         if isinstance(text_content, str):
             content.append({"type": "text", "text": text_content})
@@ -799,10 +798,10 @@ def _convert_openai_to_anthropic(response: dict) -> dict:
             for item in text_content:
                 if item.get("type") == "text":
                     content.append({"type": "text", "text": item.get("text", "")})
-    
+
     return {
-        "content": content,
-        "stop_reason": "end_turn" if not tool_calls else "tool_use"
+        "content":     content,
+        "stop_reason": "end_turn" if not tool_calls else "tool_use",
     }
 
 
@@ -815,164 +814,670 @@ def _extract_tool_uses(content: list[dict]) -> list[dict]:
 
 
 # ═════════════════════════════════════════════════════════════════════════
+# INTENT VOCAB — loads intent_vocab.json once at import time
+# ═════════════════════════════════════════════════════════════════════════
+
+def _load_vocab() -> dict:
+    """Load intent_vocab.json from the same directory as this file."""
+    vocab_path = Path(THIS_DIR) / "intent_vocab.json"
+    if not vocab_path.exists():
+        # Graceful degradation — return minimal inline vocab
+        return {
+            "intents": {
+                "help":          {"require_any": ["pyslick help", "pyslick commands", "pyslick usage"], "exclude_if": []},
+                "git":           {"require_any": ["git push", "git status", "git commit", "push to github", "checkpoint"], "exclude_if": []},
+                "list_files":    {"require_any": ["list all files", "list files", "all files in", "files in directory", "cd into", "main methods", "main objects"], "exclude_if": []},
+                "comments":      {"require_any": ["show me the comments", "show comments", "comments in", "comments of the code", "print the comments"], "exclude_if": []},
+                "nearest":       {"require_any": ["nearest", "closest to", "closest function", "function near", "name of the function closest"], "exclude_if": []},
+                "scan_function": {"require_any": ["scan the entire", "entire function", "end to end", "full function", "print it including", "including the comments"], "exclude_if": []},
+                "graph":         {"require_any": ["call graph", "ast graph", "graphify", "dependency graph", "who calls who"], "exclude_if": []},
+                "connect":       {"require_any": ["connect", "linked to", "calls", "called by", "imports", "imported by", "relationship between", "how it connects"], "exclude_if": []},
+                "file_info":     {"require_any": ["what does", "whats the use", "purpose of", "explain this file", "how does this file", "summarize this file", "contents of"], "exclude_if": []},
+                "patch":         {"require_any": ["fix", "change", "rename", "resize", "remove", "add", "update", "refactor", "replace", "delete", "make the", "patch", "rewrite", "edit", "modify"], "exclude_if": []},
+            },
+            "file_extract": {
+                "strip_words": ["file", "the", "a", "an", "this", "that", "my", "of", "in", "about", "use", "purpose", "whats", "what", "is", "does", "how", "show", "tell", "explain", "describe", "summarize"],
+                "min_len": 3,
+                "min_fuzzy_score": 58,
+                "max_results": 3,
+            },
+        }
+    try:
+        return json.loads(vocab_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+_VOCAB = _load_vocab()
+
+
+def _classify_intent(directive: str) -> str:
+    """
+    Route the user's directive to one of the intent buckets defined in
+    intent_vocab.json.  Checks require_any patterns against the full
+    lowercased directive (not word-by-word), so multi-word phrases like
+    'whats the use of' match correctly.  First match wins in priority order.
+    Returns one of: help | git | list_files | comments | nearest |
+                    scan_function | graph | connect | file_info | patch
+    """
+    dl = directive.lower()
+    intents = _VOCAB.get("intents", {})
+
+    # Priority order — most specific first so "pyslick help" doesn't fall
+    # into file_info just because it contains "what"
+    priority = [
+        "help", "git", "list_files", "comments", "nearest",
+        "scan_function", "graph", "connect", "file_info", "patch",
+    ]
+
+    for intent_name in priority:
+        cfg = intents.get(intent_name, {})
+        patterns  = cfg.get("require_any", [])
+        excludes  = cfg.get("exclude_if", [])
+
+        matched = any(p in dl for p in patterns)
+        if not matched:
+            continue
+
+        blocked = any(ex in dl for ex in excludes)
+        if blocked:
+            continue
+
+        return intent_name
+
+    return "patch"  # safe default
+
+
+def _collect_all_files(root: str = ".") -> list[str]:
+    """Walk project tree and return all source file paths."""
+    files = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames
+                       if d not in SKIP_DIRS and not d.startswith(".")]
+        for fn in filenames:
+            files.append(os.path.normpath(os.path.join(dirpath, fn)))
+    return files
+
+
+def _fuzzy_match_files(directive: str, all_files: list[str]) -> list[str]:
+    """
+    Extract candidate file names from the directive and fuzzy-match them
+    against the real file list.  Uses the vocab's strip_words list so
+    query noise ("whats the use of the") doesn't pollute the candidates.
+    """
+    try:
+        from rapidfuzz import process
+        from rapidfuzz.fuzz import WRatio
+    except ImportError:
+        # No rapidfuzz — fall back to simple substring search
+        words = directive.lower().split()
+        matched = []
+        for w in words:
+            if len(w) < 3:
+                continue
+            for f in all_files:
+                if w in os.path.basename(f).lower() and f not in matched:
+                    matched.append(f)
+        return matched
+
+    cfg         = _VOCAB.get("file_extract", {})
+    strip_words = set(cfg.get("strip_words", []))
+    min_len     = cfg.get("min_len", 3)
+    min_score   = cfg.get("min_fuzzy_score", 58)
+    max_results = cfg.get("max_results", 3)
+
+    # Build candidate tokens: raw words from directive minus strip_words
+    tokens = [
+        w for w in re.split(r"[\s\-_./\\]+", directive.lower())
+        if len(w) >= min_len and w not in strip_words
+    ]
+
+    matched: list[str] = []
+    for token in tokens:
+        # Match against basenames, then remap to full paths
+        basenames = [os.path.basename(f) for f in all_files]
+        hits = process.extract(token, basenames, scorer=WRatio, limit=max_results)
+        for base_match, score, idx in hits:
+            if score >= min_score:
+                full_path = all_files[idx]
+                if full_path not in matched:
+                    matched.append(full_path)
+
+    return matched
+
+
+def _print_file_summary(filepath: str, directive_lower: str = "") -> None:
+    """
+    Print a structured summary of one file:
+      • total lines
+      • key functions/classes with first 3 lines of body + inline comments
+      • relevant comment blocks (filtered by directive words)
+    """
+    content = tool_get_file(filepath)
+    if content.startswith("ERROR"):
+        print(f"  {RED}{content}{RST}")
+        return
+
+    raw_lines = content.splitlines()
+    print(f"  {DIM}Lines: {len(raw_lines)}{RST}")
+
+    # ── functions and classes ──────────────────────────────────────────
+    # Parse with AST if Python, otherwise use regex for all file types
+    funcs: list[dict] = []
+    if filepath.endswith(".py"):
+        try:
+            import ast
+            tree = ast.parse(content)
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    doc = ast.get_docstring(node) or ""
+                    funcs.append({
+                        "name":       node.name,
+                        "type":       "class" if isinstance(node, ast.ClassDef) else "def",
+                        "start_line": node.lineno,
+                        "end_line":   getattr(node, "end_lineno", node.lineno),
+                        "docstring":  doc,
+                    })
+        except SyntaxError:
+            pass
+
+    if not funcs:
+        # Regex fallback — works for JS/TS/Python
+        for i, line in enumerate(raw_lines):
+            m = re.match(
+                r"^\s*(export\s+)?(async\s+)?function\s+(\w+)"
+                r"|^\s*(export\s+)?(default\s+)?class\s+(\w+)"
+                r"|^\s*def\s+(\w+)"
+                r"|^\s*class\s+(\w+)",
+                line,
+            )
+            if m:
+                name = next(g for g in m.groups() if g and re.match(r"^\w", g))
+                funcs.append({
+                    "name":       name,
+                    "type":       "class" if "class" in line else "def",
+                    "start_line": i + 1,
+                    "end_line":   None,
+                    "docstring":  "",
+                })
+
+    if funcs:
+        print(f"\n  {BOLD}Functions / Classes:{RST}")
+        for fn in funcs:
+            tag  = "class" if fn["type"] == "class" else "def"
+            lnum = fn["start_line"]
+            end  = fn["end_line"]
+            span = f"L{lnum}-{end}" if end else f"L{lnum}"
+            print(f"    {CYAN}{tag} {fn['name']}{RST}  {DIM}{span}{RST}")
+
+            if fn["docstring"]:
+                doc_preview = fn["docstring"].splitlines()[0][:80]
+                print(f"      {DIM}» {doc_preview}{RST}")
+
+            # Print first 3 lines of the function body (after the def/class line)
+            body_start = lnum       # 1-indexed
+            body_lines = raw_lines[body_start : body_start + 3]
+            for bl in body_lines:
+                stripped = bl.strip()
+                if stripped:
+                    print(f"      {DIM}{stripped[:100]}{RST}")
+
+    # ── relevant comment blocks ────────────────────────────────────────
+    try:
+        from comment_blocks import scan_file_for_comment_blocks
+        blocks = scan_file_for_comment_blocks(filepath)
+        if blocks and directive_lower:
+            query_words = [
+                w for w in directive_lower.split()
+                if len(w) > 3
+            ]
+            relevant = [
+                b for b in blocks
+                if any(w in b.label.lower() for w in query_words)
+            ]
+            if relevant:
+                print(f"\n  {BOLD}Relevant comment blocks:{RST}")
+                for b in relevant[:4]:
+                    print(f"    {DIM}L{b.start_line}: {b.label[:70]}{RST}")
+                    if b.code_preview:
+                        preview = b.code_preview.splitlines()[0][:80]
+                        print(f"      {DIM}{preview}{RST}")
+    except Exception:
+        pass
+
+
+def _print_all_comments(filepath: str) -> None:
+    """
+    Print every comment line in a file — inline (#//) and block (''' / /* */).
+    Also prints the first 3 lines of any function immediately following
+    a comment block.
+    """
+    content = tool_get_file(filepath)
+    if content.startswith("ERROR"):
+        print(f"  {RED}{content}{RST}")
+        return
+
+    raw_lines = content.splitlines()
+    print(f"\n{BOLD}Comments in {filepath}{RST}  {DIM}({len(raw_lines)} lines total){RST}\n")
+
+    in_block = False
+    block_delim = None
+    block_buf: list[str] = []
+    block_start = 0
+
+    def flush_block(end_line: int):
+        if block_buf:
+            print(f"  {DIM}L{block_start}-{end_line}  block comment:{RST}")
+            for bl in block_buf:
+                print(f"    {CYAN}{bl}{RST}")
+            block_buf.clear()
+
+    for i, line in enumerate(raw_lines, 1):
+        stripped = line.strip()
+
+        # Python triple-quote block
+        if not in_block and (stripped.startswith('"""') or stripped.startswith("'''")):
+            delim = stripped[:3]
+            rest  = stripped[3:]
+            if rest.endswith(delim) and len(rest) > 3:
+                # Single-line docstring
+                print(f"  {DIM}L{i}:{RST}  {CYAN}{stripped}{RST}")
+            else:
+                in_block  = True
+                block_delim = delim
+                block_start = i
+                block_buf.append(stripped)
+            continue
+
+        if in_block:
+            block_buf.append(stripped)
+            if block_delim and block_delim in stripped:
+                flush_block(i)
+                in_block = False
+                block_delim = None
+            continue
+
+        # C-style block comment
+        if not in_block and stripped.startswith("/*"):
+            in_block    = True
+            block_delim = "*/"
+            block_start = i
+            block_buf.append(stripped)
+            if "*/" in stripped:
+                flush_block(i)
+                in_block = False
+                block_delim = None
+            continue
+
+        if in_block and block_delim == "*/":
+            block_buf.append(stripped)
+            if "*/" in stripped:
+                flush_block(i)
+                in_block = False
+                block_delim = None
+            continue
+
+        # Inline comment: Python # or JS //
+        if stripped.startswith("#") or stripped.startswith("//"):
+            print(f"  {DIM}L{i}:{RST}  {CYAN}{stripped}{RST}")
+            # If the next line defines a function, show its first 3 body lines
+            for j in range(i, min(i + 3, len(raw_lines))):
+                next_line = raw_lines[j].strip()
+                if re.match(r"(async\s+)?def\s+|class\s+|function\s+", next_line):
+                    print(f"    {DIM}→ {next_line[:90]}{RST}")
+                    for k in range(j + 1, min(j + 4, len(raw_lines))):
+                        body = raw_lines[k].strip()
+                        if body:
+                            print(f"      {DIM}{body[:90]}{RST}")
+                    break
+
+
+# ═════════════════════════════════════════════════════════════════════════
 # LOCAL LLM AGENT (no API key required)
 # ═════════════════════════════════════════════════════════════════════════
 
 def _run_local_agent(directive: str) -> None:
-    """Simplified agent using only local LLM and tools."""
-    from llm import is_available, maybe_expand_query
-    from find_nearest_nodes import load_graph_nodes, find_closest_graph_nodes
-    from comment_blocks import scan_project_for_comment_blocks, comment_nodes_as_graph_nodes
-    from rapidfuzz import process
-    from rapidfuzz.fuzz import WRatio
-    from query import graphify_query
+    """
+    Vocab-driven local agent for the 124M-param model.
+
+    The model doesn't have to reason about routing — _classify_intent()
+    does that with intent_vocab.json.  Each handler then does exactly the
+    right thing for that intent:
+
+      help          → pyslick command docs
+      git           → git status + optional push prompt
+      list_files    → directory walk + main symbols per file
+      comments      → all comments in matched file
+      nearest       → find_nearest_nodes around a symbol/line
+      scan_function → full function body printed with comments
+      graph         → ast_query call graph
+      connect       → cross-file call-graph walk
+      file_info     → purpose + key functions + first 3 lines
+      patch         → fuzzy match → LLM find/replace → diff → confirm
+    """
+    try:
+        from llm import is_available, maybe_expand_query
+    except ImportError:
+        print(f"{RED}llm module not found. Run: pip install pyslick[llm]{RST}")
+        return
 
     if not is_available():
         print("Local LLM not available. Run: pyslick llm-status")
         return
 
-    directive_lower = directive.lower()
-    
-    # Detect file connection queries (e.g., "how does X connect with Y")
-    if "connect" in directive_lower and any(kw in directive_lower for kw in ["how", "what", "with", "to"]):
-        # Extract potential file names from query
-        words = directive_lower.split()
-        file_candidates = []
-        for word in words:
-            if len(word) > 3 and word.replace("py", "").replace("js", "").replace("ts", "").isalnum():
-                file_candidates.append(word)
-        
-        # Fuzzy match to actual files
-        all_files = []
-        for root, dirs, files in os.walk("."):
-            for f in files:
-                all_files.append(os.path.join(root, f))
-        
-        matched_files = []
-        for candidate in file_candidates:
-            results = process.extract(candidate, all_files, scorer=WRatio, limit=3)
-            for match, score, idx in results:
-                if score > 60 and match not in matched_files:
-                    matched_files.append(match)
-        
-        if matched_files:
-            print(f"Found {len(matched_files)} files matching query:")
-            for i, f in enumerate(matched_files):
-                print(f"  [{i}] {f}")
-            
-            # Show important comments and functions in each file
-            print(f"\n{DIM}Scanning for important comments and functions...{RST}")
-            for f in matched_files:
-                print(f"\n{BOLD}{f}{RST}")
-                
-                # Show comment blocks related to query
-                comment_blocks = scan_project_for_comment_blocks(os.path.dirname(f))
-                file_comments = [c for c in comment_blocks if c.file == f]
-                if file_comments:
-                    # Filter comments by relevance to query
-                    relevant_comments = []
-                    for c in file_comments:
-                        comment_lower = c.comment_text.lower()
-                        for word in directive_lower.split():
-                            if len(word) > 3 and word in comment_lower:
-                                relevant_comments.append(c)
-                                break
-                    if relevant_comments:
-                        print(f"  {DIM}Relevant comments:{RST}")
-                        for c in relevant_comments[:3]:  # Top 3 relevant comments
-                            print(f"    L{c.start_line}: {c.comment_text[:60]}")
-                            # Show nearby function (first 3 lines)
-                            try:
-                                content = tool_get_file(f)
-                                lines = content.splitlines()
-                                # Find function near comment
-                                for i in range(max(0, c.start_line - 5), min(len(lines), c.start_line + 10)):
-                                    line = lines[i]
-                                    if "def " in line or "class " in line:
-                                        print(f"      → {line.strip()}")
-                                        # Show next 2 lines
-                                        for j in range(i+1, min(len(lines), i+3)):
-                                            if j < len(lines):
-                                                print(f"        {lines[j].strip()}")
-                                        break
-                            except Exception:
-                                pass
-                
-                # Show key functions using find_nearest_nodes
-                try:
-                    nodes = load_graph_nodes()
-                    if nodes:
-                        file_nodes = [n for n in nodes if n.get("file") == f]
-                        if file_nodes:
-                            print(f"  {DIM}Key functions:{RST}")
-                            for node in file_nodes[:3]:  # Top 3 functions
-                                print(f"    {node['label']} (L{node.get('start_line', '?')}-{node.get('end_line', '?')})")
-                                if node.get("docstring"):
-                                    print(f"      {node['docstring'][:80]}")
-                except Exception:
-                    pass
-            
-            # Show connections between matched files
-            print(f"\n{DIM}Analyzing connections...{RST}")
-            for i, file1 in enumerate(matched_files):
-                for j, file2 in enumerate(matched_files):
-                    if i < j:  # Avoid duplicates
-                        try:
-                            print(f"\n{BOLD}{file1} ↔ {file2}{RST}")
-                            results = graphify_query(file1, f"functions that call or are called by {file2}", top_k=3, depth=2)
-                            if results:
-                                for r in results:
-                                    sym = r.symbol
-                                    print(f"  {sym['name']} (L{sym['start_line']}-{sym['end_line']})")
-                                    if sym.get("docstring"):
-                                        print(f"    {sym['docstring'][:100]}")
-                        except Exception as e:
-                            pass
-            return
-    
-    # Informational queries - show and exit
-    if any(kw in directive_lower for kw in ["pyslick", "help", "how", "what", "command", "usage"]):
+    intent = _classify_intent(directive)
+    dl     = directive.lower()
+    print(f"{DIM}  intent → {intent}{RST}")
+
+    # ── HELP ──────────────────────────────────────────────────────────
+    if intent == "help":
         result = tool_pyslick_help()
-        lines = result.splitlines()[:30]
-        print("\n".join(lines))
-        return
-    
-    if any(kw in directive_lower for kw in ["git", "status", "commit", "push", "repo"]):
-        result = tool_pyslick_status()
         print(result)
         return
 
-    # Patching queries
-    print(f"{DIM}Scanning {len(os.listdir('.'))} files...{RST}")
-    nodes = load_graph_nodes() or []
-    
-    if nodes:
-        print(f"{DIM}Found {len(nodes)} functions. Top 5:{RST}")
-        for i, node in enumerate(nodes[:5]):
+    # ── GIT ───────────────────────────────────────────────────────────
+    if intent == "git":
+        hdr("Git", "Status")
+        status = tool_pyslick_status()
+        print(status)
+
+        if any(kw in dl for kw in ["push", "commit", "checkpoint"]):
+            msg_match = re.search(r'(?:message|msg|with)[:\s]+["\']?(.+?)["\']?\s*$', dl)
+            commit_msg = msg_match.group(1).strip() if msg_match else directive
+            confirm = input(
+                f"\n{BOLD}  ⏸  Create checkpoint '{commit_msg[:60]}'? (yes/no): {RST}"
+            ).strip().lower()
+            if confirm in ("y", "yes"):
+                result = tool_pyslick_checkpoint(commit_msg)
+                ok(result)
+        return
+
+    # ── LIST FILES ────────────────────────────────────────────────────
+    if intent == "list_files":
+        # Determine root — check if user mentioned a specific directory
+        root_match = re.search(
+            r'(?:in|into|inside|under|directory|dir|folder)[:\s]+["\']?([./\w\-]+)["\']?',
+            dl,
+        )
+        root = root_match.group(1).strip() if root_match else "."
+        if not os.path.isdir(root):
+            root = "."
+
+        hdr("List Files", root)
+        all_files = _collect_all_files(root)
+        code_files = [f for f in all_files if Path(f).suffix in CODE_EXTS]
+        print(f"{DIM}  {len(code_files)} source files found{RST}\n")
+
+        wants_symbols = any(kw in dl for kw in ["method", "object", "function", "symbol", "main"])
+
+        for fp in sorted(code_files):
+            print(f"  {BOLD}{fp}{RST}")
+            if wants_symbols:
+                content = tool_get_file(fp)
+                if not content.startswith("ERROR"):
+                    raw = content.splitlines()
+                    syms: list[str] = []
+                    for line in raw:
+                        m = re.match(
+                            r"^\s*(export\s+)?(async\s+)?(?:function|def|class)\s+(\w+)",
+                            line,
+                        )
+                        if m:
+                            syms.append(m.group(3))
+                    if syms:
+                        print(f"    {DIM}{', '.join(syms[:8])}{RST}")
+        return
+
+    # ── COMMENTS ──────────────────────────────────────────────────────
+    if intent == "comments":
+        all_files  = _collect_all_files()
+        matched    = _fuzzy_match_files(directive, all_files)
+
+        if not matched:
+            warn("No file matched. Try naming a file explicitly.")
+            return
+
+        # If multiple matches, let user pick
+        target = matched[0]
+        if len(matched) > 1:
+            print("Multiple files matched:")
+            for i, f in enumerate(matched):
+                print(f"  [{i}] {f}")
+            choice = input("Select (or Enter for first): ").strip()
+            if choice.isdigit() and int(choice) < len(matched):
+                target = matched[int(choice)]
+
+        _print_all_comments(target)
+        return
+
+    # ── NEAREST NODE ──────────────────────────────────────────────────
+    if intent == "nearest":
+        try:
+            from find_nearest_nodes import load_graph_nodes, find_closest_graph_nodes
+        except ImportError:
+            warn("find_nearest_nodes module not available.")
+            return
+
+        # Extract a line number if present
+        line_match = re.search(r"(?:line|l)\s*(\d+)", dl)
+        line_num   = int(line_match.group(1)) if line_match else None
+
+        # Extract a symbol name if present  e.g. "closest to run_agent"
+        sym_match  = re.search(r"closest to\s+[(\"]?(\w+)[)\"]?", dl)
+        sym_name   = sym_match.group(1) if sym_match else None
+
+        all_files = _collect_all_files()
+        matched   = _fuzzy_match_files(directive, all_files)
+        target    = matched[0] if matched else None
+
+        nodes = load_graph_nodes()
+        if not nodes:
+            warn("No graph loaded. Run: graphify extract . --code-only")
+            return
+
+        hdr("Nearest Nodes", sym_name or str(line_num) or directive)
+
+        if sym_name:
+            query = sym_name
+        elif line_num and target:
+            query = f"line {line_num} in {target}"
+        else:
+            query = directive
+
+        results = find_closest_graph_nodes(nodes, query, top_k=5)
+        for r in results:
+            node = r if isinstance(r, dict) else r.symbol
+            print(
+                f"  {CYAN}{node.get('label', node.get('name','?'))}{RST}  "
+                f"{DIM}L{node.get('start_line','?')}-{node.get('end_line','?')}{RST}"
+            )
+            if node.get("docstring"):
+                print(f"    {DIM}{node['docstring'][:80]}{RST}")
             callees = sorted(node.get("callees", set()))
             callers = sorted(node.get("callers", set()))
-            print(f"  [{i}] {node['label'][:40]}")
-            if node.get("file"):
-                print(f"      → {node['file']}")
             if callees:
-                print(f"      calls: {', '.join(callees[:2])}")
+                print(f"    calls → {', '.join(list(callees)[:4])}")
             if callers:
-                print(f"      called by: {', '.join(callers[:2])}")
-    else:
-        comment_nodes_raw = scan_project_for_comment_blocks(os.getcwd())
-        comment_nodes = comment_nodes_as_graph_nodes(comment_nodes_raw)
-        if comment_nodes:
-            print(f"{DIM}Using {len(comment_nodes)} comment blocks{RST}")
-            nodes = comment_nodes
-        else:
-            print("No graph found. Run: graphify extract . --code-only")
+                print(f"    called by ← {', '.join(list(callers)[:4])}")
+        return
+
+    # ── SCAN FUNCTION (print end-to-end with comments) ────────────────
+    if intent == "scan_function":
+        # Pull out the function/class name from the directive
+        fn_match = re.search(
+            r"(?:function|def|class|method|the)\s+['\"]?(\w+)['\"]?",
+            dl,
+        )
+        fn_name = fn_match.group(1) if fn_match else None
+
+        all_files = _collect_all_files()
+        matched   = _fuzzy_match_files(directive, all_files)
+        target    = matched[0] if matched else None
+
+        if not fn_name and not target:
+            warn("Could not identify a function name or file. Be more specific.")
             return
+
+        hdr("Scan Function", fn_name or directive)
+
+        # If we have a Python file, use AST to find the exact function
+        if target and target.endswith(".py") and fn_name:
+            content    = tool_get_file(target)
+            raw_lines  = content.splitlines()
+            try:
+                import ast
+                tree = ast.parse(content)
+                for node in ast.walk(tree):
+                    is_fn = isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                    if is_fn and node.name.lower() == fn_name.lower():
+                        start = node.lineno - 1          # 0-indexed
+                        end   = getattr(node, "end_lineno", start + 60)
+                        print(f"{BOLD}{target}  L{node.lineno}-{end}{RST}\n")
+                        for ln_idx, ln in enumerate(raw_lines[start:end], start=node.lineno):
+                            # Highlight comment lines
+                            stripped = ln.strip()
+                            if stripped.startswith("#") or stripped.startswith("//"):
+                                print(f"  {ln_idx:4d}  {CYAN}{ln}{RST}")
+                            else:
+                                print(f"  {ln_idx:4d}  {ln}")
+                        return
+                warn(f"Function '{fn_name}' not found in {target}. Showing file summary instead.")
+            except SyntaxError as se:
+                warn(f"Syntax error in {target}: {se}")
+
+        # Generic fallback: grep for the function definition
+        if target and fn_name:
+            content   = tool_get_file(target)
+            raw_lines = content.splitlines()
+            for i, line in enumerate(raw_lines):
+                if re.search(rf"\bdef\s+{fn_name}\b|\bfunction\s+{fn_name}\b|\bclass\s+{fn_name}\b", line, re.IGNORECASE):
+                    end = min(i + 80, len(raw_lines))
+                    print(f"{BOLD}{target}  L{i+1}-~{end}{RST}\n")
+                    for ln_idx, ln in enumerate(raw_lines[i:end], start=i+1):
+                        stripped = ln.strip()
+                        if stripped.startswith("#") or stripped.startswith("//"):
+                            print(f"  {ln_idx:4d}  {CYAN}{ln}{RST}")
+                        else:
+                            print(f"  {ln_idx:4d}  {ln}")
+                        # Stop at the next top-level def/class (dedent back to col 0)
+                        if ln_idx > i + 2 and re.match(r"^(def |class |async def )", ln):
+                            break
+                    return
+
+        warn(f"Could not locate '{fn_name}'. Try: pyslick agent \"scan the entire <function> function in <file>\"")
+        return
+
+    # ── CALL GRAPH ────────────────────────────────────────────────────
+    if intent == "graph":
+        all_files = _collect_all_files()
+        matched   = _fuzzy_match_files(directive, all_files)
+        py_files  = [f for f in (matched or all_files) if f.endswith(".py")]
+
+        if not py_files:
+            warn("No Python files found for AST graph.")
+            return
+
+        target = py_files[0]
+        hdr("Call Graph", target)
+        result = tool_ast_query(target, directive)
+        print(result)
+        return
+
+    # ── CONNECT (cross-file call-graph) ───────────────────────────────
+    if intent == "connect":
+        try:
+            from query import graphify_query
+        except ImportError:
+            warn("query module not available.")
+            return
+
+        all_files = _collect_all_files()
+        matched   = _fuzzy_match_files(directive, all_files)
+
+        if not matched:
+            warn("No files matched. Be more specific.")
+            return
+
+        hdr("Connections", " ↔ ".join(os.path.basename(f) for f in matched[:3]))
+
+        for fp in matched:
+            print(f"\n{BOLD}{fp}{RST}")
+            _print_file_summary(fp, dl)
+
+        # Cross-file relationships for every pair
+        if len(matched) >= 2:
+            print(f"\n{DIM}Cross-file call relationships:{RST}")
+            for i, f1 in enumerate(matched):
+                for f2 in matched[i+1:]:
+                    try:
+                        print(f"\n  {BOLD}{os.path.basename(f1)} ↔ {os.path.basename(f2)}{RST}")
+                        results = graphify_query(
+                            f1,
+                            f"functions that call or are called by {f2}",
+                            top_k=3, depth=2,
+                        )
+                        if results:
+                            for r in results:
+                                sym = r.symbol
+                                callees = sorted(sym.get("callees", set()))
+                                callers = sorted(sym.get("callers", set()))
+                                print(f"    {CYAN}{sym['name']}{RST}  L{sym['start_line']}-{sym['end_line']}")
+                                if sym.get("docstring"):
+                                    print(f"      {DIM}{sym['docstring'][:80]}{RST}")
+                                if callees:
+                                    print(f"      calls → {', '.join(callees[:4])}")
+                                if callers:
+                                    print(f"      called by ← {', '.join(callers[:4])}")
+                        else:
+                            print(f"    {DIM}(no direct connections found){RST}")
+                    except Exception:
+                        pass
+        return
+
+    # ── FILE INFO ─────────────────────────────────────────────────────
+    if intent == "file_info":
+        all_files = _collect_all_files()
+        matched   = _fuzzy_match_files(directive, all_files)
+
+        if not matched:
+            warn("No file matched. Try naming the file more explicitly.")
+            return
+
+        # Show info for up to 2 matches
+        for fp in matched[:2]:
+            hdr("File Info", fp)
+            _print_file_summary(fp, dl)
+        return
+
+    # ── PATCH (default) ───────────────────────────────────────────────
+    # Uses rapidfuzz graph match → LLM extract → diff → confirm
+    try:
+        from find_nearest_nodes import load_graph_nodes
+        from comment_blocks import scan_project_for_comment_blocks, comment_nodes_as_graph_nodes
+        from rapidfuzz import process
+        from rapidfuzz.fuzz import WRatio
+    except ImportError as ie:
+        warn(f"Missing dependency: {ie}. Run: pip install pyslick[local]")
+        return
+
+    print(f"{DIM}Scanning project…{RST}")
+    nodes = load_graph_nodes() or []
+
+    if not nodes:
+        comment_nodes_raw = scan_project_for_comment_blocks(os.getcwd())
+        nodes = comment_nodes_as_graph_nodes(comment_nodes_raw)
+        if not nodes:
+            warn("No graph found. Run: graphify extract . --code-only")
+            return
+        print(f"{DIM}Using {len(nodes)} comment blocks{RST}")
+    else:
+        print(f"{DIM}Found {len(nodes)} symbols{RST}")
 
     expanded = maybe_expand_query(directive)
     if expanded != directive:
         print(f"{DIM}Expanded: {expanded}{RST}")
 
-    labels = [n["label"] for n in nodes]
+    labels      = [n["label"] for n in nodes]
     raw_results = process.extract(expanded, labels, scorer=WRatio, limit=5)
 
     print("\nMatches:")
@@ -984,8 +1489,8 @@ def _run_local_agent(directive: str) -> None:
         else:
             print(f"  [{score:5.1f}%] {node['label'][:40]}")
 
-    file_paths = []
-    for match, score, index in raw_results:
+    file_paths: list[str] = []
+    for _, _, index in raw_results:
         node = nodes[index]
         if node["type"] in ("marker_block", "descriptive_block"):
             path = node["_comment_node"].file
@@ -995,7 +1500,7 @@ def _run_local_agent(directive: str) -> None:
             file_paths.append(path)
 
     if not file_paths:
-        print("No files found")
+        warn("No files found for patch.")
         return
 
     print("\nFiles:")
@@ -1009,64 +1514,59 @@ def _run_local_agent(directive: str) -> None:
     if choice.isdigit():
         idx = int(choice)
         if idx >= len(file_paths):
-            print("Invalid selection")
+            warn("Invalid selection.")
             return
         target_file = file_paths[idx]
     else:
-        matched = None
-        for fp in file_paths:
-            if choice.lower() in fp.lower():
-                matched = fp
-                break
-        if not matched:
-            print(f"No match for '{choice}'")
+        target_file = next((fp for fp in file_paths if choice.lower() in fp.lower()), None)
+        if not target_file:
+            warn(f"No match for '{choice}'")
             return
-        target_file = matched
 
     print(f"Selected: {target_file}")
 
     content = tool_get_file(target_file)
     if content.startswith("ERROR"):
-        print(content)
+        err(content)
         return
 
-    find_str, replace_str = None, None
+    find_str = replace_str = None
     try:
         from llm import maybe_extract_find_replace
         find_str, replace_str = maybe_extract_find_replace(directive, content)
     except Exception as e:
-        print(f"LLM failed: {e}")
+        warn(f"LLM extraction failed: {e}")
 
     if find_str and replace_str:
         print(f"\n{YELL}Find:{RST}    {find_str[:150]}{'...' if len(find_str) > 150 else ''}")
         print(f"{GREEN}Replace:{RST} {replace_str[:150]}{'...' if len(replace_str) > 150 else ''}")
         confirm = input(f"\nApply patch? (y/n): ").strip().lower()
         if confirm not in ("y", "yes"):
+            warn("Patch aborted.")
             return
     else:
-        print("LLM couldn't extract. Manual mode:")
+        warn("LLM couldn't extract find/replace automatically. Switching to manual mode.")
         lines = content.splitlines()[:50]
         for i, line in enumerate(lines, 1):
             print(f"{i:3d}: {line}")
-        find_str = input(f"\nFind: ").strip()
+        find_str    = input(f"\nFind: ").strip()
         replace_str = input(f"Replace: ").strip()
 
     if not find_str or not replace_str:
-        print("Missing find/replace")
+        warn("Missing find/replace — no changes made.")
         return
 
     patch = {
-        "file": target_file,
-        "find": find_str,
-        "replace": replace_str,
-        "explanation": f"Patch for: {directive}"
+        "file":        target_file,
+        "find":        find_str,
+        "replace":     replace_str,
+        "explanation": f"Local patch for: {directive}",
     }
-
     _present_and_apply_patch(patch, directive)
 
 
 # ═════════════════════════════════════════════════════════════════════════
-# AGENTIC LOOP
+# AGENTIC LOOP  (Anthropic / NVIDIA API path)
 # ═════════════════════════════════════════════════════════════════════════
 
 def run_agent(directive: str, root: str = ".") -> None:
@@ -1074,10 +1574,9 @@ def run_agent(directive: str, root: str = ".") -> None:
 
     print(f"{BOLD}Agent: {directive}{RST}")
 
-    # Check which provider to use
     provider_name, provider = _get_provider()
     if not provider:
-        print(f"{DIM}No API key - using local LLM{RST}")
+        print(f"{DIM}No API key — using local LLM{RST}")
         _run_local_agent(directive)
         return
 
@@ -1095,7 +1594,7 @@ def run_agent(directive: str, root: str = ".") -> None:
         }
     ]
 
-    # ── Agentic tool loop ─────────────────────────────────────────────────
+    # ── Agentic tool loop ──────────────────────────────────────────────
     for round_num in range(1, MAX_TOOL_ROUNDS + 1):
         hdr(f"Round {round_num}/{MAX_TOOL_ROUNDS}", "Thinking…")
 
@@ -1105,21 +1604,19 @@ def run_agent(directive: str, root: str = ".") -> None:
             err(str(e))
             if "401" in str(e) or "authentication" in str(e).lower():
                 print(f"\n  {YELL}Tip: make sure ANTHROPIC_API_KEY is set in your environment.{RST}")
-                print(f"  {YELL}Or use local LLM mode by unsetting ANTHROPIC_API_KEY.{RST}")
+                print(f"  {YELL}Or unset it to use local LLM mode.{RST}")
             return
 
-        content  = response.get("content", [])
+        content     = response.get("content", [])
         stop_reason = response.get("stop_reason", "")
-        text_out = _extract_text(content)
-        tool_uses = _extract_tool_uses(content)
+        text_out    = _extract_text(content)
+        tool_uses   = _extract_tool_uses(content)
 
-        # Print any narrative text the model produced
         if text_out:
             print(f"\n{DIM}  Claude:{RST} {text_out[:600]}")
 
         # ── No more tool calls → extract patch proposal ────────────────
         if stop_reason == "end_turn" or not tool_uses:
-            # Try to parse a JSON patch from the final text
             patch = _parse_patch(text_out or _extract_text(content))
             if patch:
                 _present_and_apply_patch(patch, directive)
@@ -1129,31 +1626,28 @@ def run_agent(directive: str, root: str = ".") -> None:
             return
 
         # ── Execute tool calls ─────────────────────────────────────────
-        # Append the assistant turn (with tool_use blocks)
         messages.append({"role": "assistant", "content": content})
 
         tool_results = []
         for tu in tool_uses:
             tool_name = tu.get("name", "")
-            tool_args  = tu.get("input", {})
-            tool_id    = tu.get("id", "")
+            tool_args = tu.get("input", {})
+            tool_id   = tu.get("id", "")
 
             print(f"\n  {CYAN}→ {tool_name}{RST}({_fmt_args(tool_args)})")
-            result = dispatch_tool(tool_name, tool_args)
-
-            # Print a short preview of the result
+            result  = dispatch_tool(tool_name, tool_args)
             preview = result.replace("\n", " ")[:200]
             print(f"    {DIM}{preview}{RST}")
 
             tool_results.append({
-                "type": "tool_result",
+                "type":        "tool_result",
                 "tool_use_id": tool_id,
-                "content": result,
+                "content":     result,
             })
 
         messages.append({"role": "user", "content": tool_results})
 
-    # ── Max rounds reached — ask for final answer without tools ────────
+    # ── Max rounds reached → ask for final answer without tools ────────
     warn(f"Reached {MAX_TOOL_ROUNDS} tool rounds. Asking for final proposal…")
     messages.append({
         "role": "user",
@@ -1165,7 +1659,7 @@ def run_agent(directive: str, root: str = ".") -> None:
     try:
         response = _call_api(messages, use_tools=False)
         text_out = _extract_text(response.get("content", []))
-        patch = _parse_patch(text_out)
+        patch    = _parse_patch(text_out)
         if patch:
             _present_and_apply_patch(patch, directive)
         else:
@@ -1189,11 +1683,9 @@ def _parse_patch(text: str) -> dict | None:
     """Extract a JSON patch object from model text."""
     if not text:
         return None
-    # Strip markdown fences if present
-    cleaned = re.sub(r"```(?:json)?", "", text).strip().rstrip("`").strip()
-    # Find the outermost { ... }
-    start = cleaned.find("{")
-    end   = cleaned.rfind("}")
+    cleaned   = re.sub(r"```(?:json)?", "", text).strip().rstrip("`").strip()
+    start     = cleaned.find("{")
+    end       = cleaned.rfind("}")
     if start == -1 or end == -1:
         return None
     candidate = cleaned[start:end+1]
@@ -1211,8 +1703,8 @@ def _present_and_apply_patch(patch: dict, directive: str) -> None:
     from patchit import read_file, write_with_safety
     from pyslick import git_checkpoint
 
-    file_path = patch.get("file")
-    find_str  = patch.get("find")
+    file_path   = patch.get("file")
+    find_str    = patch.get("find")
     replace_str = patch.get("replace")
     explanation = patch.get("explanation", "")
 
@@ -1221,7 +1713,7 @@ def _present_and_apply_patch(patch: dict, directive: str) -> None:
     print(f"  {BOLD}Why:{RST}        {explanation}\n")
 
     if not file_path or not find_str or not replace_str:
-        warn("Patch is incomplete (missing file/find/replace).")
+        warn("Patch is incomplete (missing file / find / replace).")
         if explanation:
             print(f"  {DIM}{explanation}{RST}")
         return
@@ -1236,12 +1728,10 @@ def _present_and_apply_patch(patch: dict, directive: str) -> None:
         err(f"FIND string not found in {file_path}.")
         print(f"\n  {YELL}Looking for:{RST}")
         print(f"  {DIM}{find_str[:300]}{RST}")
-        # Suggest the closest lines
-        lines = content.splitlines()
+        lines       = content.splitlines()
         first_token = find_str.split()[0] if find_str.split() else ""
         if first_token:
-            hits = [f"  L{i+1}: {l}" for i, l in enumerate(lines)
-                    if first_token in l][:5]
+            hits = [f"  L{i+1}: {l}" for i, l in enumerate(lines) if first_token in l][:5]
             if hits:
                 print(f"\n  {DIM}Lines containing '{first_token}':{RST}")
                 print("\n".join(hits))
@@ -1249,7 +1739,6 @@ def _present_and_apply_patch(patch: dict, directive: str) -> None:
 
     modified = content.replace(find_str, replace_str, 1)
 
-    # Show diff
     diff = list(difflib.unified_diff(
         content.splitlines(keepends=True),
         modified.splitlines(keepends=True),
@@ -1268,7 +1757,6 @@ def _present_and_apply_patch(patch: dict, directive: str) -> None:
             print(f"{DIM}{line.rstrip()}{RST}")
     print(f"{DIM}{'─'*60}{RST}")
 
-    # One human gate
     confirm = input(
         f"\n{BOLD}  ⏸  Apply this patch? (yes/no): {RST}"
     ).strip().lower()
@@ -1280,7 +1768,6 @@ def _present_and_apply_patch(patch: dict, directive: str) -> None:
     write_ok = write_with_safety(file_path, modified)
     if write_ok:
         ok(f"Patch applied to {file_path}")
-        # Git checkpoint with directive as commit message
         commit_msg = f"resolving: {directive}" if directive else None
         git_checkpoint(commit_msg)
     else:
@@ -1304,7 +1791,7 @@ def main():
         "--root", default=".",
         help="Project root to work in (default: cwd).",
     )
-    args = parser.parse_args()
+    args      = parser.parse_args()
     directive = " ".join(args.directive)
     run_agent(directive, root=args.root)
 

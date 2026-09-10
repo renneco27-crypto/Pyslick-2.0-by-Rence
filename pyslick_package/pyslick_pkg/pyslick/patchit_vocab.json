@@ -1,0 +1,98 @@
+{
+  "parser_patterns": {
+    "find_headers": [
+      "^\\s*(?:\\d+[.:]\\s*)?(?:FIND|SEARCH|OLD|BEFORE|ORIGINAL)(?:\\s*\\(.*?\\))?:?\\s*$",
+      "^\\s*<<<<<<<\\s*(?:SEARCH|ORIGINAL|HEAD)?\\s*$"
+    ],
+    "replace_headers": [
+      "^\\s*(?:\\d+[.:]\\s*)?(?:REPLACE(?:\\s+WITH)?|NEW|AFTER|MODIFIED)(?:\\s*\\(.*?\\))?:?\\s*$",
+      "^\\s*=======\\s*$"
+    ],
+    "block_terminators": [
+      "^\\s*>>>>>>>\\s*(?:REPLACE|PATCH|BRANCH)?\\s*$"
+    ],
+    "file_patterns": [
+      "(?:pyslick\\s+patchit|Step\\s+\\d+:\\s*Patch|Patch|File|target|modify|in)\\s+[`\"']?([a-zA-Z0-9_\\-./\\\\]+\\.[a-zA-Z0-9_]+)[`\"']?",
+      "[`\"']([a-zA-Z0-9_\\-./\\\\]+\\.[a-zA-Z0-9_]+)[`\"']"
+    ],
+    "line_number_patterns": [
+      "(?:lines?|L)\\s*(\\d+)(?:\\s*(?:to|-|and)\\s*(\\d+))?",
+      "lines?\\s+(\\d+)\\s+(\\d+)"
+    ],
+    "function_anchor_patterns": [
+      "(?:async\\s+)?function\\s+([a-zA-Z0-9_$]+)",
+      "def\\s+([a-zA-Z0-9_]+)",
+      "class\\s+([a-zA-Z0-9_]+)",
+      "(?:const|let|var)\\s+([a-zA-Z0-9_$]+)\\s*=\\s*(?:async\\s*)?\\(",
+      "([a-zA-Z0-9_$]+)\\s*\\([^)]*\\)\\s*{"
+    ]
+  },
+  "syntax_validators": {
+    ".py": {
+      "type": "python_ast",
+      "description": "Python Abstract Syntax Tree (ast.parse)"
+    },
+    ".json": {
+      "type": "json_parse",
+      "description": "JSON parser (json.loads)"
+    },
+    ".js": {
+      "type": "node_check_or_bracket",
+      "description": "JavaScript syntax check via node --check or bracket validator"
+    },
+    ".mjs": {
+      "type": "node_check_or_bracket",
+      "description": "JavaScript ESM syntax check"
+    },
+    ".cjs": {
+      "type": "node_check_or_bracket",
+      "description": "JavaScript CommonJS syntax check"
+    },
+    ".ts": {
+      "type": "bracket_and_tag",
+      "description": "TypeScript brace and bracket syntax check"
+    },
+    ".tsx": {
+      "type": "jsx_tag_check",
+      "description": "React TSX tag and brace matching check"
+    },
+    ".jsx": {
+      "type": "jsx_tag_check",
+      "description": "React JSX tag and brace matching check"
+    },
+    ".html": {
+      "type": "html_tag_check",
+      "description": "HTML tag balancing check"
+    }
+  },
+  "verification_commands": {
+    "node_build": {
+      "detect_files": ["package.json"],
+      "commands": [
+        ["pnpm", "build"],
+        ["npm", "run", "build"],
+        ["yarn", "build"]
+      ]
+    },
+    "typescript": {
+      "detect_files": ["tsconfig.json"],
+      "commands": [
+        ["npx", "tsc", "--noEmit"],
+        ["pnpm", "tsc", "--noEmit"]
+      ]
+    },
+    "python_tests": {
+      "detect_files": ["pytest.ini", "setup.cfg", "pyproject.toml", "tests/"],
+      "commands": [
+        ["pytest", "-q"],
+        ["python", "-m", "unittest"]
+      ]
+    },
+    "rust": {
+      "detect_files": ["Cargo.toml"],
+      "commands": [
+        ["cargo", "check"]
+      ]
+    }
+  }
+}

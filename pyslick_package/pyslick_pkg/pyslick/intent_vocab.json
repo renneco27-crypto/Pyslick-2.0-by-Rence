@@ -1,0 +1,186 @@
+{
+  "intents": {
+    "help": {
+      "require_any": [
+        "pyslick help",
+        "pyslick command",
+        "pyslick usage",
+        "list commands",
+        "show commands",
+        "help with pyslick",
+        "how to use pyslick",
+        "pyslick options"
+      ],
+      "exclude_if": []
+    },
+    "git": {
+      "require_any": [
+        "git push",
+        "git status",
+        "git commit",
+        "git diff",
+        "git log",
+        "git stash",
+        "git rollback",
+        "push to github",
+        "checkpoint",
+        "commit changes",
+        "create checkpoint"
+      ],
+      "exclude_if": []
+    },
+    "list_files": {
+      "require_any": [
+        "list all files",
+        "list files",
+        "all files in",
+        "files in directory",
+        "show files",
+        "scan directory",
+        "cd into",
+        "main methods",
+        "main objects",
+        "structure of project"
+      ],
+      "exclude_if": []
+    },
+    "comments": {
+      "require_any": [
+        "show me the comments",
+        "show comments",
+        "comments in",
+        "comments of the code",
+        "print the comments",
+        "all comments in",
+        "find comments",
+        "comment blocks"
+      ],
+      "exclude_if": []
+    },
+    "nearest": {
+      "require_any": [
+        "nearest",
+        "closest to",
+        "closest function",
+        "function near",
+        "name of the function closest",
+        "nearest node",
+        "nearest symbol"
+      ],
+      "exclude_if": []
+    },
+    "scan_function": {
+      "require_any": [
+        "scan the entire",
+        "entire function",
+        "end to end",
+        "full function",
+        "print it including",
+        "including the comments",
+        "print function",
+        "show function",
+        "inspect function"
+      ],
+      "exclude_if": []
+    },
+    "graph": {
+      "require_any": [
+        "call graph",
+        "ast graph",
+        "graphify",
+        "dependency graph",
+        "who calls who",
+        "call hierarchy"
+      ],
+      "exclude_if": []
+    },
+    "connect": {
+      "require_any": [
+        "connect",
+        "linked to",
+        "calls",
+        "called by",
+        "imports",
+        "imported by",
+        "relationship between",
+        "how it connects",
+        "how does this connect"
+      ],
+      "exclude_if": []
+    },
+    "file_info": {
+      "require_any": [
+        "what does",
+        "whats the use",
+        "what is the use of",
+        "purpose of",
+        "explain this file",
+        "how does this file",
+        "summarize this file",
+        "contents of",
+        "breakdown of",
+        "what is in"
+      ],
+      "exclude_if": [
+        "pyslick help",
+        "list commands"
+      ]
+    },
+    "patch": {
+      "require_any": [
+        "fix",
+        "change",
+        "rename",
+        "resize",
+        "remove",
+        "add",
+        "update",
+        "refactor",
+        "replace",
+        "delete",
+        "make the",
+        "patch",
+        "rewrite",
+        "edit",
+        "modify",
+        "adjust"
+      ],
+      "exclude_if": []
+    }
+  },
+  "file_extract": {
+    "strip_words": [
+      "file",
+      "the",
+      "a",
+      "an",
+      "this",
+      "that",
+      "my",
+      "of",
+      "in",
+      "about",
+      "use",
+      "purpose",
+      "whats",
+      "what",
+      "is",
+      "does",
+      "how",
+      "show",
+      "tell",
+      "explain",
+      "describe",
+      "summarize",
+      "please",
+      "can",
+      "you",
+      "check",
+      "look",
+      "at"
+    ],
+    "min_len": 3,
+    "min_fuzzy_score": 58,
+    "max_results": 3
+  }
+}

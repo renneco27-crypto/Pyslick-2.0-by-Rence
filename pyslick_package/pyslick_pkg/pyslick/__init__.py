@@ -383,6 +383,19 @@ def main():
     command = sys.argv[1]
     args = sys.argv[2:]
 
+    # ── pyslick --logs — show logs from current session ──
+    if command == "--logs":
+        import logging
+        log_file = os.path.join(os.getcwd(), ".pyslick", "pyslick.log")
+        if os.path.exists(log_file):
+            print(f"Showing logs from: {log_file}")
+            with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+                print(f.read())
+        else:
+            print(f"No log file found at: {log_file}")
+            print("Logs are created when pyslick commands run.")
+        return
+
     # ── pyslick copy [--show] — re-copy last session, no capture wrapper ──
     if command == "copy":
         _, cmd_copy = _get_clipboard()
