@@ -1210,6 +1210,7 @@ def _collect_all_files(root: str = ".") -> list[str]:
             if d not in SKIP_DIRS
             and not d.startswith(".")
             and not d.startswith("pyslick_backup")
+            and d != "graphify-out"
         ]
         for fn in sorted(filenames):
             ext = Path(fn).suffix.lower()

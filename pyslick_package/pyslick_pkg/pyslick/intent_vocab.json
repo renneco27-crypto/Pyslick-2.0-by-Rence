@@ -68,11 +68,16 @@
       "exclude_if": []
     },
     "comments": {
-      "weight": 1.00,
+      "weight": 1.05,
       "require_any": [
+        "show me comments",
         "show me the comments",
         "show the comments",
         "show comments",
+        "comments lines",
+        "comments line",
+        "comments in line",
+        "comments from line",
         "comments in",
         "comments of the code",
         "print the comments",
@@ -80,6 +85,9 @@
         "display comments",
         "all comments in",
         "find comments",
+        "scan comments",
+        "inspect comments",
+        "show all comments",
         "comment blocks"
       ],
       "exclude_if": []
@@ -174,7 +182,7 @@
       "exclude_if": []
     },
     "run_info": {
-      "weight": 1.00,
+      "weight": 1.10,
       "require_any": [
         "how to run",
         "how to start",
@@ -206,12 +214,55 @@
         "npm command",
         "pnpm command",
         "node command",
-        "setup instructions"
+        "setup instructions",
+        "what does this app do",
+        "what does this project do",
+        "what does this do",
+        "what does the app do",
+        "what does the project do",
+        "what is this app",
+        "what is this project",
+        "what does this repo do",
+        "what is this repo",
+        "what is the app",
+        "purpose of this app",
+        "purpose of this project",
+        "what is this for",
+        "what does it do",
+        "describe the app",
+        "describe the project",
+        "describe this app",
+        "describe this project",
+        "overview of the app",
+        "overview of the project",
+        "app overview",
+        "project overview",
+        "app summary",
+        "project summary",
+        "summarize this project",
+        "summarize this app",
+        "what is this codebase"
       ],
       "exclude_if": [
         "run pyslick",
         "help me run pyslick",
-        "how to use pyslick"
+        "how to use pyslick",
+        "print file",
+        "read file",
+        "line range",
+        "show lines",
+        "show snippet",
+        "whats the use",
+        "what is the use of",
+        "purpose of",
+        "explain this file",
+        "how does this file",
+        "how this file works",
+        "how each file works",
+        "summarize this file",
+        "contents of",
+        "breakdown of",
+        "what is in"
       ]
     },
     "file_info": {

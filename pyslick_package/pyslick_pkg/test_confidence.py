@@ -17,6 +17,8 @@ queries = [
     ("help me run pyslick", "help"),
     ("how to run file, repo,directory", "run_info"),
     ("run the file", "run_info"),
+    ("what does this app do", "run_info"),
+    ("what does this project do", "run_info"),
     ("git staus", "git"),
     ("show me the coments", "comments"),
     ("show me comments lines 171 to 213 llmpy", "comments"),
