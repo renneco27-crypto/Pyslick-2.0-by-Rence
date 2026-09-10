@@ -1156,6 +1156,41 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if (has_ft_prefix and has_ft_word and not is_line_or_func) or (dynamic_files_match and not is_line_or_func) or (dot_ext_match and not is_line_or_func):
         return "list_files", 100.0, [("list_files", 100.0)]
 
+    # ── Tier 0.6: File-First Rule — "show me <filename/dotfile>" matches project files first ─
+    _SHOW_FILE_PREFIXES = ("show me", "show", "cat", "scan", "open", "read", "view", "display", "what is in", "contents of")
+    has_show_prefix = any(p in dl for p in _SHOW_FILE_PREFIXES)
+    if has_show_prefix and not is_line_or_func:
+        clean_target = _re_t1.sub(r'^(?:show\s+me|show|cat|scan|open|read|view|display|what\s+is\s+in|contents\s+of)\s+(?:the\s+)?', '', dl).strip()
+        clean_target_no_space = clean_target.replace(" ", "").replace(".", "").lower()
+
+        _KNOWN_FILE_NAMES = {
+            "gitignore", ".gitignore", "packagejson", "package.json", "package-lock", "package-lock.json",
+            "pnpm-lock", "pnpm-lock.yaml", "yarn.lock", "tsconfig", "tsconfig.json",
+            "pyproject", "pyproject.toml", "requirements", "requirements.txt", "setup.py",
+            "cargo.toml", "go.mod", "go.sum", "gemfile", "dockerfile", "makefile",
+            "license", "readme", "readme.md", "changelog", "contributing",
+            "env", ".env", "dockerignore", ".dockerignore", "editorconfig", ".editorconfig",
+            "eslintrc", ".eslintrc", "prettierrc", ".prettierrc", "babelrc", ".babelrc"
+        }
+
+        if clean_target in _KNOWN_FILE_NAMES or clean_target_no_space in _KNOWN_FILE_NAMES:
+            return "file_info", 100.0, [("file_info", 100.0)]
+
+        if clean_target:
+            all_proj_files = _collect_all_files(".")
+            for pf in all_proj_files:
+                bname = os.path.basename(pf).lower()
+                stem = Path(pf).stem.lower()
+                bname_no_dot = bname.lstrip(".").lower()
+                bname_clean = bname.replace(".", "").replace("-", "").replace("_", "")
+
+                if (clean_target == bname or
+                    clean_target == bname_no_dot or
+                    clean_target == stem or
+                    clean_target_no_space == bname_clean or
+                    (len(clean_target) >= 4 and clean_target == bname_clean)):
+                    return "file_info", 100.0, [("file_info", 100.0)]
+
     # ── Tier 1: exact vocab match — word-boundary check for single-word patterns ─
     for intent_name in priority:
         cfg = intents.get(intent_name, {})
@@ -1255,6 +1290,12 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
 
 def _collect_all_files(root: str = ".") -> list[str]:
     """Walk project tree and return all source file paths (skips binary, build, and backup files)."""
+    _KNOWN_PROJECT_FILES = {
+        ".gitignore", ".env", ".env.local", ".env.example", ".env.development",
+        ".dockerignore", "dockerfile", "makefile", "license", "readme", "readme.md",
+        ".editorconfig", ".prettierrc", ".eslintrc", ".eslintrc.json", ".babelrc",
+        "package.json", "tsconfig.json", "pyproject.toml", "cargo.toml", "go.mod"
+    }
     files = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [
@@ -1265,8 +1306,11 @@ def _collect_all_files(root: str = ".") -> list[str]:
             and d != "graphify-out"
         ]
         for fn in sorted(filenames):
+            fn_l = fn.lower()
             ext = Path(fn).suffix.lower()
-            if ext in CODE_EXTS or (ext == "" and not fn.startswith(".")):
+            is_dotfile = fn_l.startswith(".")
+            is_known = fn_l in _KNOWN_PROJECT_FILES or any(fn_l.startswith(k) for k in [".env", ".git", "dockerfile", "makefile", "license", "readme"])
+            if ext in CODE_EXTS or is_known or (ext == "" and not is_dotfile):
                 files.append(os.path.normpath(os.path.join(dirpath, fn)))
     return files
 

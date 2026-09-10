@@ -44,6 +44,7 @@ queries = [
     ("show .tsx", "list_files"),
     ("show me line 24-72 of package.json", "file_info"),
     ("scan package.json line 24-72", "file_info"),
+    ("show me gitignore", "file_info"),
     ("show me packagejson", "file_info"),
     ("show me package.json scan", "file_info"),
     ("whats the use of test_file", "file_info"),
