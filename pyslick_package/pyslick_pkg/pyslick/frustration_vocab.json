@@ -1,0 +1,63 @@
+{
+  "frustration": {
+    "weight_penalty": 0.05,
+    "min_weight": 0.4,
+    "signals": [
+      "you are wrong",
+      "thats wrong",
+      "that was wrong",
+      "not what i meant",
+      "not what i said",
+      "thats not what i meant",
+      "that is not what i meant",
+      "i meant",
+      "i mean",
+      "i said",
+      "no that",
+      "no no",
+      "wrong intent",
+      "wrong answer",
+      "incorrect",
+      "you stupid",
+      "you dumb",
+      "youre dumb",
+      "youre stupid",
+      "are you dumb",
+      "are you stupid",
+      "dumb ai",
+      "stupid ai",
+      "useless",
+      "what the hell",
+      "wtf",
+      "bruh",
+      "seriously",
+      "again wrong",
+      "still wrong",
+      "idiot",
+      "not right"
+    ]
+  },
+  "correction": {
+    "signals": [
+      "i meant",
+      "i mean",
+      "i want",
+      "i need",
+      "i actually want",
+      "i actually meant",
+      "actually",
+      "instead",
+      "i was asking",
+      "i was asking about",
+      "the correct one is",
+      "it should be",
+      "correct one",
+      "correct intent"
+    ]
+  },
+  "calm": {
+    "weight_bonus": 0.02,
+    "max_weight": 1.3,
+    "calm_streak_for_bonus": 3
+  }
+}

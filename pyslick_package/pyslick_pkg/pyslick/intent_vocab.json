@@ -196,8 +196,29 @@
       ]
     },
     "file_info": {
-      "weight": 0.95,
+      "weight": 1.05,
       "require_any": [
+        "show me file",
+        "show file",
+        "show me the file",
+        "show me package",
+        "show package",
+        "cat",
+        "cat scan",
+        "open the file",
+        "open file",
+        "display file",
+        "snippet",
+        "scan of",
+        "scan file",
+        "part of",
+        "view file",
+        "print file",
+        "read file",
+        "lines in",
+        "line range",
+        "show lines",
+        "show snippet",
         "what does",
         "whats the use",
         "what is the use of",
@@ -214,7 +235,14 @@
       ],
       "exclude_if": [
         "pyslick help",
-        "list commands"
+        "list commands",
+        "show me the comments",
+        "show the comments",
+        "show comments",
+        "comments",
+        "coments",
+        "status",
+        "git"
       ]
     },
     "patch": {
@@ -279,7 +307,15 @@
       "with",
       "between",
       "from",
-      "to"
+      "to",
+      "cat",
+      "scan",
+      "snippet",
+      "part",
+      "open",
+      "lines",
+      "line",
+      "me"
     ],
     "min_len": 3,
     "min_fuzzy_score": 58,

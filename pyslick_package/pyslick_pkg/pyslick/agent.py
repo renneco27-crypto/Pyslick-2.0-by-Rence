@@ -861,6 +861,8 @@ _VOCAB = _load_vocab()
 
 
 _LEARNED_PATH = Path(THIS_DIR) / "learned_intents.json"
+_USER_WEIGHTS_PATH = Path(THIS_DIR) / "user_weights.json"
+_FRUSTRATION_PATH = Path(THIS_DIR) / "frustration_vocab.json"
 
 INTENT_LABELS = {
     "help":          "pyslick help / commands / usage",
@@ -872,9 +874,169 @@ INTENT_LABELS = {
     "scan_function": "scan / show full function body",
     "graph":         "call graph / AST graph / dependency graph",
     "connect":       "how files / functions connect / link",
-    "file_info":     "what a file does / purpose / explain file",
+    "file_info":     "open file / cat / scan / snippet / lines",
     "patch":         "fix / change / edit / modify code",
 }
+
+
+def _load_user_weights() -> dict:
+    """Load persistent user weight deltas from user_weights.json."""
+    if not _USER_WEIGHTS_PATH.exists():
+        return {}
+    try:
+        return json.loads(_USER_WEIGHTS_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_user_weights(weights: dict) -> None:
+    """Persist user weight adjustments."""
+    try:
+        _USER_WEIGHTS_PATH.write_text(
+            json.dumps(weights, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def _adjust_intent_weight(intent_name: str, delta: float) -> float:
+    """Adjust an intent's weight multiplier dynamically based on user feedback."""
+    weights = _load_user_weights()
+    cfg = _VOCAB.get("intents", {}).get(intent_name, {})
+    base_w = float(cfg.get("weight", 1.0))
+    current_w = float(weights.get(intent_name, base_w))
+    new_w = max(0.35, min(1.45, current_w + delta))
+    weights[intent_name] = round(new_w, 2)
+    _save_user_weights(weights)
+    return new_w
+
+
+def _get_session_path() -> Path:
+    """Session state stored in local project .pyslick or user home."""
+    pyslick_dir = Path.cwd() / ".pyslick"
+    pyslick_dir.mkdir(parents=True, exist_ok=True)
+    return pyslick_dir / "session.json"
+
+
+def _load_session() -> dict:
+    p = _get_session_path()
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_session(last_directive: str, last_intent: str, calm_streak: int = 0) -> None:
+    p = _get_session_path()
+    try:
+        data = {
+            "last_directive": last_directive,
+            "last_intent": last_intent,
+            "calm_streak": calm_streak,
+            "timestamp": datetime.now().isoformat()
+        }
+        p.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _load_frustration_vocab() -> dict:
+    if not _FRUSTRATION_PATH.exists():
+        return {}
+    try:
+        return json.loads(_FRUSTRATION_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _detect_frustration_and_correction(directive: str) -> tuple[str, bool, str | None]:
+    """
+    Check if the user query contains frustration/correction signals.
+    - If frustrated:
+        1. Penalize the last session's intent weight (-0.08)
+        2. Extract clean intended query
+        3. Save query mapping
+    - If calm:
+        1. Increment calm streak
+        2. Boost weight (+0.02) after calm streak >= 3
+    """
+    f_vocab = _load_frustration_vocab()
+    f_signals = f_vocab.get("frustration", {}).get("signals", [
+        "you are wrong", "thats wrong", "that's wrong", "not what i meant",
+        "i meant", "i mean", "you stupid", "you dumb", "wrong intent", "its wrong", "it's wrong"
+    ])
+    dl = directive.lower().strip()
+
+    matched_signal = None
+    for sig in f_signals:
+        if sig in dl:
+            matched_signal = sig
+            break
+
+    session = _load_session()
+    last_intent = session.get("last_intent")
+    calm_streak = session.get("calm_streak", 0)
+
+    if matched_signal:
+        # Frustration detected
+        if last_intent and last_intent in INTENT_LABELS:
+            new_w = _adjust_intent_weight(last_intent, -0.08)
+            warn(f"Feedback noted ('{matched_signal}') → Reduced '{last_intent}' weight to {new_w:.2f}.")
+
+        # Extract correction portion
+        clean = directive
+        m = re.search(
+            r"(?:what\s+i\s+meant\s+is|i\s+meant|i\s+mean|instead|actually|it\s+should\s+be|what\s+i\s+want\s+is)\s*[:\s]+(.+)$",
+            directive,
+            re.IGNORECASE
+        )
+        if m:
+            clean = m.group(1).strip()
+        else:
+            clean = re.sub(re.escape(matched_signal), "", directive, flags=re.IGNORECASE).strip()
+            clean = re.sub(r"^(?:no|its wrong|it's wrong|that's wrong|wrong|stupid|dumb|no no)[,\s:]*", "", clean, flags=re.IGNORECASE).strip()
+
+        _save_session(directive, last_intent or "unknown", calm_streak=0)
+        return clean or directive, True, last_intent
+    else:
+        # Calm interaction
+        calm_streak += 1
+        if calm_streak >= 3 and last_intent and last_intent in INTENT_LABELS:
+            _adjust_intent_weight(last_intent, +0.02)
+        _save_session(directive, last_intent or "unknown", calm_streak=calm_streak)
+        return directive, False, None
+
+
+def summarize_intent_keywords(directive: str, intent: str, target_file: str | None = None, line_range: str | None = None) -> str:
+    """Summarizes intent into clean simple keywords like 'cat scan', 'file view', 'lines 30-70'."""
+    parts = []
+    if intent == "file_info":
+        parts.append("file view / cat scan")
+    elif intent == "run_info":
+        parts.append("project run / scripts")
+    elif intent == "connect":
+        parts.append("cross-file connections")
+    elif intent == "comments":
+        parts.append("comments inspection")
+    elif intent == "nearest":
+        parts.append("nearest symbol lookup")
+    elif intent == "scan_function":
+        parts.append("function scan")
+    elif intent == "git":
+        parts.append("git status / checkpoint")
+    elif intent == "list_files":
+        parts.append("directory file list")
+    else:
+        parts.append(intent)
+
+    if target_file:
+        parts.append(os.path.basename(target_file))
+    if line_range:
+        parts.append(line_range)
+    return " • ".join(parts)
 
 
 def _load_learned() -> dict:
@@ -1032,11 +1194,15 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
 
 
 def _collect_all_files(root: str = ".") -> list[str]:
-    """Walk project tree and return all source file paths (skips binary and build files)."""
+    """Walk project tree and return all source file paths (skips binary, build, and backup files)."""
     files = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames
-                       if d not in SKIP_DIRS and not d.startswith(".")]
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in SKIP_DIRS
+            and not d.startswith(".")
+            and not d.startswith("pyslick_backup")
+        ]
         for fn in sorted(filenames):
             ext = Path(fn).suffix.lower()
             if ext in CODE_EXTS or (ext == "" and not fn.startswith(".")):
@@ -1047,14 +1213,14 @@ def _collect_all_files(root: str = ".") -> list[str]:
 def _fuzzy_match_files(directive: str, all_files: list[str]) -> list[str]:
     """
     Extract candidate file names from the directive and fuzzy-match them
-    against the real file list.  Uses the vocab's strip_words list so
-    query noise ("whats the use of the") doesn't pollute the candidates.
+    against the real file list. Uses the vocab's strip_words list so
+    query noise doesn't pollute candidates.
+    Prioritizes exact/root file matches first.
     """
     try:
         from rapidfuzz import process
         from rapidfuzz.fuzz import WRatio
     except ImportError:
-        # No rapidfuzz — fall back to simple substring search
         words = directive.lower().split()
         matched = []
         for w in words:
@@ -1071,7 +1237,6 @@ def _fuzzy_match_files(directive: str, all_files: list[str]) -> list[str]:
     min_score   = cfg.get("min_fuzzy_score", 58)
     max_results = cfg.get("max_results", 3)
 
-    # Build candidate tokens: raw words from directive minus strip_words
     tokens = [
         w for w in re.split(r"[\s\-_./\\]+", directive.lower())
         if len(w) >= min_len and w not in strip_words
@@ -1079,7 +1244,6 @@ def _fuzzy_match_files(directive: str, all_files: list[str]) -> list[str]:
 
     matched: list[str] = []
     for token in tokens:
-        # Match against basenames, then remap to full paths
         basenames = [os.path.basename(f) for f in all_files]
         hits = process.extract(token, basenames, scorer=WRatio, limit=max_results)
         for base_match, score, idx in hits:
@@ -1088,7 +1252,80 @@ def _fuzzy_match_files(directive: str, all_files: list[str]) -> list[str]:
                 if full_path not in matched:
                     matched.append(full_path)
 
+    # Sort so exact matches and shorter root paths come first
+    dl = directive.lower()
+    matched.sort(key=lambda p: (
+        0 if os.path.basename(p).lower() in dl else 1,
+        len(Path(p).parts),
+        len(p)
+    ))
     return matched
+
+
+def _print_file_cat_and_snippet(
+    filepath: str,
+    directive_lower: str = "",
+    start_line: int | None = None,
+    end_line: int | None = None
+) -> None:
+    """
+    Print the actual content / lines of a file (cat scan / snippet),
+    with PowerShell command recommendations.
+    """
+    content = tool_get_file(filepath)
+    if content.startswith("ERROR"):
+        print(f"  {RED}{content}{RST}")
+        return
+
+    raw_lines = content.splitlines()
+    total_lines = len(raw_lines)
+
+    # 1. Line range requested (e.g. line 30 to 70)
+    if start_line is not None and end_line is not None:
+        s = max(1, min(start_line, total_lines))
+        e = max(s, min(end_line, total_lines))
+        count = e - s + 1
+        skip = s - 1
+        ps_cmd = f"Get-Content '{filepath}' | Select-Object -Skip {skip} -First {count}"
+
+        print(f"  {DIM}Lines: {total_lines}  │  Showing: L{s}-L{e}{RST}")
+        print(f"  {CYAN}PowerShell:{RST} {BOLD}{ps_cmd}{RST}\n")
+
+        for idx in range(s - 1, e):
+            ln = idx + 1
+            line = raw_lines[idx]
+            stripped = line.strip()
+            if stripped.startswith("#") or stripped.startswith("//"):
+                print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
+            else:
+                print(f"  {DIM}{ln:4d}│{RST} {line}")
+        return
+
+    # 2. General file cat scan
+    is_json_or_config = filepath.endswith((".json", ".toml", ".yaml", ".yml", ".md", ".txt"))
+    is_cat_requested = any(kw in directive_lower for kw in ["cat", "snippet", "scan", "open", "show me", "print", "display", "part of", "packagejson", "package.json"])
+
+    if is_json_or_config or is_cat_requested or total_lines <= 100:
+        ps_cmd = f"Get-Content '{filepath}'"
+        print(f"  {DIM}Lines: {total_lines}{RST}")
+        print(f"  {CYAN}PowerShell:{RST} {BOLD}{ps_cmd}{RST}\n")
+
+        max_show = total_lines if (total_lines <= 100 or "all" in directive_lower or "full" in directive_lower) else 60
+        for idx in range(min(max_show, total_lines)):
+            ln = idx + 1
+            line = raw_lines[idx]
+            stripped = line.strip()
+            if stripped.startswith("#") or stripped.startswith("//"):
+                print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
+            else:
+                print(f"  {DIM}{ln:4d}│{RST} {line}")
+
+        if total_lines > max_show:
+            print(f"\n  {DIM}... ({total_lines - max_show} more lines. Run: Get-Content '{filepath}' or pyslick lines '{filepath}'){RST}")
+        return
+
+    # 3. Structured summary for large code files (functions / classes)
+    _print_file_summary(filepath, directive_lower)
 
 
 def _print_file_summary(filepath: str, directive_lower: str = "") -> None:
@@ -1105,9 +1342,9 @@ def _print_file_summary(filepath: str, directive_lower: str = "") -> None:
 
     raw_lines = content.splitlines()
     print(f"  {DIM}Lines: {len(raw_lines)}{RST}")
+    print(f"  {CYAN}PowerShell:{RST} {BOLD}Get-Content '{filepath}'{RST}")
 
     # ── functions and classes ──────────────────────────────────────────
-    # Parse with AST if Python, otherwise use regex for all file types
     funcs: list[dict] = []
     if filepath.endswith(".py"):
         try:
@@ -1127,7 +1364,6 @@ def _print_file_summary(filepath: str, directive_lower: str = "") -> None:
             pass
 
     if not funcs:
-        # Regex fallback — works for JS/TS/Python
         for i, line in enumerate(raw_lines):
             m = re.match(
                 r"^\s*(export\s+)?(async\s+)?function\s+(\w+)"
@@ -1159,36 +1395,17 @@ def _print_file_summary(filepath: str, directive_lower: str = "") -> None:
                 doc_preview = fn["docstring"].splitlines()[0][:80]
                 print(f"      {DIM}» {doc_preview}{RST}")
 
-            # Print first 3 lines of the function body (after the def/class line)
-            body_start = lnum       # 1-indexed
+            body_start = lnum
             body_lines = raw_lines[body_start : body_start + 3]
             for bl in body_lines:
                 stripped = bl.strip()
                 if stripped:
                     print(f"      {DIM}{stripped[:100]}{RST}")
-
-    # ── relevant comment blocks ────────────────────────────────────────
-    try:
-        from comment_blocks import scan_file_for_comment_blocks
-        blocks = scan_file_for_comment_blocks(filepath)
-        if blocks and directive_lower:
-            query_words = [
-                w for w in directive_lower.split()
-                if len(w) > 3
-            ]
-            relevant = [
-                b for b in blocks
-                if any(w in b.label.lower() for w in query_words)
-            ]
-            if relevant:
-                print(f"\n  {BOLD}Relevant comment blocks:{RST}")
-                for b in relevant[:4]:
-                    print(f"    {DIM}L{b.start_line}: {b.label[:70]}{RST}")
-                    if b.code_preview:
-                        preview = b.code_preview.splitlines()[0][:80]
-                        print(f"      {DIM}{preview}{RST}")
-    except Exception:
-        pass
+    else:
+        # If no functions/classes found, show the first 30 lines
+        print(f"\n  {BOLD}Preview:{RST}")
+        for idx in range(min(30, len(raw_lines))):
+            print(f"  {DIM}{idx+1:4d}│{RST} {raw_lines[idx]}")
 
 
 def _print_all_comments(filepath: str) -> None:
@@ -1342,6 +1559,10 @@ def _run_local_agent(directive: str) -> None:
       file_info     → purpose + key functions + first 3 lines
       patch         → fuzzy match → LLM find/replace → diff → confirm
     """
+    # Detect frustration / correction from user
+    cleaned_directive, was_frustrated, prev_intent = _detect_frustration_and_correction(directive)
+    active_directive = cleaned_directive
+
     # LLM optional — classification still works without it (just skips Tier 3)
     try:
         from llm import is_available, maybe_expand_query
@@ -1350,14 +1571,23 @@ def _run_local_agent(directive: str) -> None:
         _llm_ready = False
         def maybe_expand_query(d): return d  # no-op fallback
 
-    intent, confidence, top3 = _classify_intent_with_confidence(directive)
-    dl = directive.lower()
+    intent, confidence, top3 = _classify_intent_with_confidence(active_directive)
+    dl = active_directive.lower()
     print(f"{DIM}  intent → {intent}  ({confidence:.0f}%){RST}")
 
+    if was_frustrated:
+        _adjust_intent_weight(intent, +0.08)
+        _save_learned_intent(directive, intent)
+        _save_learned_intent(active_directive, intent)
+        ok(f"Learned correction: '{active_directive}' → {intent}")
+
     # Show 'did you mean?' when confidence is in the uncertain zone (55-84%)
-    if 55.0 <= confidence < 85.0:
-        intent = _ask_did_you_mean(directive, intent, confidence, top3)
-        dl = directive.lower()
+    if 55.0 <= confidence < 85.0 and not was_frustrated:
+        intent = _ask_did_you_mean(active_directive, intent, confidence, top3)
+        dl = active_directive.lower()
+
+    # Save session for context tracking
+    _save_session(directive, intent)
 
     # ── HELP ──────────────────────────────────────────────────────────
     if intent == "help":
@@ -1727,18 +1957,46 @@ def _run_local_agent(directive: str) -> None:
         return
 
     # ── FILE INFO ─────────────────────────────────────────────────────
+    # ── FILE INFO (Cat / Scan / Snippet / Purpose / Line Ranges) ──────
     if intent == "file_info":
         all_files = _collect_all_files()
-        matched   = _fuzzy_match_files(directive, all_files)
+        matched   = _fuzzy_match_files(active_directive, all_files)
 
         if not matched:
             warn("No file matched. Try naming the file more explicitly.")
             return
 
-        # Show info for up to 2 matches
-        for fp in matched[:2]:
-            hdr("File Info", fp)
-            _print_file_summary(fp, dl)
+        # Check for line range in directive (e.g. 'line 30 to 70', 'lines 30-70', 'L30-70')
+        range_match = re.search(r'(?:line|lines|l)\s*(\d+)\s*(?:to|-|through|\.\.)\s*(?:line|lines|l)?\s*(\d+)', dl)
+        single_line_match = re.search(r'(?:line|lines|l)\s*(\d+)\b', dl)
+
+        start_line = None
+        end_line = None
+        if range_match:
+            start_line = int(range_match.group(1))
+            end_line = int(range_match.group(2))
+            if start_line > end_line:
+                start_line, end_line = end_line, start_line
+        elif single_line_match:
+            l_num = int(single_line_match.group(1))
+            start_line = max(1, l_num - 10)
+            end_line = l_num + 10
+
+        target_file = matched[0]
+        line_str = f"L{start_line}-L{end_line}" if (start_line and end_line) else None
+        summary_kw = summarize_intent_keywords(active_directive, intent, target_file, line_str)
+        print(f"  {CYAN}Action:{RST} {BOLD}{summary_kw}{RST}")
+
+        # If user asks 'show all', show all matched files, otherwise show ONLY primary
+        files_to_show = matched if ("show all" in dl or "all files" in dl) else [target_file]
+        for fp in files_to_show:
+            hdr("File Cat / Scan", fp)
+            _print_file_cat_and_snippet(fp, dl, start_line=start_line, end_line=end_line)
+
+        # If there are other matching files and not showing all, list them concisely
+        if len(matched) > 1 and "show all" not in dl and "all files" not in dl:
+            other_files = [os.path.basename(f) for f in matched[1:5]]
+            print(f"\n  {DIM}Other matches: {', '.join(other_files)} (use 'show all' to scan all){RST}")
         return
 
     # ── PATCH (default) ───────────────────────────────────────────────

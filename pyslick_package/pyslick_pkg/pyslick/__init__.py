@@ -99,13 +99,95 @@ def import_comment_blocks():
     return scan_project_for_comment_blocks, scan_file_for_comment_blocks, print_scan_report
 
 
+import re
+
 # ─────────────────────────────────────────────────────────────────────────
 # Git operations
 # ─────────────────────────────────────────────────────────────────────────
+def generate_smart_commit_message(fallback_directive: str | None = None) -> str:
+    """
+    Generate an intelligent commit message strictly by parsing the comments
+    and modified functions in `git diff`. No complex LLM reasoning required.
+    """
+    try:
+        status_res = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5)
+        status_lines = [l.strip() for l in status_res.stdout.splitlines() if l.strip()]
+
+        changed_files = []
+        for line in status_lines:
+            parts = line.split()
+            if len(parts) >= 2:
+                fn = os.path.basename(parts[-1])
+                if fn not in changed_files and not fn.endswith(".pyc"):
+                    changed_files.append(fn)
+
+        diff_res = subprocess.run(["git", "diff", "HEAD"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5)
+        diff_text = diff_res.stdout
+        if not diff_text:
+            diff_res = subprocess.run(["git", "diff", "--cached"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5)
+            diff_text = diff_res.stdout
+
+        file_comments = {}
+        file_functions = {}
+        current_file = None
+
+        for line in diff_text.splitlines():
+            if line.startswith("diff --git"):
+                parts = line.split()
+                if len(parts) >= 4:
+                    current_file = os.path.basename(parts[-1])
+                    if current_file.startswith("b/"):
+                        current_file = current_file[2:]
+            elif line.startswith("+") and not line.startswith("+++"):
+                clean = line[1:].strip()
+                if clean.startswith(("#", "//", "/*", "*", '"""', "'''")):
+                    c_text = re.sub(r"^[#/*\s─\-=•]+", "", clean).strip()
+                    c_text = re.sub(r"[\"']+$", "", c_text).strip()
+                    if len(c_text) >= 10 and not c_text.startswith(("import", "http", "from ", "def ", "class ", "<", ">")):
+                        if current_file:
+                            file_comments.setdefault(current_file, []).append(c_text)
+                m = re.search(r"(?:def|function|class|async\s+function)\s+([a-zA-Z0-9_$]+)", clean)
+                if m:
+                    fn_name = m.group(1)
+                    if current_file and fn_name not in file_functions.setdefault(current_file, []) and not fn_name.startswith("__"):
+                        file_functions[current_file].append(fn_name)
+
+        # 1. Base commit message on added/modified comments in code
+        msg_parts = []
+        for f, cmts in file_comments.items():
+            if cmts:
+                cmt = cmts[0]
+                cmt = cmt[0].upper() + cmt[1:] if len(cmt) > 1 else cmt
+                if len(cmt) > 60:
+                    cmt = cmt[:57] + "..."
+                msg_parts.append(f"{f}: {cmt}")
+
+        if msg_parts:
+            return "Update " + "; ".join(msg_parts[:2])
+
+        # 2. Base on modified function names
+        fn_parts = []
+        for f, fns in file_functions.items():
+            if fns:
+                fn_parts.append(f"{f} ({', '.join(fns[:2])})")
+        if fn_parts:
+            return f"Update {', '.join(fn_parts[:2])}"
+
+        # 3. Base on modified files list
+        if changed_files:
+            file_str = ", ".join(changed_files[:3])
+            if fallback_directive and not any(g in fallback_directive.lower() for g in ["push to github", "git push", "git commit", "checkpoint"]):
+                return f"Update {file_str}: {fallback_directive.strip()}"
+            return f"Update {file_str}"
+
+        return f"pyslick checkpoint - {datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    except Exception:
+        return fallback_directive or f"pyslick checkpoint - {datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+
 def git_checkpoint(commit_msg: str = None):
-    """Create a git checkpoint before operations. If commit_msg is provided,
-    uses it; otherwise uses a default timestamped message. Attempts git push
-    if remote is configured."""
+    """Create a git checkpoint before operations. Automatically generates a
+    comment-driven descriptive commit message from git diff if not provided."""
     try:
         result = subprocess.run(['git', 'rev-parse', '--git-dir'],
                                  capture_output=True, text=True)
@@ -113,9 +195,10 @@ def git_checkpoint(commit_msg: str = None):
             print("Not in a git repository. Creating local backup instead.")
             return create_local_backup()
 
-        if commit_msg is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            commit_msg = f"pyslick checkpoint before operation - {timestamp}"
+        # If commit_msg is missing or generic, generate smart message from diff comments
+        is_generic = commit_msg is None or any(commit_msg.strip().lower() == g for g in ["push to github", "git push", "git commit", "checkpoint", "push", "save"])
+        if is_generic:
+            commit_msg = generate_smart_commit_message(commit_msg)
 
         subprocess.run(['git', 'add', '.'], capture_output=True)
         result = subprocess.run(['git', 'commit', '-m', commit_msg],
