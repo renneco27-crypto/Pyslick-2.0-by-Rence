@@ -58,7 +58,7 @@ WARN = f"{YELL}WARN{RST}"
 PYSLICK_MODULES = [
     "__init__", "patchit", "recon", "query", "toolbox",
     "graphify", "graphify_sitter", "indentation", "jsx_tag_checker",
-    "find_nearest_nodes", "find_stray_symbols",
+    "find_nearest_nodes", "find_stray_symbols", "autoloop", "comment_blocks",
 ]
 
 # The public API surface each module MUST expose. If these are missing,
@@ -77,6 +77,13 @@ REQUIRED_API = {
     "find_nearest_nodes": [
         "load_graph_nodes", "load_graphify_vocab",
         "expand_query_with_vocab", "find_closest_graph_nodes",
+    ],
+    "autoloop": [
+        "run_auto_fix_loop", "print_summary", "Attempt", "LoopResult",
+    ],
+    "comment_blocks": [
+        "scan_project_for_comment_blocks", "scan_file_for_comment_blocks",
+        "comment_nodes_as_graph_nodes", "print_scan_report", "CommentNode",
     ],
     "__init__": [
         "main", "git_checkpoint", "git_log",

@@ -44,6 +44,7 @@ BOLD = "\033[1m"
 RESET = "\033[0m"
 
 BACKUP_DIR = ".pyslick_backups"
+MAX_BACKUPS_PER_FILE = 5
 
 
 def print_banner():
@@ -72,9 +73,28 @@ def confirm_phrase(phrase: str, prompt: str) -> bool:
 # ─────────────────────────────────────────────────────────────────────────
 # Safety helpers
 # ─────────────────────────────────────────────────────────────────────────
+def _prune_old_backups(safe_name: str, keep: int = MAX_BACKUPS_PER_FILE) -> None:
+    """Keep only the newest `keep` backups for a given source file. Backups
+    for the same file are sorted lexically, which matches chronological
+    order since the timestamp is embedded first in the filename suffix."""
+    pattern_prefix = f"{safe_name}."
+    existing = sorted(
+        f for f in os.listdir(BACKUP_DIR)
+        if f.startswith(pattern_prefix) and f.endswith(".bak")
+    )
+    excess = len(existing) - keep
+    for old in existing[:max(0, excess)]:
+        try:
+            os.remove(os.path.join(BACKUP_DIR, old))
+        except OSError:
+            pass
+
+
 def backup_file(filepath: str) -> str | None:
     """Snapshot the CURRENT on-disk contents of filepath before we touch it.
-    Cheap (single file, not the whole project) and independent of git."""
+    Cheap (single file, not the whole project) and independent of git.
+    Backups are kept per-source-file in BACKUP_DIR; only the newest
+    MAX_BACKUPS_PER_FILE are retained so the folder doesn't grow forever."""
     if not os.path.exists(filepath):
         return None
     os.makedirs(BACKUP_DIR, exist_ok=True)
@@ -82,6 +102,7 @@ def backup_file(filepath: str) -> str | None:
     safe_name = filepath.replace(os.sep, "__").replace("/", "__")
     backup_path = os.path.join(BACKUP_DIR, f"{safe_name}.{ts}.bak")
     shutil.copy2(filepath, backup_path)
+    _prune_old_backups(safe_name)
     return backup_path
 
 
@@ -296,6 +317,55 @@ def mode_paste(filepath: str):
         write_with_safety(filepath, modified)
 
 
+def _normalize_whitespace(text: str) -> str:
+    """Collapse the whitespace variants that break naive substring matching
+    when text is pasted from a browser, Slack, Word, etc: non-breaking
+    spaces, CRLF/CR line endings, and trailing whitespace per line."""
+    text = text.replace("\xa0", " ").replace("\u2007", " ").replace("\u202f", " ")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = "\n".join(line.rstrip() for line in text.split("\n"))
+    return text
+
+
+def _locate_block(target_block: str, original: str) -> tuple[str, str] | None:
+    """Try progressively looser matches to find `target_block` inside
+    `original`. Returns (matched_substring, reason) where matched_substring
+    is the EXACT text to hand to str.replace() — never a reconstructed
+    approximation — or None if nothing matched even loosely.
+
+    Order: exact -> stripped -> whitespace-normalized. The first attempt
+    that succeeds wins; later ones are never tried once one matches, so
+    behavior stays deterministic."""
+    if target_block in original:
+        return target_block, "exact"
+
+    stripped = target_block.strip()
+    if stripped and stripped in original:
+        return stripped, "stripped"
+
+    # Whitespace-normalized fallback: normalize both sides, find the
+    # normalized target's position in normalized text, then map that
+    # position back to the ORIGINAL (non-normalized) substring so the
+    # replace still touches real, on-disk bytes rather than a rewritten
+    # approximation of them.
+    norm_target = _normalize_whitespace(target_block).strip()
+    if not norm_target:
+        return None
+
+    orig_lines = original.split("\n")
+    norm_lines = [_normalize_whitespace(l) for l in orig_lines]
+    target_lines = norm_target.split("\n")
+    n = len(target_lines)
+
+    for i in range(len(norm_lines) - n + 1):
+        if norm_lines[i:i + n] == target_lines:
+            # map back to the real substring spanning these original lines
+            real_span = "\n".join(orig_lines[i:i + n])
+            return real_span, "whitespace-normalized"
+
+    return None
+
+
 def mode_find(filepath: str):
     if not os.path.exists(filepath):
         print(f"{RED}Error: File '{filepath}' does not exist.{RESET}")
@@ -309,13 +379,17 @@ def mode_find(filepath: str):
         print(f"{RED}Error: Search block cannot be empty.{RESET}")
         return
 
-    if target_block not in original:
-        clean_target = target_block.strip()
-        if clean_target in original:
-            target_block = clean_target
-        else:
-            print(f"{RED}Error: Specified block was not found in {filepath}.{RESET}")
-            return
+    located = _locate_block(target_block, original)
+    if located is None:
+        print(f"{RED}Error: Specified block was not found in {filepath}.{RESET}")
+        print(f"{DIM}Tried exact, stripped, and whitespace-normalized matching — "
+              f"none matched. Check you copied from the right file/version.{RESET}")
+        return
+
+    target_block, match_kind = located
+    if match_kind != "exact":
+        print(f"{YELLOW}[fuzzy-match] Found via {match_kind} matching, not exact — "
+              f"the pasted text had whitespace differences from the file on disk.{RESET}")
 
     replace_block = read_multiline_input("Replace with (paste NEW block)")
 

@@ -103,6 +103,70 @@ def maybe_expand_query(directive: str) -> str:
         return directive
 
 
+def maybe_extract_find_replace(directive: str, code_context: str) -> tuple[str | None, str | None]:
+    """Use local LLM to extract find/replace blocks from code context.
+    Returns (find_string, replace_string) or (None, None) on failure.
+    The LLM is given the directive and code, asked to identify the exact
+    substring to find and what to replace it with. Falls back to manual
+    input if the model isn't available or fails."""
+    llm = _load()
+    if llm is None:
+        return None, None
+
+    # Truncate code context to fit within the 512-token context window
+    # Rough estimate: 1 token ≈ 4 characters, so ~2000 chars max for code
+    max_code_len = 1500
+    if len(code_context) > max_code_len:
+        code_context = code_context[:max_code_len] + "\n... (truncated)"
+
+    prompt = f"""You are a code patching assistant. Given a change directive and code context, identify the exact string to find and what to replace it with.
+
+Directive: {directive}
+
+Code context:
+{code_context}
+
+Output format (exact, no extra text):
+FIND: <exact substring to find>
+REPLACE: <exact replacement string>
+
+Rules:
+- FIND must be an exact substring from the code
+- REPLACE should be the modified version
+- Preserve indentation and structure exactly
+- If unsure, output FIND: <none> and REPLACE: <none>"""
+
+    try:
+        result = llm(
+            prompt,
+            max_tokens=200,
+            temperature=0.1,
+            stop=["\n\n"],
+        )
+        text = result["choices"][0]["text"].strip()
+
+        # Parse the structured output
+        find_str = None
+        replace_str = None
+
+        for line in text.split("\n"):
+            line = line.strip()
+            if line.startswith("FIND:"):
+                find_str = line[5:].strip()
+                if find_str == "<none>":
+                    find_str = None
+            elif line.startswith("REPLACE:"):
+                replace_str = line[8:].strip()
+                if replace_str == "<none>":
+                    replace_str = None
+
+        if find_str and replace_str:
+            return find_str, replace_str
+        return None, None
+    except Exception:
+        return None, None
+
+
 def status_report() -> str:
     lines = []
     try:

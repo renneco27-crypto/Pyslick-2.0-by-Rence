@@ -1,0 +1,381 @@
+#!/usr/bin/env python3
+"""
+comment_blocks.py — PySlick comment-aware block scanner
+=========================================================
+
+Lets pyslick treat comments as block boundaries, not just function/class
+definitions. Two kinds of blocks are recognized:
+
+1. EXPLICIT marker blocks — you write:
+
+       # pyslick:start mic-button-styles
+       .mic-btn { ... }
+       .mic-btn:hover { ... }
+       # pyslick:end mic-button-styles
+
+   This works with any comment syntax (#, //, /* ... */) and defines an
+   exact region regardless of language or function boundaries. Useful for
+   CSS rule groups, HTML sections, config blocks — anything without a
+   function to anchor to.
+
+2. DESCRIPTIVE comment blocks — a normal comment sitting directly above
+   (or, for /* */-style, wrapping) a chunk of code is treated as that
+   chunk's label for fuzzy matching, e.g.:
+
+       // renders the mic button and wires up the click handler
+       function renderMicButton() { ... }
+
+   The comment text becomes searchable the same way a function name is.
+   The "block" it labels is: the next contiguous non-blank lines until
+   either a blank line, a lower/equal-indentation dedent (Python), or a
+   closing brace back at the comment's own indentation (C-like langs).
+
+Both kinds are returned as "comment nodes" in the same shape as
+find_nearest_nodes.load_graph_nodes(), so they can be merged into the same
+rapidfuzz match pass pyslick already runs.
+
+No LLM. No external deps beyond what pyslick already uses.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+from dataclasses import dataclass, field
+
+# ── comment syntax per extension ────────────────────────────────────────
+LINE_COMMENT = {
+    ".py": "#",
+    ".js": "//", ".jsx": "//", ".ts": "//", ".tsx": "//",
+    ".css": None,   # CSS has no line comment, block only
+    ".html": None,  # HTML has no line comment, block only
+}
+BLOCK_COMMENT = {
+    ".js": ("/*", "*/"), ".jsx": ("/*", "*/"),
+    ".ts": ("/*", "*/"), ".tsx": ("/*", "*/"),
+    ".css": ("/*", "*/"),
+    ".html": ("<!--", "-->"),
+}
+
+MARKER_START_RE = re.compile(r"pyslick:start\s+(\S+)")
+MARKER_END_RE = re.compile(r"pyslick:end\s+(\S+)")
+
+SCANNABLE_EXTS = set(LINE_COMMENT) | set(BLOCK_COMMENT)
+
+
+@dataclass
+class CommentNode:
+    id: str
+    label: str
+    type: str  # "marker_block" | "descriptive_block"
+    file: str
+    start_line: int
+    end_line: int
+    comment_text: str
+    code_preview: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "label": self.label,
+            "type": self.type,
+            "file": self.file,
+            "start_line": self.start_line,
+            "end_line": self.end_line,
+            "comment_text": self.comment_text,
+            "code_preview": self.code_preview,
+        }
+
+
+def _strip_line_comment_marker(line: str, marker: str) -> str | None:
+    """Return the comment text if `line` is (only) a comment line, else None."""
+    stripped = line.strip()
+    if not marker:
+        return None
+    if stripped.startswith(marker):
+        return stripped[len(marker):].strip()
+    return None
+
+
+def _indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip(" \t"))
+
+
+def _find_marker_blocks(lines: list[str], ext: str, filepath: str) -> list[CommentNode]:
+    """Find explicit `pyslick:start NAME` / `pyslick:end NAME` regions.
+    Works regardless of comment syntax — we just regex the marker text
+    inside whatever comment form is on that line."""
+    nodes: list[CommentNode] = []
+    open_markers: dict[str, int] = {}  # name -> start line index (0-based)
+
+    for i, line in enumerate(lines):
+        start_match = MARKER_START_RE.search(line)
+        if start_match:
+            name = start_match.group(1)
+            if name in open_markers:
+                # duplicate start without a matching end — overwrite, last one wins
+                pass
+            open_markers[name] = i
+            continue
+
+        end_match = MARKER_END_RE.search(line)
+        if end_match:
+            name = end_match.group(1)
+            if name in open_markers:
+                start_idx = open_markers.pop(name)
+                code_lines = lines[start_idx + 1:i]
+                preview = "\n".join(code_lines[:6]).strip()
+                nodes.append(CommentNode(
+                    id=f"marker::{filepath}::{name}::{start_idx+1}",
+                    label=name.replace("-", " ").replace("_", " "),
+                    type="marker_block",
+                    file=filepath,
+                    start_line=start_idx + 1,  # 1-indexed, the pyslick:start line
+                    end_line=i + 1,            # 1-indexed, the pyslick:end line
+                    comment_text=name,
+                    code_preview=preview,
+                ))
+
+    # Any markers left open (no matching end) are reported as unterminated
+    # by returning them with end_line = -1, so callers can warn if they want.
+    for name, start_idx in open_markers.items():
+        nodes.append(CommentNode(
+            id=f"marker::{filepath}::{name}::{start_idx+1}::unterminated",
+            label=name.replace("-", " ").replace("_", " ") + " (unterminated)",
+            type="marker_block",
+            file=filepath,
+            start_line=start_idx + 1,
+            end_line=-1,
+            comment_text=name,
+            code_preview="",
+        ))
+
+    return nodes
+
+
+def _block_end_for_descriptive(lines: list[str], comment_end_idx: int, comment_indent: int, ext: str) -> int:
+    """Given the 0-based index of the line right after a descriptive
+    comment (or comment block), find where the labeled code block ends.
+
+    Heuristic, language-aware but forgiving:
+      - Python: block ends at the first blank line, or the first line
+        whose indentation is <= the comment's indentation (dedent out).
+      - C-like (js/ts/css/html): block ends at the first blank line, or
+        when brace/paren depth returns to 0 after having gone positive,
+        or a hard cap of 40 lines, whichever comes first.
+    """
+    MAX_SCAN = 40
+    n = len(lines)
+    i = comment_end_idx
+
+    if i >= n:
+        return i
+
+    if ext == ".py":
+        # skip leading blank lines directly after the comment (rare but possible)
+        while i < n and not lines[i].strip():
+            i += 1
+        first_code_idx = i
+        if first_code_idx >= n:
+            return comment_end_idx
+        for j in range(first_code_idx, min(n, first_code_idx + MAX_SCAN)):
+            line = lines[j]
+            if not line.strip():
+                return j  # blank line ends the block
+            if j > first_code_idx and _indent_of(line) <= comment_indent and line.strip():
+                return j  # dedented back out
+        return min(n, first_code_idx + MAX_SCAN)
+
+    # C-like languages: track brace depth from the first code line
+    depth = 0
+    started = False
+    first_code_idx = i
+    while first_code_idx < n and not lines[first_code_idx].strip():
+        first_code_idx += 1
+    if first_code_idx >= n:
+        return comment_end_idx
+
+    for j in range(first_code_idx, min(n, first_code_idx + MAX_SCAN)):
+        line = lines[j]
+        opens = line.count("{")
+        closes = line.count("}")
+        if opens:
+            started = True
+        depth += opens - closes
+        if not line.strip() and not started:
+            return j  # blank line before any brace opened — single-statement block
+        if started and depth <= 0:
+            return j + 1  # include the closing brace line
+    return min(n, first_code_idx + MAX_SCAN)
+
+
+def _find_descriptive_blocks(lines: list[str], ext: str, filepath: str) -> list[CommentNode]:
+    """Find plain descriptive comments and treat them as labels for the
+    code immediately following them."""
+    nodes: list[CommentNode] = []
+    line_marker = LINE_COMMENT.get(ext)
+    block_pair = BLOCK_COMMENT.get(ext)
+
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        stripped = line.strip()
+
+        # Skip pyslick:start/end lines themselves — those are handled
+        # separately and shouldn't also become descriptive blocks.
+        if MARKER_START_RE.search(line) or MARKER_END_RE.search(line):
+            i += 1
+            continue
+
+        comment_text = None
+        comment_start_idx = i
+        comment_end_idx = i + 1  # index of first line AFTER the comment
+
+        # -- line comment style (# or //) --
+        if line_marker:
+            text = _strip_line_comment_marker(line, line_marker)
+            if text is not None and text:
+                # gather contiguous comment lines into one label
+                texts = [text]
+                j = i + 1
+                while j < n:
+                    t2 = _strip_line_comment_marker(lines[j], line_marker)
+                    if t2 is None or MARKER_START_RE.search(lines[j]) or MARKER_END_RE.search(lines[j]):
+                        break
+                    if t2:
+                        texts.append(t2)
+                    j += 1
+                comment_text = " ".join(texts)
+                comment_end_idx = j
+
+        # -- block comment style (/* */ or <!-- -->) --
+        if comment_text is None and block_pair and stripped.startswith(block_pair[0]):
+            open_tok, close_tok = block_pair
+            buf = []
+            j = i
+            closed = False
+            while j < n:
+                l = lines[j]
+                buf.append(l)
+                if close_tok in l:
+                    closed = True
+                    j += 1
+                    break
+                j += 1
+            if closed:
+                raw = "\n".join(buf)
+                inner = raw.replace(open_tok, "").replace(close_tok, "")
+                inner = re.sub(r"^\s*\*\s?", "", inner, flags=re.MULTILINE)  # strip JSDoc-style " * "
+                comment_text = " ".join(line.strip() for line in inner.splitlines() if line.strip())
+                comment_end_idx = j
+
+        if comment_text:
+            # Skip trivial/short comments — not useful as labels and just noise
+            if len(comment_text) >= 6:
+                comment_indent = _indent_of(line)
+                block_end_idx = _block_end_for_descriptive(lines, comment_end_idx, comment_indent, ext)
+                preview_lines = lines[comment_end_idx:block_end_idx]
+                preview = "\n".join(preview_lines[:6]).strip()
+
+                if preview:  # only record if there's actual code following it
+                    nodes.append(CommentNode(
+                        id=f"comment::{filepath}::{comment_start_idx+1}",
+                        label=comment_text,
+                        type="descriptive_block",
+                        file=filepath,
+                        start_line=comment_start_idx + 1,
+                        end_line=block_end_idx,  # 1-indexed exclusive-ish, matches lines slicing
+                        comment_text=comment_text,
+                        code_preview=preview,
+                    ))
+            i = comment_end_idx
+            continue
+
+        i += 1
+
+    return nodes
+
+
+def scan_file_for_comment_blocks(filepath: str) -> list[CommentNode]:
+    """Scan a single file for both marker and descriptive comment blocks."""
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext not in SCANNABLE_EXTS:
+        return []
+
+    try:
+        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+    except (OSError, UnicodeDecodeError):
+        return []
+
+    lines = content.splitlines()
+    nodes = []
+    nodes.extend(_find_marker_blocks(lines, ext, filepath))
+    nodes.extend(_find_descriptive_blocks(lines, ext, filepath))
+    return nodes
+
+
+def scan_project_for_comment_blocks(
+    root: str = ".",
+    exclude_dirs: tuple[str, ...] = (".git", "node_modules", ".pyslick_backups", "__pycache__", "dist", "build"),
+) -> list[CommentNode]:
+    """Walk a project root and scan every scannable file for comment blocks."""
+    all_nodes: list[CommentNode] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in exclude_dirs and not d.startswith(".")]
+        for fname in filenames:
+            ext = os.path.splitext(fname)[1].lower()
+            if ext in SCANNABLE_EXTS:
+                fpath = os.path.join(dirpath, fname)
+                all_nodes.extend(scan_file_for_comment_blocks(fpath))
+    return all_nodes
+
+
+def comment_nodes_as_graph_nodes(nodes: list[CommentNode]) -> list[dict]:
+    """Adapt CommentNode objects into the same {id, label, type} shape that
+    find_nearest_nodes.load_graph_nodes() produces, so they can be merged
+    into one fuzzy-match pass."""
+    return [
+        {"id": n.id, "label": n.label, "type": n.type, "_comment_node": n}
+        for n in nodes
+        if n.end_line != -1  # skip unterminated markers from being matchable
+    ]
+
+
+def print_scan_report(nodes: list[CommentNode]):
+    markers = [n for n in nodes if n.type == "marker_block"]
+    descriptive = [n for n in nodes if n.type == "descriptive_block"]
+    unterminated = [n for n in markers if n.end_line == -1]
+
+    print(f"\n--- Comment Block Scan ---")
+    print(f"  {len(descriptive)} descriptive comment block(s)")
+    print(f"  {len(markers) - len(unterminated)} explicit pyslick:start/end block(s)")
+    if unterminated:
+        print(f"  \033[93m{len(unterminated)} UNTERMINATED marker(s) — missing pyslick:end:\033[0m")
+        for n in unterminated:
+            print(f"    {n.file}:{n.start_line}  '{n.comment_text}'")
+
+    if descriptive:
+        print(f"\n  Descriptive blocks:")
+        for n in descriptive[:20]:
+            print(f"    {n.file}:{n.start_line}-{n.end_line}  \"{n.label[:70]}\"")
+        if len(descriptive) > 20:
+            print(f"    ... and {len(descriptive) - 20} more")
+
+    if markers and len(markers) - len(unterminated) > 0:
+        print(f"\n  Marker blocks:")
+        for n in markers:
+            if n.end_line != -1:
+                print(f"    {n.file}:{n.start_line}-{n.end_line}  '{n.comment_text}'")
+
+
+def main():
+    import sys
+    root = sys.argv[1] if len(sys.argv) > 1 else "."
+    nodes = scan_project_for_comment_blocks(root)
+    print_scan_report(nodes)
+
+
+if __name__ == "__main__":
+    main()
