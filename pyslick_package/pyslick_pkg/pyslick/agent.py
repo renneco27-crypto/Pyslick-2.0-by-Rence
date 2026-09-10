@@ -111,6 +111,7 @@ import re
 import io
 import difflib
 import argparse
+import subprocess
 import urllib.request
 from pathlib import Path
 
@@ -2152,19 +2153,53 @@ def _run_local_agent(directive: str) -> None:
         is_export = any(t in dl for t in _EXPORT_TRIGGERS)
 
         if is_export:
+            hdr("Graphify Export", "graphify.md")
+
             graph_json  = os.path.join("graphify-out", "graph.json")
             analysis_json = os.path.join("graphify-out", ".graphify_analysis.json")
 
             if not os.path.exists(graph_json):
-                warn("No graphify-out/graph.json found. Run graphify first.")
-                return
+                print(f"  {CYAN}No graph found. Generating codebase graph via Graphify...{RST}")
+                # Check if graphify is available
+                try:
+                    import graphify  # noqa: F401
+                except ImportError:
+                    print(f"  {DIM}Graphify not installed. Downloading and installing graphify via pip...{RST}")
+                    subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "graphify", "--user", "--quiet"],
+                        capture_output=True,
+                    )
 
-            hdr("Graphify Export", "graphify.md")
+                # Run graph extraction
+                print(f"  {DIM}Extracting code dependencies and building graph.json...{RST}")
+                try:
+                    subprocess.run(
+                        [sys.executable, "-m", "graphify", "update", "."],
+                        capture_output=True,
+                        text=True,
+                    )
+                except Exception:
+                    pass
+
+                # Fallback check
+                if not os.path.exists(graph_json):
+                    try:
+                        subprocess.run(["graphify", "update", "."], capture_output=True)
+                    except Exception:
+                        pass
+
+                if not os.path.exists(graph_json):
+                    warn("Could not generate graph. Ensure graphify is installed: pip install graphify")
+                    return
+                ok("Graph generated successfully in graphify-out/")
 
             gdata = json.loads(Path(graph_json).read_text(encoding="utf-8"))
             analysis: dict = {}
             if os.path.exists(analysis_json):
-                analysis = json.loads(Path(analysis_json).read_text(encoding="utf-8"))
+                try:
+                    analysis = json.loads(Path(analysis_json).read_text(encoding="utf-8"))
+                except Exception:
+                    pass
 
             # Build node id → node map
             node_map: dict[str, dict] = {n["id"]: n for n in gdata.get("nodes", [])}
@@ -2193,22 +2228,23 @@ def _run_local_agent(directive: str) -> None:
             lines.append(f"> {len(node_map)} nodes · {len(gdata.get('links', []))} links · {len(communities)} communities\n")
 
             # ── Communities ──────────────────────────────────────────────
-            lines.append("## Communities\n")
-            for cid, members in sorted(communities.items(), key=lambda x: int(x[0])):
-                cname = _community_name(members)
-                coh_val = cohesion.get(cid, cohesion.get(str(cid), None))
-                coh_str = f"  *(cohesion {coh_val:.2f})*" if coh_val is not None else ""
-                lines.append(f"### Community {cid} — `{cname}`{coh_str}\n")
-                for nid in sorted(members, key=lambda x: -in_deg.get(x, 0)):
-                    n = node_map.get(nid, {})
-                    label = n.get("label") or nid
-                    sf = n.get("source_file", "")
-                    loc = n.get("source_location", "")
-                    sf_str = f" · `{sf}` {loc}" if sf else ""
-                    deg = in_deg.get(nid, 0)
-                    deg_str = f" ({deg} refs)" if deg else ""
-                    lines.append(f"- **{label}**{deg_str}{sf_str}")
-                lines.append("")
+            if communities:
+                lines.append("## Communities\n")
+                for cid, members in sorted(communities.items(), key=lambda x: int(x[0]) if x[0].isdigit() else str(x[0])):
+                    cname = _community_name(members)
+                    coh_val = cohesion.get(cid, cohesion.get(str(cid), None))
+                    coh_str = f"  *(cohesion {coh_val:.2f})*" if coh_val is not None else ""
+                    lines.append(f"### Community {cid} — `{cname}`{coh_str}\n")
+                    for nid in sorted(members, key=lambda x: -in_deg.get(x, 0)):
+                        n = node_map.get(nid, {})
+                        label = n.get("label") or nid
+                        sf = n.get("source_file", "")
+                        loc = n.get("source_location", "")
+                        sf_str = f" · `{sf}` {loc}" if sf else ""
+                        deg = in_deg.get(nid, 0)
+                        deg_str = f" ({deg} refs)" if deg else ""
+                        lines.append(f"- **{label}**{deg_str}{sf_str}")
+                    lines.append("")
 
             # ── God Nodes ────────────────────────────────────────────────
             if gods:
@@ -2251,8 +2287,10 @@ def _run_local_agent(directive: str) -> None:
             out_path = "graphify.md"
             Path(out_path).write_text("\n".join(lines), encoding="utf-8")
             size_kb = Path(out_path).stat().st_size // 1024
-            ok(f"Written: {out_path}  ({size_kb or '<1'} KB)  —  paste into Claude Web")
-            print(f"  {DIM}Communities: {len(communities)}  God nodes: {len(gods)}  Questions: {len(questions)}{RST}")
+            ok(f"Written: {out_path}  ({size_kb or '<1'} KB)  —  ready for AI webapp / Claude")
+            print(f"  {DIM}Communities: {len(communities)}  │  God nodes: {len(gods)}  │  Bridge questions: {len(questions)}{RST}\n")
+            print(f"  {CYAN}💡 Semantic Search Tip:{RST} Parse {BOLD}graphify.md{RST} with an AI (Claude / ChatGPT).")
+            print(f"     pyslick uses this extracted graph topology and community semantics for smarter searching!\n")
             return
 
         # ── Standard AST call-graph ────────────────────────────────────
