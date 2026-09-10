@@ -889,13 +889,15 @@ def _classify_intent(directive: str) -> str:
 
 
 def _collect_all_files(root: str = ".") -> list[str]:
-    """Walk project tree and return all source file paths."""
+    """Walk project tree and return all source file paths (skips binary and build files)."""
     files = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames
                        if d not in SKIP_DIRS and not d.startswith(".")]
-        for fn in filenames:
-            files.append(os.path.normpath(os.path.join(dirpath, fn)))
+        for fn in sorted(filenames):
+            ext = Path(fn).suffix.lower()
+            if ext in CODE_EXTS or (ext == "" and not fn.startswith(".")):
+                files.append(os.path.normpath(os.path.join(dirpath, fn)))
     return files
 
 
@@ -1400,6 +1402,7 @@ def _run_local_agent(directive: str) -> None:
 
         hdr("Connections", " ↔ ".join(os.path.basename(f) for f in matched[:3]))
 
+        matched = matched[:4]
         for fp in matched:
             print(f"\n{BOLD}{fp}{RST}")
             _print_file_summary(fp, dl)
@@ -1409,6 +1412,8 @@ def _run_local_agent(directive: str) -> None:
             print(f"\n{DIM}Cross-file call relationships:{RST}")
             for i, f1 in enumerate(matched):
                 for f2 in matched[i+1:]:
+                    if not f1.endswith(".py"):
+                        continue
                     try:
                         print(f"\n  {BOLD}{os.path.basename(f1)} ↔ {os.path.basename(f2)}{RST}")
                         results = graphify_query(

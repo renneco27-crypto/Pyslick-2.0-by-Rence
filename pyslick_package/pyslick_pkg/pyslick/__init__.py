@@ -125,12 +125,15 @@ def git_checkpoint(commit_msg: str = None):
             print(f"✓ Git checkpoint created: {commit_msg}")
             
             # Try to push if remote is configured
-            push_result = subprocess.run(['git', 'push'], capture_output=True, text=True)
-            if push_result.returncode == 0:
-                print("✓ Changes pushed to remote")
-            else:
-                print("⚠ Could not push to remote (no remote configured or authentication issue)")
-                print("  Changes are committed locally only")
+            try:
+                push_result = subprocess.run(['git', 'push'], capture_output=True, text=True, timeout=5)
+                if push_result.returncode == 0:
+                    print("✓ Changes pushed to remote")
+                else:
+                    print("⚠ Could not push to remote (no remote configured or authentication issue)")
+                    print("  Changes are committed locally only")
+            except subprocess.TimeoutExpired:
+                print("⚠ Git push timed out. Changes committed locally.")
             return True
         else:
             print("No changes to checkpoint (working directory clean)")
@@ -407,8 +410,8 @@ def main():
 
     with capture_and_offer():
         # Only checkpoint before commands that can actually write files, and
-        # skip it for patchit's read-only -l/--lines mode too.
-        is_readonly_patchit = command == "patchit" and any(a in ("-l", "--lines") for a in args)
+        # skip it for patchit's read-only -l/--lines, --dict, --check modes too.
+        is_readonly_patchit = command == "patchit" and any(a in ("-l", "--lines", "--dict", "-d", "--check") for a in args)
         auto_checkpoint = command in WRITE_COMMANDS and not is_readonly_patchit
         if auto_checkpoint:
             print("Creating safety checkpoint...")

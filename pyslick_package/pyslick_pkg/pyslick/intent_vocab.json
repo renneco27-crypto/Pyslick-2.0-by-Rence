@@ -23,23 +23,30 @@
         "git stash",
         "git rollback",
         "push to github",
+        "push it to github",
+        "push to repo",
         "checkpoint",
         "commit changes",
-        "create checkpoint"
+        "create checkpoint",
+        "save checkpoint"
       ],
       "exclude_if": []
     },
     "list_files": {
       "require_any": [
         "list all files",
+        "list the files",
         "list files",
         "all files in",
+        "all the files",
         "files in directory",
+        "files in this directory",
         "show files",
         "scan directory",
         "cd into",
         "main methods",
         "main objects",
+        "methods and objects",
         "structure of project"
       ],
       "exclude_if": []
@@ -47,10 +54,13 @@
     "comments": {
       "require_any": [
         "show me the comments",
+        "show the comments",
         "show comments",
         "comments in",
         "comments of the code",
         "print the comments",
+        "print comments",
+        "display comments",
         "all comments in",
         "find comments",
         "comment blocks"
@@ -64,6 +74,10 @@
         "closest function",
         "function near",
         "name of the function closest",
+        "function closest to",
+        "node closest to",
+        "what is closest to",
+        "whats the closest",
         "nearest node",
         "nearest symbol"
       ],
@@ -79,7 +93,11 @@
         "including the comments",
         "print function",
         "show function",
-        "inspect function"
+        "inspect function",
+        "what specific function",
+        "which function handles",
+        "function handles",
+        "function that handles"
       ],
       "exclude_if": []
     },
@@ -104,7 +122,10 @@
         "imported by",
         "relationship between",
         "how it connects",
-        "how does this connect"
+        "how does this connect",
+        "how it connects to",
+        "how does it connect",
+        "connected to"
       ],
       "exclude_if": []
     },
@@ -116,6 +137,9 @@
         "purpose of",
         "explain this file",
         "how does this file",
+        "how this file works",
+        "how each file works",
+        "how it works",
         "summarize this file",
         "contents of",
         "breakdown of",
@@ -177,7 +201,17 @@
       "you",
       "check",
       "look",
-      "at"
+      "at",
+      "query",
+      "agent",
+      "folder",
+      "directory",
+      "dir",
+      "connect",
+      "with",
+      "between",
+      "from",
+      "to"
     ],
     "min_len": 3,
     "min_fuzzy_score": 58,
