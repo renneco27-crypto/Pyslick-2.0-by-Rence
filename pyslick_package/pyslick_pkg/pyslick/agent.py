@@ -422,6 +422,30 @@ def tool_pyslick_status() -> str:
         return f"ERROR: {e}"
 
 
+def tool_pyslick_log() -> str:
+    """Show git commit history log."""
+    try:
+        from pyslick import git_log
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            git_log()
+        out = buf.getvalue()
+        return out if out.strip() else "(no git commit history found)"
+    except Exception as e:
+        return f"ERROR: {e}"
+
+
+def tool_pyslick_diff() -> str:
+    """Show git diff."""
+    try:
+        import subprocess
+        res = subprocess.run(["git", "diff"], capture_output=True, text=True)
+        return res.stdout if res.stdout.strip() else "(working tree clean — no unstaged changes)"
+    except Exception as e:
+        return f"ERROR: {e}"
+
+
 # ── dispatcher ─────────────────────────────────────────────────────────────
 
 TOOL_IMPLEMENTATIONS = {
@@ -443,6 +467,8 @@ TOOL_IMPLEMENTATIONS = {
     "pyslick_help":   lambda args: tool_pyslick_help(),
     "pyslick_checkpoint": lambda args: tool_pyslick_checkpoint(args.get("message")),
     "pyslick_status": lambda args: tool_pyslick_status(),
+    "pyslick_log":    lambda args: tool_pyslick_log(),
+    "pyslick_diff":   lambda args: tool_pyslick_diff(),
 }
 
 
@@ -2281,11 +2307,20 @@ def _run_local_agent(directive: str) -> None:
 
     # ── GIT ───────────────────────────────────────────────────────────
     if intent == "git":
-        hdr("Git", "Status")
-        status = tool_pyslick_status()
-        print(status)
+        if any(kw in dl for kw in ["log", "logs", "history", "commits"]):
+            hdr("Git", "Log (Recent Commits)")
+            print(tool_pyslick_log())
+            return
+
+        if any(kw in dl for kw in ["diff", "changes", "unstaged"]):
+            hdr("Git", "Diff (Uncommitted Changes)")
+            print(tool_pyslick_diff())
+            return
 
         if any(kw in dl for kw in ["push", "commit", "checkpoint"]):
+            hdr("Git", "Status")
+            status = tool_pyslick_status()
+            print(status)
             msg_match = re.search(r'(?:message|msg|with)[:\s]+["\']?(.+?)["\']?\s*$', dl)
             if msg_match:
                 commit_msg = msg_match.group(1).strip()
@@ -2301,6 +2336,13 @@ def _run_local_agent(directive: str) -> None:
             if confirm in ("y", "yes"):
                 result = tool_pyslick_checkpoint(commit_msg)
                 ok(result)
+            return
+
+        hdr("Git", "Status")
+        status = tool_pyslick_status()
+        print(status)
+        return
+
     # ── RUN INFO (how to run project, repo, directory, or file) ─────────
     if intent == "run_info":
 
