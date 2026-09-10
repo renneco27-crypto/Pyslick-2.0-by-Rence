@@ -1675,6 +1675,129 @@ def _find_nearest_nodes_with_encapsulation(query: str, all_files: list[str], top
     return enriched_nodes
 
 
+def _find_symbol_callers(sym_name: str, current_file: str, all_files: list[str]) -> list[dict]:
+    """
+    Finds all functions/methods and line numbers end-to-end that call `sym_name` across the codebase.
+    """
+    clean_sym = re.sub(r"^(?:def|class|function|fun|func|struct|async)\s+", "", sym_name).split("(")[0].strip()
+    if not clean_sym or len(clean_sym) < 3:
+        return []
+
+    callers: list[dict] = []
+    seen = set()
+    call_pattern = re.compile(r'\b' + re.escape(clean_sym) + r'\s*(?:\(|\b)')
+
+    for fp in all_files[:60]:
+        content = tool_get_file(fp)
+        if content.startswith("ERROR"):
+            continue
+        for idx, line in enumerate(content.splitlines()):
+            if re.search(r'^\s*(?:async\s+)?(?:def|class|function|fun|func|struct)\s+' + re.escape(clean_sym), line):
+                continue
+            if call_pattern.search(line):
+                ln = idx + 1
+                scope = _find_encapsulating_scope(content, ln, fp)
+                key = (fp, scope["scope_name"], scope["start_line"])
+                if key not in seen:
+                    seen.add(key)
+                    callers.append({
+                        "caller_name": scope["scope_name"],
+                        "file": fp,
+                        "call_line": ln,
+                        "start_line": scope["start_line"],
+                        "end_line": scope["end_line"],
+                    })
+                    if len(callers) >= 6:
+                        break
+        if len(callers) >= 6:
+            break
+    return callers
+
+
+def _print_encapsulated_node_view(
+    item: dict,
+    all_files: list[str],
+    directive_lower: str = "",
+    max_compact_lines: int = 20
+) -> None:
+    """
+    Renders an encapsulated node view. If line count > 20 and not explicitly asking
+    for 'end to end' / 'all lines', it compacts the body and displays all callers
+    and line numbers end-to-end.
+    """
+    score = item["score"]
+    label = item["label"]
+    fp = item["file"]
+    scope = item["scope"]
+    s_line = scope["start_line"]
+    e_line = scope["end_line"]
+    s_name = scope["scope_name"]
+    s_type = scope["scope_type"]
+
+    is_explicit_all = any(p in directive_lower for p in [
+        "end to end", "all lines", "full function", "entire function",
+        "whole function", "scan all", "show all lines", "all code"
+    ])
+
+    display_scope = s_name if s_name.startswith((s_type, "def ", "class ", "function ", "fun ", "func ", "struct ")) else f"{s_type} {s_name}"
+    print(f"\n  {BOLD}[{score:5.1f}%]{RST} {CYAN}{label}{RST} {DIM}→ {BOLD}{display_scope}{RST} {DIM}({fp} L{s_line}-L{e_line}){RST}")
+
+    if not fp or not os.path.exists(fp):
+        return
+
+    content = tool_get_file(fp)
+    if content.startswith("ERROR"):
+        return
+
+    raw = content.splitlines()
+    actual_end = min(e_line, len(raw))
+    total_lines_in_scope = actual_end - s_line + 1
+    ps_cmd = f"Get-Content '{fp}' | Select-Object -Skip {max(0, s_line - 1)} -First {total_lines_in_scope}"
+    print(f"  {CYAN}PowerShell:{RST} {BOLD}{ps_cmd}{RST}\n")
+
+    if total_lines_in_scope <= max_compact_lines or is_explicit_all:
+        for ln_idx in range(max(0, s_line - 1), actual_end):
+            ln = ln_idx + 1
+            line = raw[ln_idx]
+            stripped = line.strip()
+            if stripped.startswith("#") or stripped.startswith("//"):
+                print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
+            else:
+                print(f"  {DIM}{ln:4d}│{RST} {line}")
+    else:
+        # Compact mode for > 20 lines
+        for ln_idx in range(max(0, s_line - 1), min(s_line + 4, actual_end)):
+            ln = ln_idx + 1
+            line = raw[ln_idx]
+            stripped = line.strip()
+            if stripped.startswith("#") or stripped.startswith("//"):
+                print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
+            else:
+                print(f"  {DIM}{ln:4d}│{RST} {line}")
+
+        hidden_count = max(0, total_lines_in_scope - 7)
+        print(f"  {DIM}      │ ... [{hidden_count} lines omitted — run with 'end to end' to view all] ...{RST}")
+
+        # Show last 2 lines
+        for ln_idx in range(max(s_line + 4, actual_end - 2), actual_end):
+            ln = ln_idx + 1
+            line = raw[ln_idx]
+            print(f"  {DIM}{ln:4d}│{RST} {line}")
+
+    # Display callers end-to-end with line numbers
+    callers = _find_symbol_callers(s_name or label, fp, all_files)
+    if callers:
+        print(f"\n  {DIM}Called by (functions & line numbers end-to-end):{RST}")
+        for c in callers:
+            c_name = c["caller_name"]
+            c_file = os.path.basename(c["file"])
+            c_line = c["call_line"]
+            c_start = c["start_line"]
+            c_end = c["end_line"]
+            print(f"    ← {CYAN}{c_name}{RST} in {BOLD}{c_file}{RST} {DIM}(called at L{c_line}, function scope L{c_start}-L{c_end}){RST}")
+
+
+
 def _fuzzy_match_files(directive: str, all_files: list[str]) -> list[str]:
     """
     Extract candidate file names from the directive and fuzzy-match them
@@ -2598,33 +2721,7 @@ def _run_local_agent(directive: str) -> None:
             return
 
         for item in enriched_nodes:
-            score = item["score"]
-            label = item["label"]
-            fp = item["file"]
-            scope = item["scope"]
-            s_line = scope["start_line"]
-            e_line = scope["end_line"]
-            s_name = scope["scope_name"]
-            s_type = scope["scope_type"]
-
-            print(f"\n  {BOLD}[{score:5.1f}%]{RST} {CYAN}{label}{RST} {DIM}→ {s_type} {BOLD}{s_name}{RST} {DIM}({fp} L{s_line}-L{e_line}){RST}")
-
-            if fp and os.path.exists(fp):
-                content = tool_get_file(fp)
-                if not content.startswith("ERROR"):
-                    raw = content.splitlines()
-                    actual_end = min(e_line, len(raw))
-                    ps_cmd = f"Get-Content '{fp}' | Select-Object -Skip {max(0, s_line - 1)} -First {actual_end - s_line + 1}"
-                    print(f"  {CYAN}PowerShell:{RST} {BOLD}{ps_cmd}{RST}\n")
-
-                    for ln_idx in range(max(0, s_line - 1), actual_end):
-                        ln = ln_idx + 1
-                        line = raw[ln_idx]
-                        stripped = line.strip()
-                        if stripped.startswith("#") or stripped.startswith("//"):
-                            print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
-                        else:
-                            print(f"  {DIM}{ln:4d}│{RST} {line}")
+            _print_encapsulated_node_view(item, all_files, dl, max_compact_lines=20)
         return
 
     # ── SCAN FUNCTION (print function end-to-end with comments) ────────
@@ -2900,33 +2997,7 @@ def _run_local_agent(directive: str) -> None:
         if enriched_nodes:
             hdr("Connections • Node & Scope Encapsulation", active_directive)
             for item in enriched_nodes:
-                score = item["score"]
-                label = item["label"]
-                fp = item["file"]
-                scope = item["scope"]
-                s_line = scope["start_line"]
-                e_line = scope["end_line"]
-                s_name = scope["scope_name"]
-                s_type = scope["scope_type"]
-
-                print(f"\n  {BOLD}[{score:5.1f}%]{RST} {CYAN}{label}{RST} {DIM}→ {s_type} {BOLD}{s_name}{RST} {DIM}({fp} L{s_line}-L{e_line}){RST}")
-
-                if fp and os.path.exists(fp):
-                    content = tool_get_file(fp)
-                    if not content.startswith("ERROR"):
-                        raw = content.splitlines()
-                        actual_end = min(e_line, len(raw))
-                        ps_cmd = f"Get-Content '{fp}' | Select-Object -Skip {max(0, s_line - 1)} -First {actual_end - s_line + 1}"
-                        print(f"  {CYAN}PowerShell:{RST} {BOLD}{ps_cmd}{RST}\n")
-
-                        for ln_idx in range(max(0, s_line - 1), actual_end):
-                            ln = ln_idx + 1
-                            line = raw[ln_idx]
-                            stripped = line.strip()
-                            if stripped.startswith("#") or stripped.startswith("//"):
-                                print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
-                            else:
-                                print(f"  {DIM}{ln:4d}│{RST} {line}")
+                _print_encapsulated_node_view(item, all_files, dl, max_compact_lines=20)
 
         elif matched:
             hdr("Connections", " ↔ ".join(os.path.basename(f) for f in matched[:3]))
