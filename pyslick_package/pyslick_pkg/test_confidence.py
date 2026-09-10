@@ -31,6 +31,8 @@ queries = [
     ("graph txt", "graph"),
     ("graphify notes", "graph"),
     ("graphify.", "graph"),
+    ("show me design code of the entire webpage", "graph"),
+    ("show me code design of entire webpage", "graph"),
     ("show me js scripts", "list_files"),
     ("show me python files", "list_files"),
     ("show me tsx files", "list_files"),

@@ -1165,13 +1165,16 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     dl_words = set(_re_t1.findall(r"[a-zA-Z0-9+#.]+", dl))
     has_ft_prefix = any(p in dl for p in _FT_PREFIXES)
     has_ft_word = bool(dl_words & _FT_KEYWORDS)
-    is_line_or_func = any(k in dl for k in ["line", "lines", "comment", "comments", "function", "def", "method", "class", "commit", "push", "graph", "checkpoint"])
+    is_line_or_func = any(k in dl for k in ["line", "lines", "comment", "comments", "function", "def", "method", "class", "commit", "push", "graph", "checkpoint", "design", "webpage", "architecture"])
 
     # Dynamic regex: 'show me all kotlin files', 'list zig files', 'all lua scripts', etc.
-    dynamic_files_match = bool(_re_t1.search(
-        r'(?:show\s+me|show|list|all|find|display|get)\s+(?:all\s+)?(?:the\s+)?([a-zA-Z0-9+#.]+)\s+(?:files|scripts|code|sources|docs)',
+    _STOP_WORDS_DYNAMIC = {"me", "the", "a", "an", "all", "some", "our", "my", "this", "that", "code", "design", "page", "webpage", "entire", "show", "get", "find", "list"}
+    dynamic_match = _re_t1.search(
+        r'(?:show\s+me|show|list|all|find|display|get)\s+(?:all\s+)?(?:the\s+)?([a-zA-Z0-9+#.]+)\s+(?:files|scripts|sources|docs)\b',
         dl
-    ))
+    )
+    dyn_lang = dynamic_match.group(1).lower().lstrip(".") if dynamic_match else ""
+    dynamic_files_match = bool(dyn_lang and dyn_lang not in _STOP_WORDS_DYNAMIC)
 
     # Dot extension syntax: 'show .kt', 'show *.kt', 'list .env', 'show .js', 'all .tsx'
     dot_ext_match = bool(_re_t1.search(
@@ -2671,6 +2674,14 @@ def _run_local_agent(directive: str) -> None:
             code_files = [f for f in all_files if Path(f).suffix.lower() in CODE_EXTS or os.path.basename(f).startswith(".env")]
 
         if not code_files:
+            # Fallback to Graphify Node Query & Encapsulation search
+            enriched_nodes = _find_nearest_nodes_with_encapsulation(active_directive, all_files, top_k=3)
+            if enriched_nodes:
+                hdr("Node & Design Query (Graphify Fallback)", active_directive)
+                for item in enriched_nodes:
+                    _print_encapsulated_node_view(item, all_files, dl, max_compact_lines=20)
+                return
+
             if matched_lang_name:
                 warn(f"No {matched_lang_name} files found in {root}.")
             else:
@@ -3007,19 +3018,57 @@ def _run_local_agent(directive: str) -> None:
             print(f"     pyslick uses this extracted graph topology and community semantics for smarter searching!\n")
             return
 
-        # ── Standard AST call-graph ────────────────────────────────────
+        # ── Web Design / UI Architecture & Cross-File Communities ──────
+        is_design_query = any(w in dl for w in ["design", "webpage", "website", "ui", "component", "layout", "style", "styles", "page"])
         all_files = _collect_all_files()
+
+        has_web_files = any(f.endswith((".html", ".htm", ".css", ".scss", ".jsx", ".tsx", ".js", ".ts", ".vue", ".svelte")) for f in all_files)
+
+        if is_design_query or has_web_files:
+            try:
+                from webdesign import build_communities
+                communities, all_nodes = build_communities(root=".", include_singletons=False)
+                if communities:
+                    hdr("Web Design Architecture", f"{len(communities)} UI Communities")
+                    for idx, comm in enumerate(communities[:6], 1):
+                        members = comm["members"]
+                        # Get representative label
+                        html_members = [m for m in members if m.startswith("html:")]
+                        css_members  = [m for m in members if m.startswith("css:")]
+                        js_members   = [m for m in members if m.startswith("js:")]
+
+                        label = html_members[0].split(":")[-1] if html_members else (css_members[0].split(":")[-1] if css_members else members[0])
+                        print(f"\n  {BOLD}Community {idx} — {CYAN}{label}{RST}")
+
+                        for m in members[:8]:
+                            node = all_nodes.get(m)
+                            if node:
+                                ntype = node.type.upper()
+                                nfile = os.path.basename(node.file)
+                                print(f"    • {DIM}[{ntype}]{RST} {BOLD}{node.name}{RST} {DIM}({nfile} L{node.line}){RST}")
+            except Exception:
+                pass
+
+        # ── Graphify AST Node Encapsulation Query ───────────────────────
+        enriched_nodes = _find_nearest_nodes_with_encapsulation(active_directive, all_files, top_k=3)
+        if enriched_nodes:
+            hdr("Code & Design Architecture (Graphify)", active_directive)
+            for item in enriched_nodes:
+                _print_encapsulated_node_view(item, all_files, dl, max_compact_lines=20)
+            return
+
+        # ── Python AST call-graph fallback ─────────────────────────────
         matched   = _fuzzy_match_files(directive, all_files)
         py_files  = [f for f in (matched or all_files) if f.endswith(".py")]
 
-        if not py_files:
-            warn("No Python files found for AST graph.")
+        if py_files:
+            target = py_files[0]
+            hdr("Call Graph", target)
+            result = tool_ast_query(target, directive)
+            print(result)
             return
 
-        target = py_files[0]
-        hdr("Call Graph", target)
-        result = tool_ast_query(target, directive)
-        print(result)
+        warn("No graph nodes or design components matched.")
         return
 
     # ── CONNECT (cross-file call-graph & node encapsulation) ──────────

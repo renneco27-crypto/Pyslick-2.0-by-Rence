@@ -145,7 +145,14 @@
         "show all comments",
         "comment blocks"
       ],
-      "exclude_if": []
+      "exclude_if": [
+        "design",
+        "code design",
+        "design code",
+        "webpage",
+        "website",
+        "ui design"
+      ]
     },
     "nearest": {
       "weight": 1.05,
@@ -235,7 +242,26 @@
         "graph notes",
         "graphify.",
         "graphify output",
-        "graph output"
+        "graph output",
+        "design code",
+        "code design",
+        "design of the webpage",
+        "design of webpage",
+        "design of the entire webpage",
+        "design of entire webpage",
+        "design code of the entire webpage",
+        "design code of entire webpage",
+        "code design of webpage",
+        "code design of entire webpage",
+        "code design of the entire webpage",
+        "webpage design",
+        "website design",
+        "web design",
+        "ui design",
+        "page design",
+        "design architecture",
+        "ui architecture",
+        "component design"
       ],
       "exclude_if": []
     },
