@@ -156,7 +156,16 @@
         "graphify",
         "dependency graph",
         "who calls who",
-        "call hierarchy"
+        "call hierarchy",
+        "graphify md",
+        "graphify.md",
+        "graphify markdown",
+        "create graphify",
+        "export graphify",
+        "graphify report",
+        "make graphify",
+        "generate graphify",
+        "write graphify"
       ],
       "exclude_if": []
     },
