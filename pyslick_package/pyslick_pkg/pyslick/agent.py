@@ -167,7 +167,22 @@ SKIP_DIRS = {
     "node_modules", ".git", ".next", "dist", "build", "__pycache__",
     ".venv", "venv", ".turbo", ".cache", "coverage", "out",
 }
-CODE_EXTS = {".py", ".ts", ".tsx", ".js", ".jsx", ".css", ".html", ".json"}
+CODE_EXTS = {
+    # Python
+    ".py", ".pyw", ".ipynb",
+    # JavaScript / TypeScript / Web
+    ".js", ".jsx", ".mjs", ".cjs",
+    ".ts", ".tsx", ".mts", ".cts",
+    ".html", ".htm", ".css", ".scss", ".sass", ".less", ".vue", ".svelte",
+    # Systems / Compiled
+    ".java", ".kt", ".kts", ".scala",
+    ".c", ".cpp", ".cc", ".cxx", ".h", ".hpp",
+    ".cs", ".rs", ".go", ".swift", ".m", ".mm",
+    # Shell / Scripts
+    ".sh", ".bash", ".zsh", ".ps1", ".bat", ".cmd",
+    # Config / Data
+    ".json", ".yaml", ".yml", ".toml", ".sql", ".md", ".env", ".xml",
+}
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -1104,8 +1119,44 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if dl in learned and learned[dl] in priority:
         return learned[dl], 100.0, [(learned[dl], 100.0)]
 
-    # ── Tier 1: exact vocab match — word-boundary check for single-word patterns ─
+    # ── Tier 0.5: Rule — "show me / list / all <filetype/lang> files" always looks for filetype first ─
     import re as _re_t1
+    _FT_KEYWORDS = {
+        "js", "javascript", "script", "scripts",
+        "py", "python",
+        "ts", "typescript", "tsx", "jsx",
+        "c", "cpp", "c++", "cs", "csharp",
+        "env", ".env", "environment",
+        "html", "css", "scss", "sass", "vue", "svelte",
+        "java", "kt", "kotlin", "scala",
+        "rs", "rust", "go", "golang", "swift",
+        "rb", "ruby", "php", "lua", "dart", "flutter", "zig",
+        "r", "julia", "jl", "elixir", "ex", "clojure", "clj", "haskell", "hs",
+        "sh", "bash", "ps1", "powershell", "bat", "cmd",
+        "json", "yaml", "yml", "toml", "sql", "md", "markdown", "graphql", "proto"
+    }
+    _FT_PREFIXES = ("show me", "show", "list", "all", "find", "get", "display")
+    dl_words = set(_re_t1.findall(r"[a-zA-Z0-9+#.]+", dl))
+    has_ft_prefix = any(p in dl for p in _FT_PREFIXES)
+    has_ft_word = bool(dl_words & _FT_KEYWORDS)
+    is_line_or_func = any(k in dl for k in ["line", "lines", "comment", "comments", "function", "def", "method", "class", "commit", "push", "graph", "checkpoint"])
+
+    # Dynamic regex: 'show me all kotlin files', 'list zig files', 'all lua scripts', etc.
+    dynamic_files_match = bool(_re_t1.search(
+        r'(?:show\s+me|show|list|all|find|display|get)\s+(?:all\s+)?(?:the\s+)?([a-zA-Z0-9+#.]+)\s+(?:files|scripts|code|sources|docs)',
+        dl
+    ))
+
+    # Dot extension syntax: 'show .kt', 'show *.kt', 'list .env', 'show .js', 'all .tsx'
+    dot_ext_match = bool(_re_t1.search(
+        r'(?:show\s+me|show|list|all|find|display|get)\s+(?:\*\s*)?\.([a-zA-Z0-9_\-]+)',
+        dl
+    ))
+
+    if (has_ft_prefix and has_ft_word and not is_line_or_func) or (dynamic_files_match and not is_line_or_func) or (dot_ext_match and not is_line_or_func):
+        return "list_files", 100.0, [("list_files", 100.0)]
+
+    # ── Tier 1: exact vocab match — word-boundary check for single-word patterns ─
     for intent_name in priority:
         cfg = intents.get(intent_name, {})
         patterns = cfg.get("require_any", [])
@@ -2015,29 +2066,136 @@ def _run_local_agent(directive: str) -> None:
         if not os.path.isdir(root):
             root = "."
 
-        hdr("List Files", root)
-        all_files = _collect_all_files(root)
-        code_files = [f for f in all_files if Path(f).suffix in CODE_EXTS]
-        print(f"{DIM}  {len(code_files)} source files found{RST}\n")
+        _LANG_MAP: dict[str, tuple[str, set[str]]] = {
+            "js": ("JavaScript", {".js", ".mjs", ".cjs"}),
+            "javascript": ("JavaScript", {".js", ".mjs", ".cjs"}),
+            "script": ("Scripts", {".js", ".mjs", ".cjs", ".ts", ".tsx", ".py", ".sh", ".ps1", ".bat"}),
+            "scripts": ("Scripts", {".js", ".mjs", ".cjs", ".ts", ".tsx", ".py", ".sh", ".ps1", ".bat"}),
+            "ts": ("TypeScript", {".ts", ".mts", ".cts"}),
+            "typescript": ("TypeScript", {".ts", ".tsx", ".mts", ".cts"}),
+            "tsx": ("React TSX", {".tsx"}),
+            "jsx": ("React JSX", {".jsx"}),
+            "py": ("Python", {".py", ".pyw", ".ipynb"}),
+            "python": ("Python", {".py", ".pyw", ".ipynb"}),
+            "html": ("HTML", {".html", ".htm"}),
+            "css": ("CSS/Styles", {".css", ".scss", ".sass", ".less"}),
+            "vue": ("Vue", {".vue"}),
+            "svelte": ("Svelte", {".svelte"}),
+            "java": ("Java", {".java"}),
+            "kt": ("Kotlin", {".kt", ".kts"}),
+            "kotlin": ("Kotlin", {".kt", ".kts"}),
+            "scala": ("Scala", {".scala"}),
+            "c": ("C", {".c", ".h"}),
+            "cpp": ("C++", {".cpp", ".cc", ".cxx", ".hpp"}),
+            "c++": ("C++", {".cpp", ".cc", ".cxx", ".hpp"}),
+            "cs": ("C#", {".cs"}),
+            "csharp": ("C#", {".cs"}),
+            "rs": ("Rust", {".rs"}),
+            "rust": ("Rust", {".rs"}),
+            "go": ("Go", {".go"}),
+            "golang": ("Go", {".go"}),
+            "swift": ("Swift", {".swift"}),
+            "sh": ("Shell", {".sh", ".bash", ".zsh"}),
+            "bash": ("Bash", {".sh", ".bash"}),
+            "ps1": ("PowerShell", {".ps1"}),
+            "powershell": ("PowerShell", {".ps1"}),
+            "bat": ("Batch", {".bat", ".cmd"}),
+            "json": ("JSON", {".json"}),
+            "yaml": ("YAML", {".yaml", ".yml"}),
+            "yml": ("YAML", {".yaml", ".yml"}),
+            "toml": ("TOML", {".toml"}),
+            "sql": ("SQL", {".sql"}),
+            "md": ("Markdown", {".md", ".markdown"}),
+            "markdown": ("Markdown", {".md", ".markdown"}),
+            "env": ("Environment / Config", {".env"}),
+            "environment": ("Environment / Config", {".env"}),
+        }
 
-        wants_symbols = any(kw in dl for kw in ["method", "object", "function", "symbol", "main"])
+        # 1. Check for explicit dot syntax: 'show .kt', 'show *.py', 'show .env', 'list .js'
+        dot_match = re.search(r'(?:show\s+me|show|list|all|find|display|get)\s+(?:\*\s*)?\.([a-zA-Z0-9_\-]+)', dl)
+        # 2. Check for dynamic language phrase: 'show me all kotlin files', 'list zig files', 'all lua scripts'
+        dyn_match = re.search(
+            r'(?:show\s+me|show|list|all|find|display|get)\s+(?:all\s+)?(?:the\s+)?([a-zA-Z0-9+#.]+)\s+(?:files|scripts|code|sources|docs)',
+            dl
+        )
+
+        matched_exts: set[str] = set()
+        matched_lang_name = ""
+
+        if dot_match:
+            dot_val = dot_match.group(1).lower()
+            if dot_val in _LANG_MAP:
+                matched_lang_name, matched_exts = _LANG_MAP[dot_val]
+            else:
+                matched_lang_name = f".{dot_val}"
+                matched_exts = {f".{dot_val}"}
+        elif dyn_match:
+            lang_val = dyn_match.group(1).lower().lstrip(".")
+            if lang_val in _LANG_MAP:
+                matched_lang_name, matched_exts = _LANG_MAP[lang_val]
+            else:
+                matched_lang_name = lang_val.upper()
+                matched_exts = {f".{lang_val}"}
+        else:
+            # Check general words against _LANG_MAP
+            dl_words = set(re.findall(r"[a-zA-Z0-9+#.]+", dl))
+            for kw, (lname, exts) in _LANG_MAP.items():
+                if kw in dl_words or f".{kw}" in dl_words:
+                    matched_exts.update(exts)
+                    matched_lang_name = lname
+
+        hdr_sub = f"{root} ({matched_lang_name})" if matched_lang_name else root
+        hdr("List Files", hdr_sub)
+
+        def _matches_ext(fp: str, exts: set[str]) -> bool:
+            fn = os.path.basename(fp).lower()
+            if fn.startswith(".env") and ".env" in exts:
+                return True
+            return Path(fp).suffix.lower() in exts
+
+        all_files = _collect_all_files(root)
+        if matched_exts:
+            code_files = [f for f in all_files if _matches_ext(f, matched_exts)]
+        else:
+            code_files = [f for f in all_files if Path(f).suffix.lower() in CODE_EXTS or os.path.basename(f).startswith(".env")]
+
+        if not code_files:
+            if matched_lang_name:
+                warn(f"No {matched_lang_name} files found in {root}.")
+            else:
+                warn(f"No source files found in {root}.")
+            return
+
+        print(f"{DIM}  {len(code_files)} files found{RST}\n")
+
+        wants_symbols = any(kw in dl for kw in ["method", "object", "function", "symbol", "main", "script", "scripts"])
 
         for fp in sorted(code_files):
-            print(f"  {BOLD}{fp}{RST}")
+            try:
+                line_cnt = len(Path(fp).read_text(encoding="utf-8", errors="replace").splitlines())
+                line_info = f"{DIM}({line_cnt} lines){RST}"
+            except Exception:
+                line_info = ""
+
+            print(f"  {BOLD}• {fp}{RST}  {line_info}")
+
             if wants_symbols:
                 content = tool_get_file(fp)
                 if not content.startswith("ERROR"):
                     raw = content.splitlines()
                     syms: list[str] = []
-                    for line in raw:
+                    for line in raw[:150]:
                         m = re.match(
-                            r"^\s*(export\s+)?(async\s+)?(?:function|def|class)\s+(\w+)",
+                            r"^\s*(export\s+)?(async\s+)?(?:function|def|class)\s+([a-zA-Z0-9_$]+)"
+                            r"|(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*(?:async\s*)?\([^\)]*\)\s*=>",
                             line,
                         )
                         if m:
-                            syms.append(m.group(3))
+                            sname = m.group(3) or m.group(4)
+                            if sname and sname not in syms:
+                                syms.append(sname)
                     if syms:
-                        print(f"    {DIM}{', '.join(syms[:8])}{RST}")
+                        print(f"    {DIM}symbols: {', '.join(syms[:6])}{RST}")
         return
 
     # ── COMMENTS ──────────────────────────────────────────────────────
@@ -2172,6 +2330,18 @@ def _run_local_agent(directive: str) -> None:
         query_term = fn_clean or active_directive
 
         hdr("Scan Function", query_term)
+
+        try:
+            from rapidfuzz import fuzz
+        except ImportError:
+            class _FuzzFallback:
+                @staticmethod
+                def WRatio(s1, s2): return 100 if s1.lower() in s2.lower() or s2.lower() in s1.lower() else 0
+                @staticmethod
+                def token_set_ratio(s1, s2): return 100 if s1.lower() in s2.lower() else 0
+                @staticmethod
+                def partial_ratio(s1, s2): return 100 if s1.lower() in s2.lower() else 0
+            fuzz = _FuzzFallback()
 
         # Search across target file first, or all project files
         search_files = [target] if target else all_files
