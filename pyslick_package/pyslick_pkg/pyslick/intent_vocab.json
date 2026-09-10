@@ -1,19 +1,34 @@
 {
   "intents": {
     "help": {
+      "weight": 1.05,
       "require_any": [
         "pyslick help",
         "pyslick command",
+        "pyslick commands",
         "pyslick usage",
+        "pyslick query",
+        "pyslick queries",
+        "pyslick querries",
+        "pyslick recon",
+        "pyslick agent",
+        "pyslick patchit",
         "list commands",
         "show commands",
         "help with pyslick",
+        "help me run pyslick",
         "how to use pyslick",
-        "pyslick options"
+        "how do i use pyslick",
+        "run pyslick",
+        "pyslick options",
+        "what can pyslick do",
+        "help me with pyslick",
+        "query help"
       ],
       "exclude_if": []
     },
     "git": {
+      "weight": 1.05,
       "require_any": [
         "git push",
         "git status",
@@ -33,6 +48,7 @@
       "exclude_if": []
     },
     "list_files": {
+      "weight": 1.00,
       "require_any": [
         "list all files",
         "list the files",
@@ -52,6 +68,7 @@
       "exclude_if": []
     },
     "comments": {
+      "weight": 1.00,
       "require_any": [
         "show me the comments",
         "show the comments",
@@ -68,6 +85,7 @@
       "exclude_if": []
     },
     "nearest": {
+      "weight": 1.00,
       "require_any": [
         "nearest",
         "closest to",
@@ -84,6 +102,7 @@
       "exclude_if": []
     },
     "scan_function": {
+      "weight": 1.00,
       "require_any": [
         "scan the entire",
         "entire function",
@@ -102,6 +121,7 @@
       "exclude_if": []
     },
     "graph": {
+      "weight": 1.05,
       "require_any": [
         "call graph",
         "ast graph",
@@ -113,8 +133,11 @@
       "exclude_if": []
     },
     "connect": {
+      "weight": 1.10,
       "require_any": [
         "connect",
+        "connects",
+        "connected",
         "linked to",
         "calls",
         "called by",
@@ -125,11 +148,55 @@
         "how does this connect",
         "how it connects to",
         "how does it connect",
-        "connected to"
+        "connected to",
+        "how does x connect",
+        "how does the"
       ],
       "exclude_if": []
     },
+    "run_info": {
+      "weight": 1.00,
+      "require_any": [
+        "how to run",
+        "how to start",
+        "how to use",
+        "how to execute",
+        "how to build",
+        "how to launch",
+        "how do i run",
+        "how do i start",
+        "how do i launch",
+        "help me run",
+        "help me start",
+        "how to run file",
+        "how to run repo",
+        "how to run directory",
+        "run this repo",
+        "run the project",
+        "run the file",
+        "run this file",
+        "run file",
+        "run directory",
+        "run repo",
+        "start the project",
+        "start repo",
+        "launch project",
+        "how to test",
+        "commands to run",
+        "run command",
+        "npm command",
+        "pnpm command",
+        "node command",
+        "setup instructions"
+      ],
+      "exclude_if": [
+        "run pyslick",
+        "help me run pyslick",
+        "how to use pyslick"
+      ]
+    },
     "file_info": {
+      "weight": 0.95,
       "require_any": [
         "what does",
         "whats the use",
@@ -151,6 +218,7 @@
       ]
     },
     "patch": {
+      "weight": 0.70,
       "require_any": [
         "fix",
         "change",

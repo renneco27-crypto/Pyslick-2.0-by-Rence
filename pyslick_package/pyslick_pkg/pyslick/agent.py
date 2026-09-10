@@ -108,10 +108,19 @@ import os
 import sys
 import json
 import re
+import io
 import difflib
 import argparse
 import urllib.request
 from pathlib import Path
+
+# Set UTF-8 encoding for stdout/stderr (Windows PowerShell safe)
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 if THIS_DIR not in sys.path:
@@ -851,41 +860,175 @@ def _load_vocab() -> dict:
 _VOCAB = _load_vocab()
 
 
+_LEARNED_PATH = Path(THIS_DIR) / "learned_intents.json"
+
+INTENT_LABELS = {
+    "help":          "pyslick help / commands / usage",
+    "git":           "git push / commit / checkpoint",
+    "run_info":      "how to run / start / launch project",
+    "list_files":    "list / show files in a directory",
+    "comments":      "show comments in a file",
+    "nearest":       "nearest / closest function or node",
+    "scan_function": "scan / show full function body",
+    "graph":         "call graph / AST graph / dependency graph",
+    "connect":       "how files / functions connect / link",
+    "file_info":     "what a file does / purpose / explain file",
+    "patch":         "fix / change / edit / modify code",
+}
+
+
+def _load_learned() -> dict:
+    """Load learned_intents.json — maps exact query strings to intent names."""
+    if not _LEARNED_PATH.exists():
+        return {}
+    try:
+        return json.loads(_LEARNED_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_learned_intent(query: str, intent: str) -> None:
+    """
+    Persist a user-confirmed query → intent mapping to learned_intents.json.
+    Next time this exact query is seen it routes with 100% confidence.
+    """
+    learned = _load_learned()
+    learned[query.lower().strip()] = intent
+    try:
+        _LEARNED_PATH.write_text(
+            json.dumps(learned, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
 def _classify_intent(directive: str) -> str:
     """
-    Route the user's directive to one of the intent buckets defined in
-    intent_vocab.json.  Checks require_any patterns against the full
-    lowercased directive (not word-by-word), so multi-word phrases like
-    'whats the use of' match correctly.  First match wins in priority order.
-    Returns one of: help | git | list_files | comments | nearest |
-                    scan_function | graph | connect | file_info | patch
+    Confidence-scored intent routing using rapidfuzz + exact phrase matching.
+      - Exact multi-word substring match  → 100% confidence (fastest path)
+      - Single-word patterns scored word-by-word so a short word like 'patch'
+        cannot outscore a typo of a longer phrase like 'how it connects'.
     """
-    dl = directive.lower()
+    intent, _, _ = _classify_intent_with_confidence(directive)
+    return intent
+
+
+def _classify_intent_with_confidence(directive: str) -> tuple:
+    """
+    Hybrid three-tier intent classification. Returns (intent, confidence, top3).
+
+    Tier 0 — learned_intents.json  (user-confirmed corrections, 100% confidence)
+    Tier 1 — Exact vocab substring  (intent_vocab.json, 100% confidence)
+    Tier 2 — Python fuzzy           (rapidfuzz word-level, 0-100%)
+    Tier 3 — LLM arbitration        (called only when Tier 2 gives 55-84%)
+
+    Returns:
+        intent     : str    — winning intent name
+        confidence : float  — 0-100, 100 = exact match
+        top3       : list   — [(intent_name, score), ...] top candidates for did-you-mean
+    """
+    dl = directive.lower().strip()
     intents = _VOCAB.get("intents", {})
 
-    # Priority order — most specific first so "pyslick help" doesn't fall
-    # into file_info just because it contains "what"
     priority = [
-        "help", "git", "list_files", "comments", "nearest",
+        "help", "git", "run_info", "list_files", "comments", "nearest",
         "scan_function", "graph", "connect", "file_info", "patch",
     ]
 
+    # ── Tier 0: learned corrections — fastest possible win ───────────────
+    learned = _load_learned()
+    if dl in learned and learned[dl] in priority:
+        return learned[dl], 100.0, [(learned[dl], 100.0)]
+
+    # ── Tier 1: exact vocab match — word-boundary check for single-word patterns ─
+    import re as _re_t1
     for intent_name in priority:
         cfg = intents.get(intent_name, {})
-        patterns  = cfg.get("require_any", [])
-        excludes  = cfg.get("exclude_if", [])
-
-        matched = any(p in dl for p in patterns)
-        if not matched:
+        patterns = cfg.get("require_any", [])
+        excludes = cfg.get("exclude_if", [])
+        # Check excludes first (still plain substring — exclusions are always multi-word)
+        if any(ex in dl for ex in excludes):
             continue
+        for p in patterns:
+            if " " in p:
+                # Multi-word phrase — plain substring is fine (specific enough)
+                matched = p in dl
+            else:
+                # Single word — require whole-word match so "patch" doesn't fire on "patchit"
+                matched = bool(_re_t1.search(r'\b' + _re_t1.escape(p) + r'\b', dl))
+            if matched:
+                return intent_name, 100.0, [(intent_name, 100.0)]
 
-        blocked = any(ex in dl for ex in excludes)
-        if blocked:
-            continue
+    # ── Tier 2: Python fuzzy — word-level scoring × intent weight ──────────
+    all_scores: list[tuple[str, float]] = []
+    try:
+        from rapidfuzz import fuzz
+        import re as _re
+        dl_words = _re.findall(r'\b\w+\b', dl)
 
-        return intent_name
+        for intent_name in priority:
+            cfg = intents.get(intent_name, {})
+            patterns = cfg.get("require_any", [])
+            excludes = cfg.get("exclude_if", [])
+            # Weight from vocab — patch is 0.70 (lowest), connect is 1.10 (highest).
+            # Weighted score = raw_fuzzy_score × weight, so connect always beats
+            # patch when the raw scores are close.
+            weight = float(cfg.get("weight", 1.0))
 
-    return "patch"  # safe default
+            if any(ex in dl for ex in excludes):
+                continue
+
+            best_raw = 0.0
+            for pat in patterns:
+                if " " in pat:
+                    # Multi-word pattern → compare against full query (word order handled)
+                    score = max(fuzz.token_set_ratio(pat, dl), fuzz.WRatio(pat, dl))
+                else:
+                    # Single-word pattern → compare against each query token so that
+                    # "conects" hits "connect" without "patch" winning on "autoloop conects"
+                    score = max(fuzz.ratio(pat, w) for w in dl_words) if dl_words else fuzz.ratio(pat, dl)
+
+                if score > best_raw:
+                    best_raw = score
+
+            # Cap weighted score at 100 so callers can treat it as a percentage
+            all_scores.append((intent_name, min(100.0, best_raw * weight)))
+
+        all_scores.sort(key=lambda x: x[1], reverse=True)
+        top3 = all_scores[:3]
+        best_intent, best_score = all_scores[0]
+
+        # High confidence — trust Python, no LLM needed
+        if best_score >= 85.0:
+            return best_intent, best_score, top3
+
+        # ── Tier 3: LLM arbitration — only in the uncertain 55-84% zone ──────
+        if 55.0 <= best_score < 85.0:
+            try:
+                from llm import maybe_classify_intent
+                # Send top-3 intent candidates + their vocab examples to the LLM
+                # (not all 11 — keep the prompt small for the 124M model)
+                top_names = [name for name, _ in top3]
+                intent_examples = {
+                    name: intents.get(name, {}).get("require_any", [])[:4]
+                    for name in top_names
+                }
+                llm_result = maybe_classify_intent(directive, intent_examples)
+                if llm_result:
+                    llm_intent, llm_conf = llm_result
+                    # LLM wins if it agrees or scores higher than Python's fuzzy
+                    if llm_conf >= best_score:
+                        return llm_intent, float(llm_conf), top3
+            except ImportError:
+                pass
+
+        return best_intent, best_score, top3
+
+    except ImportError:
+        pass
+
+    return "patch", 0.0, [("patch", 0.0)]
 
 
 def _collect_all_files(root: str = ".") -> list[str]:
@@ -1134,6 +1277,42 @@ def _print_all_comments(filepath: str) -> None:
                     break
 
 
+def _ask_did_you_mean(directive: str, intent: str, confidence: float, top3: list) -> str:
+    """
+    Interactive 'did you mean?' shown when intent confidence is uncertain (55-84%).
+    On 'no', shows a numbered list of top-3 alternatives.
+    Saves confirmed choice to learned_intents.json for future exact matches.
+    Returns the confirmed intent name.
+    """
+    label = INTENT_LABELS.get(intent, intent)
+    print(f"\n{YELL}  ⚡ Did you mean: {BOLD}{label}{RST}{YELL}? ({intent}, {confidence:.0f}% confident){RST}")
+    answer = input(f"  {DIM}(y/n): {RST}").strip().lower()
+
+    if answer in ("y", "yes", ""):
+        _save_learned_intent(directive, intent)
+        return intent
+
+    # User said no — show numbered top-3
+    print(f"\n{CYAN}  Pick what you meant:{RST}")
+    choices = top3[:3]
+    for i, (name, score) in enumerate(choices, 1):
+        lbl = INTENT_LABELS.get(name, name)
+        print(f"  {BOLD}[{i}]{RST} {lbl}  {DIM}({score:.0f}%){RST}")
+    print(f"  {BOLD}[0]{RST} None of these — skip")
+
+    while True:
+        pick = input(f"  {DIM}Enter number: {RST}").strip()
+        if pick == "0":
+            print(f"  {DIM}Skipping — try rephrasing your query.{RST}")
+            return intent
+        if pick.isdigit() and 1 <= int(pick) <= len(choices):
+            chosen = choices[int(pick) - 1][0]
+            _save_learned_intent(directive, chosen)
+            ok(f"Got it — saved '{directive}' → {chosen} for next time.")
+            return chosen
+        print(f"  {YELL}Enter a number between 0 and {len(choices)}.{RST}")
+
+
 # ═════════════════════════════════════════════════════════════════════════
 # LOCAL LLM AGENT (no API key required)
 # ═════════════════════════════════════════════════════════════════════════
@@ -1142,12 +1321,18 @@ def _run_local_agent(directive: str) -> None:
     """
     Vocab-driven local agent for the 124M-param model.
 
-    The model doesn't have to reason about routing — _classify_intent()
-    does that with intent_vocab.json.  Each handler then does exactly the
-    right thing for that intent:
+    Intent routing is a three-tier hybrid pipeline in _classify_intent_with_confidence():
+      Tier 0 — learned_intents.json  (user-corrected queries, 100% confidence)
+      Tier 1 — Exact vocab substring  (intent_vocab.json, 100% confidence)
+      Tier 2 — Python rapidfuzz fuzzy (word-level scoring, 0-100%)
+      Tier 3 — LLM arbitration        (only in 55-84% uncertain zone)
+
+    When confidence is 55-84%, the agent asks 'Did you mean X?' before running.
+    If the user corrects it, the choice is saved to learned_intents.json.
 
       help          → pyslick command docs
       git           → git status + optional push prompt
+      run_info      → how to run / start / launch project
       list_files    → directory walk + main symbols per file
       comments      → all comments in matched file
       nearest       → find_nearest_nodes around a symbol/line
@@ -1157,19 +1342,22 @@ def _run_local_agent(directive: str) -> None:
       file_info     → purpose + key functions + first 3 lines
       patch         → fuzzy match → LLM find/replace → diff → confirm
     """
+    # LLM optional — classification still works without it (just skips Tier 3)
     try:
         from llm import is_available, maybe_expand_query
+        _llm_ready = is_available()
     except ImportError:
-        print(f"{RED}llm module not found. Run: pip install pyslick[llm]{RST}")
-        return
+        _llm_ready = False
+        def maybe_expand_query(d): return d  # no-op fallback
 
-    if not is_available():
-        print("Local LLM not available. Run: pyslick llm-status")
-        return
+    intent, confidence, top3 = _classify_intent_with_confidence(directive)
+    dl = directive.lower()
+    print(f"{DIM}  intent → {intent}  ({confidence:.0f}%){RST}")
 
-    intent = _classify_intent(directive)
-    dl     = directive.lower()
-    print(f"{DIM}  intent → {intent}{RST}")
+    # Show 'did you mean?' when confidence is in the uncertain zone (55-84%)
+    if 55.0 <= confidence < 85.0:
+        intent = _ask_did_you_mean(directive, intent, confidence, top3)
+        dl = directive.lower()
 
     # ── HELP ──────────────────────────────────────────────────────────
     if intent == "help":
@@ -1185,13 +1373,112 @@ def _run_local_agent(directive: str) -> None:
 
         if any(kw in dl for kw in ["push", "commit", "checkpoint"]):
             msg_match = re.search(r'(?:message|msg|with)[:\s]+["\']?(.+?)["\']?\s*$', dl)
-            commit_msg = msg_match.group(1).strip() if msg_match else directive
+            if msg_match:
+                commit_msg = msg_match.group(1).strip()
+            else:
+                try:
+                    from pyslick import generate_smart_commit_message
+                    commit_msg = generate_smart_commit_message(directive)
+                except Exception:
+                    commit_msg = directive
             confirm = input(
-                f"\n{BOLD}  ⏸  Create checkpoint '{commit_msg[:60]}'? (yes/no): {RST}"
+                f"\n{BOLD}  ⏸  Create checkpoint '{commit_msg[:70]}'? (yes/no): {RST}"
             ).strip().lower()
             if confirm in ("y", "yes"):
                 result = tool_pyslick_checkpoint(commit_msg)
                 ok(result)
+    # ── RUN INFO (how to run project, repo, directory, or file) ─────────
+    if intent == "run_info":
+        hdr("Run Instructions", "Project Execution & Scripts")
+        found_info = False
+
+        # Detect package manager
+        pm = "npm"
+        if os.path.exists("pnpm-lock.yaml"):
+            pm = "pnpm"
+        elif os.path.exists("yarn.lock"):
+            pm = "yarn"
+        elif os.path.exists("bun.lockb"):
+            pm = "bun"
+
+        # Check if user mentioned a specific file to run
+        all_files = _collect_all_files()
+        matched_files = _fuzzy_match_files(directive, all_files)
+        if matched_files:
+            target_f = matched_files[0]
+            ext = Path(target_f).suffix.lower()
+            print(f"  {BOLD}How to run {target_f}:{RST}")
+            if ext == ".py":
+                print(f"    • Direct: {BOLD}python {target_f}{RST}")
+                print(f"    • Module: {BOLD}python -m {Path(target_f).stem}{RST}")
+            elif ext in (".js", ".mjs", ".cjs"):
+                if "electron" in target_f.lower() or os.path.exists("electron-main.js"):
+                    print(f"    • Electron: {BOLD}npx electron {target_f}{RST} (or {BOLD}{pm} start{RST})")
+                print(f"    • Node:     {BOLD}node {target_f}{RST}")
+            elif ext in (".ts", ".tsx"):
+                print(f"    • TypeScript: {BOLD}npx ts-node {target_f}{RST}")
+            elif ext == ".html":
+                print(f"    • Open in browser or local server: {BOLD}npx serve .{RST}")
+            print()
+            found_info = True
+
+        # Check for package.json (Node/Electron/Next/Vite/etc)
+        if os.path.exists("package.json"):
+            try:
+                pkg = json.loads(Path("package.json").read_text(encoding="utf-8"))
+                scripts = pkg.get("scripts", {})
+                main_file = pkg.get("main")
+                pkg_name = pkg.get("name", "Project")
+                print(f"  {BOLD}{pkg_name}{RST} {DIM}(Detected {pm.upper()} project){RST}")
+                if main_file:
+                    print(f"  {CYAN}Main entry:{RST} {main_file}")
+                if scripts:
+                    print(f"\n  {CYAN}Available Scripts:{RST}")
+                    for s_name, s_cmd in scripts.items():
+                        run_prefix = f"{pm} {s_name}" if pm != "npm" else f"npm run {s_name}"
+                        if s_name in ("start", "test"):
+                            run_prefix = f"{pm} {s_name}"
+                        print(f"    • {BOLD}{run_prefix}{RST} → {DIM}{s_cmd}{RST}")
+                    found_info = True
+            except Exception:
+                pass
+
+        # Check for Python projects
+        py_files = [f for f in os.listdir(".") if f.endswith(".py")]
+        if os.path.exists("pyproject.toml") or os.path.exists("setup.py") or os.path.exists("requirements.txt") or py_files:
+            print(f"\n  {BOLD}Python Environment:{RST}")
+            if os.path.exists("requirements.txt"):
+                print(f"    • Install deps: {BOLD}pip install -r requirements.txt{RST}")
+            if os.path.exists("setup_and_install.py"):
+                print(f"    • One-shot setup: {BOLD}python setup_and_install.py{RST}")
+            for main_cand in ["main.py", "app.py", "cli.py", "server.py", "index.py", "electron-main.js"]:
+                if os.path.exists(main_cand):
+                    cmd = f"python {main_cand}" if main_cand.endswith(".py") else f"node {main_cand}"
+                    print(f"    • Run entry point: {BOLD}{cmd}{RST}")
+            if os.path.exists("pytest.ini") or os.path.exists("tests"):
+                print(f"    • Run tests: {BOLD}pytest{RST}")
+            found_info = True
+
+        # Check README.md for Run / Getting Started / Usage sections
+        for readme_fn in ["README.md", "readme.md", "README.txt"]:
+            if os.path.exists(readme_fn):
+                readme_text = Path(readme_fn).read_text(encoding="utf-8", errors="replace")
+                run_sections = re.findall(
+                    r"(#{1,3}\s+(?:Getting\s+Started|Running|Usage|Quick\s+Start|Installation|How\s+to\s+Run|How\s+to\s+Use)[^\n]*\n(?:(?!\n#{1,3}\s).)*)",
+                    readme_text,
+                    re.IGNORECASE | re.DOTALL,
+                )
+                if run_sections:
+                    print(f"\n  {CYAN}From {readme_fn}:{RST}")
+                    for sec in run_sections[:2]:
+                        lines = [l for l in sec.strip().splitlines()[:15]]
+                        print("  " + "\n  ".join(lines))
+                    found_info = True
+                break
+
+        if not found_info:
+            print(f"  {DIM}No package.json, pyproject.toml, or README run instructions found in cwd.{RST}")
+            print(f"  {DIM}Try: pyslick agent \"how to run <filename>\"{RST}")
         return
 
     # ── LIST FILES ────────────────────────────────────────────────────

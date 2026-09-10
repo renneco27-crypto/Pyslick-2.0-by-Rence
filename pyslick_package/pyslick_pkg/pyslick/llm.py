@@ -167,6 +167,58 @@ Rules:
         return None, None
 
 
+def maybe_classify_intent(directive: str, intent_examples: dict) -> tuple | None:
+    """
+    Ask the local LLM to pick the best intent for a directive.
+    Called only when Python fuzzy score is in the uncertain 55-84% zone.
+
+    intent_examples: {intent_name: [phrase1, phrase2, ...], ...}
+      (pass only the top candidates, not the whole vocab, to fit in context)
+
+    Returns (intent_name, confidence_int) or None on any failure.
+    The LLM replies with exactly: INTENT: <name> CONFIDENCE: <0-100>
+    """
+    llm = _load()
+    if llm is None:
+        return None
+
+    # Build a compact examples block — one line per intent, first 3 phrases only
+    examples_text = "\n".join(
+        f"  {name}: {', '.join(phrases[:3])}"
+        for name, phrases in intent_examples.items()
+    )
+
+    prompt = (
+        f"Choose the best intent category for this user query.\n"
+        f"Query: {directive}\n\n"
+        f"Intent categories and example phrases:\n{examples_text}\n\n"
+        f"Reply with exactly: INTENT: <name> CONFIDENCE: <0-100>\n"
+        f"Only output that one line."
+    )
+
+    try:
+        result = llm(
+            prompt,
+            max_tokens=20,
+            temperature=0.0,   # deterministic — this is classification not generation
+            stop=["\n"],
+        )
+        text = result["choices"][0]["text"].strip()
+        # Parse: INTENT: connect CONFIDENCE: 87
+        import re as _re
+        m = _re.search(r"INTENT:\s*(\w+)\s+CONFIDENCE:\s*(\d+)", text, _re.IGNORECASE)
+        if m:
+            intent_name = m.group(1).lower().strip()
+            confidence = min(100, max(0, int(m.group(2))))
+            # Validate the intent name is one we know
+            if intent_name in intent_examples:
+                return intent_name, confidence
+    except Exception:
+        pass
+
+    return None
+
+
 def status_report() -> str:
     lines = []
     try:
