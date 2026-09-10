@@ -1699,6 +1699,126 @@ def _run_local_agent(directive: str) -> None:
                 ok(result)
     # ── RUN INFO (how to run project, repo, directory, or file) ─────────
     if intent == "run_info":
+
+        # ── APP SUMMARY (what does this app/project do?) ───────────────
+        _APP_SUMMARY_TRIGGERS = {
+            "what does this app", "what does this project", "what does this do",
+            "what does the app", "what does the project", "what does this repo",
+            "what is this app", "what is this project", "what is this repo",
+            "what is this for", "what does it do", "describe the app",
+            "describe the project", "describe this", "overview of",
+            "app overview", "project overview", "app summary", "project summary",
+            "summarize this project", "summarize this app", "what is this codebase",
+            "purpose of this app", "purpose of this project",
+        }
+        is_app_summary = any(t in dl for t in _APP_SUMMARY_TRIGGERS)
+
+        if is_app_summary:
+            hdr("App Overview", "God Nodes + First Comments")
+
+            def _first_comment_lines(filepath: str, max_lines: int = 3) -> list[str]:
+                """Return the first block of comment lines from a file (up to max_lines)."""
+                try:
+                    raw = Path(filepath).read_text(encoding="utf-8", errors="replace").splitlines()
+                except Exception:
+                    return []
+                out, in_block = [], False
+                for ln in raw[:60]:
+                    s = ln.strip()
+                    if not s:
+                        if out:
+                            break
+                        continue
+                    if s.startswith(("//", "#", "/*", "*", "<!--", '"""', "'''")):
+                        cleaned = s.lstrip("/*#!<>-= ").strip('"""').strip("'''").strip()
+                        if cleaned:
+                            out.append(cleaned)
+                        if len(out) >= max_lines:
+                            break
+                    elif out:
+                        break  # first non-comment line after comments → done
+                return out
+
+            # Load graph.json from graphify-out/ if present
+            graph_path = os.path.join("graphify-out", "graph.json")
+            god_files: list[tuple[int, str]] = []  # (degree, source_file)
+
+            if os.path.exists(graph_path):
+                try:
+                    gdata = json.loads(Path(graph_path).read_text(encoding="utf-8"))
+                    # Build id→source_file map (only file-type nodes)
+                    id_to_file: dict[str, str] = {}
+                    for node in gdata.get("nodes", []):
+                        sf = node.get("source_file", "")
+                        if sf and node.get("file_type") == "code":
+                            id_to_file[node["id"]] = sf
+                    # Count in-degree per file (how many others import/reference it)
+                    file_deg: dict[str, int] = {}
+                    for link in gdata.get("links", []):
+                        tgt = id_to_file.get(link.get("target", ""))
+                        if tgt:
+                            file_deg[tgt] = file_deg.get(tgt, 0) + 1
+                    # Pick top 3 unique source files by degree
+                    seen: set[str] = set()
+                    for sf, deg in sorted(file_deg.items(), key=lambda x: -x[1]):
+                        if sf not in seen and os.path.exists(sf):
+                            god_files.append((deg, sf))
+                            seen.add(sf)
+                        if len(god_files) >= 3:
+                            break
+                except Exception:
+                    pass
+
+            # Fallback: common entry-point names if no graphify data
+            if not god_files:
+                for cand in ["electron-main.js", "main.js", "index.js", "app.js",
+                             "main.py", "app.py", "server.py", "index.ts", "app.ts"]:
+                    if os.path.exists(cand):
+                        god_files.append((0, cand))
+                    if len(god_files) >= 3:
+                        break
+
+            # Also surface package.json description / README first line
+            summary_lines: list[str] = []
+            if os.path.exists("package.json"):
+                try:
+                    pkg = json.loads(Path("package.json").read_text(encoding="utf-8"))
+                    desc = pkg.get("description", "").strip()
+                    name = pkg.get("name", "")
+                    if desc:
+                        summary_lines.append(f"{BOLD}{name}{RST}  {DIM}{desc}{RST}")
+                except Exception:
+                    pass
+            if os.path.exists("pyproject.toml"):
+                for line in Path("pyproject.toml").read_text(encoding="utf-8").splitlines():
+                    if line.strip().startswith("description"):
+                        desc = line.split("=", 1)[-1].strip().strip('"').strip("'")
+                        if desc:
+                            summary_lines.append(f"{DIM}{desc}{RST}")
+                        break
+
+            if summary_lines:
+                for sl in summary_lines:
+                    print(f"  {sl}")
+                print()
+
+            if god_files:
+                print(f"  {CYAN}Most connected files (god nodes):{RST}\n")
+                for deg, sf in god_files:
+                    deg_label = f"{DIM}({deg} refs){RST}" if deg else ""
+                    print(f"  {BOLD}{sf}{RST}  {deg_label}")
+                    comments = _first_comment_lines(sf, max_lines=3)
+                    if comments:
+                        for c in comments:
+                            print(f"    {DIM}→ {c}{RST}")
+                    else:
+                        print(f"    {DIM}(no opening comments){RST}")
+                    print()
+            else:
+                print(f"  {DIM}No graphify-out/graph.json found — run graphify first for richer results.{RST}\n")
+
+            return
+
         hdr("Run Instructions", "Project Execution & Scripts")
         found_info = False
 
