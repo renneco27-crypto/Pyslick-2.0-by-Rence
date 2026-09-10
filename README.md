@@ -252,21 +252,4 @@ Built for developers who move fast and want their tools to keep up.
 </div>
 
 
-The script expects pyslick_pkg as a subfolder of itself, but it is pyslick_pkg. The script needs to point to itself. Quick fix — run this one-liner instead of the installer for step 2:
 
-powershell
-pip install -e .
-
-Then install the rest manually:
-
-powershell
-pip install rapidfuzz
-pip install tree-sitter tree-sitter-typescript
-pip install llama-cpp-python
-
-Then verify it works:
-
-powershell
-pyslick --help
-
-The installer script has a path assumption baked in that doesn't match your layout. Once pip install -e . runs from inside pyslick_pkg, pyslick will be on your PATH and everything else works. The auto-download of the LLM model is the only thing the script was doing that pip can't — you can do that later with pyslick llm-status to check if it's needed.
