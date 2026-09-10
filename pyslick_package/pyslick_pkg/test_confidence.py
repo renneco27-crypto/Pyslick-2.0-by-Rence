@@ -19,6 +19,7 @@ queries = [
     ("run the file", "run_info"),
     ("git staus", "git"),
     ("show me the coments", "comments"),
+    ("show me comments lines 171 to 213 llmpy", "comments"),
     ("closest functon to line 20", "nearest"),
     ("how autoloop conects to patchit", "connect"),
     ("show me line 24-72 of package.json", "file_info"),

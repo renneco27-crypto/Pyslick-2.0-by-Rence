@@ -1446,11 +1446,18 @@ def _print_file_summary(filepath: str, directive_lower: str = "") -> None:
             print(f"  {DIM}{idx+1:4d}│{RST} {raw_lines[idx]}")
 
 
-def _print_all_comments(filepath: str) -> None:
+def _print_all_comments(
+    filepath: str,
+    start_line: "int | None" = None,
+    end_line: "int | None" = None,
+) -> None:
     """
     Print every comment line in a file — inline (#//) and block (''' / /* */).
     Also prints the first 3 lines of any function immediately following
     a comment block.
+
+    When start_line/end_line are provided, prints ALL lines in that slice but
+    highlights comment lines in cyan (focused scan — not a pure comment filter).
     """
     content = tool_get_file(filepath)
     if content.startswith("ERROR"):
@@ -1458,16 +1465,48 @@ def _print_all_comments(filepath: str) -> None:
         return
 
     raw_lines = content.splitlines()
-    print(f"\n{BOLD}Comments in {filepath}{RST}  {DIM}({len(raw_lines)} lines total){RST}\n")
+    total = len(raw_lines)
+
+    if start_line is not None and end_line is not None:
+        # ── Focused slice mode ─────────────────────────────────────────
+        s = max(1, start_line)
+        e = min(total, end_line)
+        print(
+            f"\n{BOLD}Comments in {filepath}{RST}  "
+            f"{DIM}({total} lines total  │  Showing L{s}-L{e}){RST}\n"
+        )
+        print(
+            f"  {DIM}PowerShell: Get-Content '{filepath}' | "
+            f"Select-Object -Skip {s - 1} -First {e - s + 1}{RST}\n"
+        )
+        for i in range(s, e + 1):
+            raw = raw_lines[i - 1]
+            stripped = raw.strip()
+            is_comment = (
+                stripped.startswith("#")
+                or stripped.startswith("//")
+                or stripped.startswith('"""')
+                or stripped.startswith("'''")
+                or stripped.startswith("/*")
+                or stripped.startswith("*")
+            )
+            if is_comment:
+                print(f"  {DIM}L{i}:{RST}  {CYAN}{raw}{RST}")
+            else:
+                print(f"  {DIM}L{i}:{RST}  {raw}")
+        return
+
+    # ── Full-file mode ─────────────────────────────────────────────────
+    print(f"\n{BOLD}Comments in {filepath}{RST}  {DIM}({total} lines total){RST}\n")
 
     in_block = False
     block_delim = None
     block_buf: list[str] = []
     block_start = 0
 
-    def flush_block(end_line: int):
+    def flush_block(end_ln: int):
         if block_buf:
-            print(f"  {DIM}L{block_start}-{end_line}  block comment:{RST}")
+            print(f"  {DIM}L{block_start}-{end_ln}  block comment:{RST}")
             for bl in block_buf:
                 print(f"    {CYAN}{bl}{RST}")
             block_buf.clear()
@@ -1483,7 +1522,7 @@ def _print_all_comments(filepath: str) -> None:
                 # Single-line docstring
                 print(f"  {DIM}L{i}:{RST}  {CYAN}{stripped}{RST}")
             else:
-                in_block  = True
+                in_block    = True
                 block_delim = delim
                 block_start = i
                 block_buf.append(stripped)
@@ -1620,7 +1659,9 @@ def _run_local_agent(directive: str) -> None:
         ok(f"Learned correction: '{active_directive}' → {intent}")
 
     # Show 'did you mean?' when confidence is in the uncertain zone (55-84%)
-    if 55.0 <= confidence < 85.0 and not was_frustrated:
+    # Skip if user already gave an explicit line number — context is unambiguous
+    has_line_range = bool(re.search(r'(?:line|lines|l)\s*\d+', active_directive, re.IGNORECASE))
+    if 55.0 <= confidence < 85.0 and not was_frustrated and not has_line_range:
         intent = _ask_did_you_mean(active_directive, intent, confidence, top3)
         dl = active_directive.lower()
 
@@ -1794,9 +1835,17 @@ def _run_local_agent(directive: str) -> None:
             warn("No file matched. Try naming a file explicitly.")
             return
 
-        # If multiple matches, let user pick
+        # Extract line range from directive (same regex as file_info)
+        range_match = re.search(
+            r'(?:line|lines|l)\s*(\d+)\s*(?:to|-|through|\.\.)\s*(?:line|lines|l)?\s*(\d+)',
+            active_directive, re.IGNORECASE,
+        )
+        start_ln = int(range_match.group(1)) if range_match else None
+        end_ln   = int(range_match.group(2)) if range_match else None
+
+        # When a line range is given, use the top match directly — no picker
         target = matched[0]
-        if len(matched) > 1:
+        if len(matched) > 1 and start_ln is None:
             print("Multiple files matched:")
             for i, f in enumerate(matched):
                 print(f"  [{i}] {f}")
@@ -1804,7 +1853,7 @@ def _run_local_agent(directive: str) -> None:
             if choice.isdigit() and int(choice) < len(matched):
                 target = matched[int(choice)]
 
-        _print_all_comments(target)
+        _print_all_comments(target, start_line=start_ln, end_line=end_ln)
         return
 
     # ── NEAREST NODE / FUNCTION / METHOD / OBJECT ─────────────────────
