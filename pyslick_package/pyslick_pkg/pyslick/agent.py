@@ -1768,7 +1768,7 @@ def _run_local_agent(directive: str) -> None:
                         if sf not in seen and os.path.exists(sf):
                             god_files.append((deg, sf))
                             seen.add(sf)
-                        if len(god_files) >= 3:
+                        if len(god_files) >= 5:
                             break
                 except Exception:
                     pass
@@ -1779,7 +1779,7 @@ def _run_local_agent(directive: str) -> None:
                              "main.py", "app.py", "server.py", "index.ts", "app.ts"]:
                     if os.path.exists(cand):
                         god_files.append((0, cand))
-                    if len(god_files) >= 3:
+                    if len(god_files) >= 5:
                         break
 
             # Also surface package.json description / README first line
