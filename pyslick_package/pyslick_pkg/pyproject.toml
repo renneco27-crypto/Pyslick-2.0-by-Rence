@@ -3,9 +3,10 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyslick"
+name = "miamico-pyslick"
 version = "0.2.0"
 description = "Local, no-LLM smart code query/patch agent (fuzzy match + AST call-graph)"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "rapidfuzz>=3.0",
@@ -19,3 +20,6 @@ pyslick = "pyslick:main"
 
 [tool.setuptools]
 packages = ["pyslick"]
+
+[tool.setuptools.package-data]
+pyslick = ["*.json"]

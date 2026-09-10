@@ -19,6 +19,7 @@ queries = [
     ("run the file", "run_info"),
     ("what does this app do", "run_info"),
     ("what does this project do", "run_info"),
+    ("what does this program do", "run_info"),
     ("whats this", "run_info"),
     ("whats this project", "run_info"),
     ("git staus", "git"),

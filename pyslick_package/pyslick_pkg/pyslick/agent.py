@@ -1156,6 +1156,28 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if (has_ft_prefix and has_ft_word and not is_line_or_func) or (dynamic_files_match and not is_line_or_func) or (dot_ext_match and not is_line_or_func):
         return "list_files", 100.0, [("list_files", 100.0)]
 
+    # ── Tier 0.55: App-Summary Early Exit — wins before file_info "what does" can steal it ─
+    _APP_SUMMARY_EARLY = {
+        "what does this app", "what does this project", "what does this repo",
+        "what does this program", "what does this codebase", "what does this do",
+        "what does the app", "what does the project", "what does the program",
+        "what does the repo", "what does the codebase",
+        "what is this app", "what is this project", "what is this repo",
+        "what is this program", "what is this codebase",
+        "what is this for", "what does it do",
+        "describe the app", "describe the project", "describe this project",
+        "describe this app", "describe this program", "describe this repo",
+        "overview of the app", "overview of the project", "overview of this",
+        "app overview", "project overview", "app summary", "project summary",
+        "summarize this project", "summarize this app", "summarize this program",
+        "purpose of this app", "purpose of this project", "purpose of this program",
+        "whats this", "what is this", "whats this project", "whats this app",
+        "whats this repo", "whats this codebase", "whats this program",
+        "what's this", "what's this project", "what's this app", "what's this program",
+    }
+    if any(t in dl for t in _APP_SUMMARY_EARLY):
+        return "run_info", 100.0, [("run_info", 100.0)]
+
     # ── Tier 0.6: File-First Rule — "show me <filename/dotfile>" matches project files first ─
     _SHOW_FILE_PREFIXES = ("show me", "show", "cat", "scan", "open", "read", "view", "display", "what is in", "contents of")
     has_show_prefix = any(p in dl for p in _SHOW_FILE_PREFIXES)
@@ -1373,6 +1395,284 @@ def _load_graphify_semantic_index() -> dict:
             pass
 
     return index
+
+
+def _find_encapsulating_scope(content: str, line_num: int, filepath: str) -> dict:
+    """
+    Finds the enclosing function, class, struct, method, or code block that encapsulates
+    a given 1-based line number in a file.
+    """
+    lines = content.splitlines()
+    total_lines = len(lines)
+    if total_lines == 0:
+        return {"scope_name": os.path.basename(filepath), "scope_type": "file", "start_line": 1, "end_line": 1, "snippet": []}
+
+    line_num = max(1, min(line_num, total_lines))
+    idx = line_num - 1
+    ext = Path(filepath).suffix.lower()
+
+    # 1. Python scope resolution (indentation-based)
+    if ext == ".py":
+        scope_idx = None
+        scope_indent = 0
+        scope_name = None
+        scope_type = "function"
+
+        for i in range(idx, -1, -1):
+            line = lines[i]
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            m = re.match(r"^(\s*)(?:async\s+)?(def|class)\s+([a-zA-Z0-9_]+)", line)
+            if m:
+                indent = len(m.group(1))
+                cur_line_indent = len(lines[idx]) - len(lines[idx].lstrip())
+                if i == idx or cur_line_indent > indent or line_num == i + 1:
+                    scope_idx = i
+                    scope_indent = indent
+                    scope_type = m.group(2)
+                    scope_name = f"{m.group(2)} {m.group(3)}"
+                    break
+
+        if scope_idx is not None:
+            start_l = scope_idx + 1
+            end_l = total_lines
+            for j in range(scope_idx + 1, total_lines):
+                cur_l = lines[j]
+                cur_str = cur_l.strip()
+                if not cur_str or cur_str.startswith("#"):
+                    continue
+                cur_ind = len(cur_l) - len(cur_l.lstrip())
+                if cur_ind <= scope_indent:
+                    end_l = j
+                    break
+            return {
+                "scope_name": scope_name,
+                "scope_type": scope_type,
+                "start_line": start_l,
+                "end_line": end_l,
+                "snippet": lines[start_l - 1:end_l],
+            }
+
+    # 2. C / C++ / Java / Kotlin / JS / TS / Rust / Go / C# / PHP (brace & keyword scope)
+    scope_idx = None
+    scope_name = None
+    scope_type = "function"
+
+    func_re = re.compile(
+        r"^\s*(?:(?:public|private|protected|static|final|native|synchronized|abstract|export|async|default)\s+)*"
+        r"(?:def|class|function|fun|func|struct|interface|impl|enum|trait|void|int|bool|string|auto|const)\s+([a-zA-Z0-9_$]+)"
+        r"|^\s*(?:export\s+)?(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*(?:async\s+)?(?:\([^)]*\)|[a-zA-Z0-9_$]+)\s*=>"
+        r"|^\s*(?:fun|func)\s+([a-zA-Z0-9_$]+)"
+        r"|^\s*([a-zA-Z0-9_$]+)\s*\([^)]*\)\s*\{"
+    )
+
+    for i in range(idx, -1, -1):
+        line = lines[i]
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("//", "/*", "*", "#")):
+            continue
+        m = func_re.search(line)
+        if m:
+            matched_sym = next((g for g in m.groups() if g), "block")
+            scope_idx = i
+            scope_name = stripped.split("{")[0].strip() or matched_sym
+            if "class" in line:
+                scope_type = "class"
+            elif "struct" in line:
+                scope_type = "struct"
+            else:
+                scope_type = "function"
+            break
+
+    if scope_idx is not None:
+        start_l = scope_idx + 1
+        brace_count = 0
+        saw_open = False
+        end_l = min(total_lines, start_l + 45)
+        for j in range(scope_idx, total_lines):
+            for ch in lines[j]:
+                if ch == "{":
+                    brace_count += 1
+                    saw_open = True
+                elif ch == "}":
+                    brace_count -= 1
+                    if saw_open and brace_count == 0:
+                        end_l = j + 1
+                        break
+            if saw_open and brace_count == 0:
+                break
+        return {
+            "scope_name": scope_name,
+            "scope_type": scope_type,
+            "start_line": start_l,
+            "end_line": max(start_l, end_l),
+            "snippet": lines[start_l - 1:max(start_l, end_l)],
+        }
+
+    # Fallback to local region around target line
+    s = max(1, line_num - 10)
+    e = min(total_lines, line_num + 20)
+    return {
+        "scope_name": os.path.basename(filepath),
+        "scope_type": "file",
+        "start_line": s,
+        "end_line": e,
+        "snippet": lines[s - 1:e],
+    }
+
+
+def _collect_all_project_nodes(all_files: list[str] | None = None) -> list[dict]:
+    """
+    Builds a unified inventory of all graph, AST, comment, and symbol nodes in the project.
+    """
+    if all_files is None:
+        all_files = _collect_all_files()
+
+    nodes: list[dict] = []
+
+    # 1. Try graphify graph.json
+    try:
+        from find_nearest_nodes import load_graph_nodes
+        gnodes = load_graph_nodes()
+        if gnodes:
+            for gn in gnodes:
+                nid = gn.get("id", "")
+                fp = gn.get("file") or (nid.split(":")[0] if ":" in nid else "")
+                ln = gn.get("start_line", 1)
+                if ":" in nid and not gn.get("start_line"):
+                    try:
+                        ln = int(nid.split(":")[1])
+                    except Exception:
+                        pass
+                nodes.append({
+                    "id": nid,
+                    "label": gn.get("label", nid),
+                    "file": fp,
+                    "start_line": ln,
+                    "type": gn.get("type", "node"),
+                })
+    except Exception:
+        pass
+
+    # 2. Try graphify.md semantic index
+    sem_index = _load_graphify_semantic_index()
+    for lbl, sf, refs, l_num, comm in sem_index.get("symbols", []):
+        nodes.append({
+            "id": f"{sf}:{l_num or 1}",
+            "label": lbl,
+            "file": sf,
+            "start_line": l_num or 1,
+            "type": comm or "symbol",
+            "refs": refs,
+        })
+
+    # 3. Try comment block nodes
+    try:
+        from comment_blocks import scan_project_for_comment_blocks, comment_nodes_as_graph_nodes
+        comment_nodes_raw = scan_project_for_comment_blocks(os.getcwd())
+        cnodes = comment_nodes_as_graph_nodes(comment_nodes_raw)
+        if cnodes:
+            for cn in cnodes:
+                fp = cn.get("file") or (cn["_comment_node"].file if "_comment_node" in cn else "")
+                sl = cn.get("start_line") or (cn["_comment_node"].start_line if "_comment_node" in cn else 1)
+                el = cn.get("end_line") or (cn["_comment_node"].end_line if "_comment_node" in cn else sl + 10)
+                nodes.append({
+                    "id": cn.get("id", f"{fp}:{sl}"),
+                    "label": cn.get("label", "comment"),
+                    "file": fp,
+                    "start_line": sl,
+                    "end_line": el,
+                    "type": "comment_block",
+                })
+    except Exception:
+        pass
+
+    # 4. AST / Regex symbol scan across candidate source files
+    if len(nodes) < 20:
+        sym_pattern = re.compile(
+            r"^\s*(?:export\s+)?(?:async\s+)?(?:def|class|function|fun|func|struct|interface|impl|enum)\s+([a-zA-Z0-9_$]+)"
+            r"|^\s*(?:export\s+)?(?:const|let|var|val)\s+([a-zA-Z0-9_$]{3,})\s*[:=]"
+        )
+        for fp in all_files[:80]:
+            content = tool_get_file(fp)
+            if content.startswith("ERROR"):
+                continue
+            for idx, line in enumerate(content.splitlines()):
+                m = sym_pattern.search(line)
+                if m:
+                    sym_lbl = next((g for g in m.groups() if g), None)
+                    if sym_lbl and len(sym_lbl) >= 3:
+                        nodes.append({
+                            "id": f"{fp}:{idx+1}",
+                            "label": sym_lbl,
+                            "file": fp,
+                            "start_line": idx + 1,
+                            "type": "symbol",
+                        })
+
+    return nodes
+
+
+def _find_nearest_nodes_with_encapsulation(query: str, all_files: list[str], top_k: int = 3) -> list[dict]:
+    """
+    Finds nearest nodes to the query across the project, then resolves the encapsulating
+    function/class/block for each node with line numbers and preview.
+    """
+    try:
+        from rapidfuzz import process
+        from rapidfuzz.fuzz import WRatio
+    except ImportError:
+        return []
+
+    nodes = _collect_all_project_nodes(all_files)
+    if not nodes:
+        return []
+
+    labels = [n.get("label", n.get("id", "")) for n in nodes]
+    results = process.extract(query, labels, scorer=WRatio, limit=top_k * 4)
+
+    seen_scopes = set()
+    enriched_nodes = []
+
+    for match, score, index in results:
+        if score < 45.0:
+            continue
+        node = nodes[index]
+        fp = node.get("file", "")
+        # Resolve relative / absolute file
+        if fp and not os.path.isabs(fp) and not os.path.exists(fp):
+            for real_f in all_files:
+                if os.path.basename(real_f).lower() == os.path.basename(fp).lower():
+                    fp = real_f
+                    break
+
+        if not fp or not os.path.exists(fp):
+            continue
+
+        target_l = node.get("start_line", 1)
+        content = tool_get_file(fp)
+        if content.startswith("ERROR"):
+            continue
+
+        scope = _find_encapsulating_scope(content, target_l, fp)
+        scope_key = (fp, scope["start_line"], scope["end_line"])
+        if scope_key in seen_scopes:
+            continue
+        seen_scopes.add(scope_key)
+
+        enriched_nodes.append({
+            "node": node,
+            "score": score,
+            "label": node.get("label", match),
+            "file": fp,
+            "target_line": target_l,
+            "scope": scope,
+        })
+        if len(enriched_nodes) >= top_k:
+            break
+
+    return enriched_nodes
 
 
 def _fuzzy_match_files(directive: str, all_files: list[str]) -> list[str]:
@@ -1885,15 +2185,17 @@ def _run_local_agent(directive: str) -> None:
         _APP_SUMMARY_TRIGGERS = {
             "what does this app", "what does this project", "what does this do",
             "what does the app", "what does the project", "what does this repo",
+            "what does this program", "what does the program", "what does this codebase",
             "what is this app", "what is this project", "what is this repo",
+            "what is this program", "what is this codebase",
             "what is this for", "what does it do", "describe the app",
-            "describe the project", "describe this", "overview of",
+            "describe the project", "describe this", "describe this program", "overview of",
             "app overview", "project overview", "app summary", "project summary",
-            "summarize this project", "summarize this app", "what is this codebase",
-            "purpose of this app", "purpose of this project",
+            "summarize this project", "summarize this app", "summarize this program",
+            "purpose of this app", "purpose of this project", "purpose of this program",
             "whats this", "what is this", "whats this project", "whats this app",
-            "whats this repo", "whats this codebase", "what's this",
-            "what's this project", "what's this app",
+            "whats this repo", "whats this codebase", "whats this program",
+            "what's this", "what's this project", "what's this app", "what's this program",
         }
         is_app_summary = any(t in dl for t in _APP_SUMMARY_TRIGGERS)
 
@@ -2274,15 +2576,6 @@ def _run_local_agent(directive: str) -> None:
 
     # ── NEAREST NODE / FUNCTION / METHOD / OBJECT ─────────────────────
     if intent == "nearest":
-        try:
-            from find_nearest_nodes import load_graph_nodes
-            from comment_blocks import scan_project_for_comment_blocks, comment_nodes_as_graph_nodes
-            from rapidfuzz import process
-            from rapidfuzz.fuzz import WRatio
-        except ImportError:
-            warn("find_nearest_nodes module not available.")
-            return
-
         # Extract a line number if present
         line_match = re.search(r"(?:line|l)\s*(\d+)", dl)
         line_num   = int(line_match.group(1)) if line_match else None
@@ -2292,52 +2585,29 @@ def _run_local_agent(directive: str) -> None:
         sym_name   = sym_match.group(1) if sym_match else None
 
         all_files = _collect_all_files()
-        matched   = _fuzzy_match_files(active_directive, all_files)
-        target    = matched[0] if matched else None
+        matched_files = _fuzzy_match_files(active_directive, all_files)
+        target = matched_files[0] if matched_files else None
 
-        nodes = load_graph_nodes() or []
-        if not nodes:
-            # Fall back to comment blocks and AST symbols
-            comment_nodes_raw = scan_project_for_comment_blocks(os.getcwd())
-            nodes = comment_nodes_as_graph_nodes(comment_nodes_raw)
+        query = sym_name if sym_name else (f"line {line_num} in {target}" if line_num and target else active_directive)
+        hdr("Nearest Functions / Methods / Objects", sym_name or str(line_num) or active_directive)
 
-        if not nodes:
-            # Search all project files directly for symbols
-            for fp in all_files:
-                content = tool_get_file(fp)
-                if content.startswith("ERROR"):
-                    continue
-                for idx, line in enumerate(content.splitlines()):
-                    m = re.search(r"^\s*(?:export\s+)?(?:async\s+)?(?:function|def|class)\s+([a-zA-Z0-9_$]+)", line)
-                    if m:
-                        nodes.append({
-                            "id": f"{fp}:{idx+1}",
-                            "label": m.group(1),
-                            "file": fp,
-                            "start_line": idx + 1,
-                            "type": "function"
-                        })
+        enriched_nodes = _find_nearest_nodes_with_encapsulation(query, all_files, top_k=3)
 
-        if not nodes:
+        if not enriched_nodes:
             warn("No symbols or graph nodes found.")
             return
 
-        hdr("Nearest Functions / Methods / Objects", sym_name or str(line_num) or active_directive)
+        for item in enriched_nodes:
+            score = item["score"]
+            label = item["label"]
+            fp = item["file"]
+            scope = item["scope"]
+            s_line = scope["start_line"]
+            e_line = scope["end_line"]
+            s_name = scope["scope_name"]
+            s_type = scope["scope_type"]
 
-        query = sym_name if sym_name else (f"line {line_num} in {target}" if line_num and target else active_directive)
-        labels = [n.get("label", n.get("id", "")) for n in nodes]
-        results = process.extract(query, labels, scorer=WRatio, limit=2)
-
-        for match, score, index in results:
-            node = nodes[index]
-            fp = node.get("file") or (node["_comment_node"].file if "_comment_node" in node else None)
-            if not fp and ":" in node.get("id", ""):
-                fp = node["id"].split(":")[0]
-
-            s_line = node.get("start_line", 1)
-            e_line = node.get("end_line", s_line + 30)
-
-            print(f"\n  {BOLD}[{score:5.1f}%]{RST} {CYAN}{node.get('label', '?')}{RST} {DIM}({fp or 'unknown'} L{s_line}-L{e_line}){RST}")
+            print(f"\n  {BOLD}[{score:5.1f}%]{RST} {CYAN}{label}{RST} {DIM}→ {s_type} {BOLD}{s_name}{RST} {DIM}({fp} L{s_line}-L{e_line}){RST}")
 
             if fp and os.path.exists(fp):
                 content = tool_get_file(fp)
@@ -2613,7 +2883,7 @@ def _run_local_agent(directive: str) -> None:
         print(result)
         return
 
-    # ── CONNECT (cross-file call-graph) ───────────────────────────────
+    # ── CONNECT (cross-file call-graph & node encapsulation) ──────────
     if intent == "connect":
         try:
             from query import graphify_query
@@ -2624,22 +2894,60 @@ def _run_local_agent(directive: str) -> None:
         all_files = _collect_all_files()
         matched   = _fuzzy_match_files(directive, all_files)
 
-        if not matched:
-            warn("No files matched. Be more specific.")
+        # 1. Node-First Resolution — find closest symbols/nodes and their encapsulating functions/classes
+        enriched_nodes = _find_nearest_nodes_with_encapsulation(active_directive, all_files, top_k=3)
+
+        if enriched_nodes:
+            hdr("Connections • Node & Scope Encapsulation", active_directive)
+            for item in enriched_nodes:
+                score = item["score"]
+                label = item["label"]
+                fp = item["file"]
+                scope = item["scope"]
+                s_line = scope["start_line"]
+                e_line = scope["end_line"]
+                s_name = scope["scope_name"]
+                s_type = scope["scope_type"]
+
+                print(f"\n  {BOLD}[{score:5.1f}%]{RST} {CYAN}{label}{RST} {DIM}→ {s_type} {BOLD}{s_name}{RST} {DIM}({fp} L{s_line}-L{e_line}){RST}")
+
+                if fp and os.path.exists(fp):
+                    content = tool_get_file(fp)
+                    if not content.startswith("ERROR"):
+                        raw = content.splitlines()
+                        actual_end = min(e_line, len(raw))
+                        ps_cmd = f"Get-Content '{fp}' | Select-Object -Skip {max(0, s_line - 1)} -First {actual_end - s_line + 1}"
+                        print(f"  {CYAN}PowerShell:{RST} {BOLD}{ps_cmd}{RST}\n")
+
+                        for ln_idx in range(max(0, s_line - 1), actual_end):
+                            ln = ln_idx + 1
+                            line = raw[ln_idx]
+                            stripped = line.strip()
+                            if stripped.startswith("#") or stripped.startswith("//"):
+                                print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
+                            else:
+                                print(f"  {DIM}{ln:4d}│{RST} {line}")
+
+        elif matched:
+            hdr("Connections", " ↔ ".join(os.path.basename(f) for f in matched[:3]))
+            for fp in matched[:4]:
+                print(f"\n{BOLD}{fp}{RST}")
+                _print_file_summary(fp, dl)
+        else:
+            warn("No files or symbols matched. Be more specific.")
             return
 
-        hdr("Connections", " ↔ ".join(os.path.basename(f) for f in matched[:3]))
+        # Cross-file relationships for every pair if multiple files matched
+        target_files = [n["file"] for n in enriched_nodes if n.get("file")] + matched
+        unique_files = []
+        for uf in target_files:
+            if uf not in unique_files and os.path.exists(uf):
+                unique_files.append(uf)
 
-        matched = matched[:4]
-        for fp in matched:
-            print(f"\n{BOLD}{fp}{RST}")
-            _print_file_summary(fp, dl)
-
-        # Cross-file relationships for every pair
-        if len(matched) >= 2:
+        if len(unique_files) >= 2:
             print(f"\n{DIM}Cross-file call relationships:{RST}")
-            for i, f1 in enumerate(matched):
-                for f2 in matched[i+1:]:
+            for i, f1 in enumerate(unique_files[:3]):
+                for f2 in unique_files[i+1:4]:
                     if not f1.endswith(".py"):
                         continue
                     try:
