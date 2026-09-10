@@ -211,7 +211,7 @@
       "exclude_if": []
     },
     "graph": {
-      "weight": 1.05,
+      "weight": 1.15,
       "require_any": [
         "call graph",
         "ast graph",
@@ -261,7 +261,24 @@
         "page design",
         "design architecture",
         "ui architecture",
-        "component design"
+        "component design",
+        "ui components",
+        "ui component",
+        "visual design",
+        "digital layout",
+        "layout",
+        "page layout",
+        "web layout",
+        "appearance",
+        "interface",
+        "user interface",
+        "style",
+        "styles",
+        "styling",
+        "css styles",
+        "component styles",
+        "visual styling",
+        "design system"
       ],
       "exclude_if": []
     },
@@ -476,6 +493,89 @@
         "adjust"
       ],
       "exclude_if": []
+    },
+    "stray_symbols": {
+      "weight": 1.10,
+      "require_any": [
+        "find stray symbol",
+        "find stray symbols",
+        "find missing symbol",
+        "find missing symbols",
+        "stray symbol",
+        "stray symbols",
+        "missing symbol",
+        "missing symbols",
+        "stray bracket",
+        "stray parenthesis",
+        "unmatched bracket",
+        "missing bracket",
+        "unclosed bracket"
+      ],
+      "exclude_if": []
+    },
+    "syntax_check": {
+      "weight": 1.10,
+      "require_any": [
+        "check syntax",
+        "look for syntax error",
+        "look for syntax errors",
+        "find syntax error",
+        "find syntax errors",
+        "syntax error",
+        "syntax errors",
+        "check tags",
+        "check tag",
+        "tag error",
+        "tag errors",
+        "jsx check",
+        "check jsx",
+        "find error",
+        "find errors",
+        "look for error",
+        "look for errors"
+      ],
+      "exclude_if": []
+    },
+    "indentation": {
+      "weight": 1.10,
+      "require_any": [
+        "check indentation",
+        "check indent",
+        "indentation error",
+        "indentation errors",
+        "indent error",
+        "indent errors",
+        "indentation scope",
+        "check scope",
+        "check scopes",
+        "indent check",
+        "analyze indentation"
+      ],
+      "exclude_if": []
+    },
+    "smoketest": {
+      "weight": 1.10,
+      "require_any": [
+        "smoketest",
+        "smoke test",
+        "run smoketest",
+        "run smoke test",
+        "test loop",
+        "auto loop",
+        "autoloop",
+        "run auto test",
+        "run automated test",
+        "run test loop"
+      ],
+      "exclude_if": [
+        "connect",
+        "connects",
+        "conect",
+        "conects",
+        "relationship",
+        "how it connects",
+        "how does it connect"
+      ]
     }
   },
   "file_extract": {

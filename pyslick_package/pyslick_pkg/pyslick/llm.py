@@ -219,6 +219,35 @@ def maybe_classify_intent(directive: str, intent_examples: dict) -> tuple | None
     return None
 
 
+def verify_intent_yes_no(directive: str, intent_name: str, examples: list[str]) -> bool:
+    """
+    Binary semantic verification: checks if `directive` matches `intent_name`
+    based on the provided example phrases. Returns True if LLM answers YES, False otherwise.
+    """
+    llm = _load()
+    if llm is None:
+        return False
+
+    examples_str = ", ".join(f'"{ex}"' for ex in examples[:4])
+    prompt = (
+        f"Question: Does the user request \"{directive}\" express the same intention as these examples: {examples_str}?\n"
+        f"Answer with ONLY 'YES' or 'NO':\n"
+    )
+
+    try:
+        result = llm(
+            prompt,
+            max_tokens=5,
+            temperature=0.0,
+            stop=["\n", ".", ","],
+        )
+        text = result["choices"][0]["text"].strip().upper()
+        return "YES" in text
+    except Exception:
+        return False
+
+
+
 def status_report() -> str:
     lines = []
     try:

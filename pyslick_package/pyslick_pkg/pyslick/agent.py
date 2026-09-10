@@ -1137,7 +1137,9 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
 
     priority = [
         "help", "git", "run_info", "list_files", "comments", "nearest",
-        "scan_function", "graph", "connect", "file_info", "patch",
+        "scan_function", "graph", "connect", "file_info",
+        "stray_symbols", "syntax_check", "indentation", "smoketest",
+        "patch",
     ]
 
     # ── Tier 0: learned corrections — fastest possible win ───────────────
@@ -1165,10 +1167,18 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     dl_words = set(_re_t1.findall(r"[a-zA-Z0-9+#.]+", dl))
     has_ft_prefix = any(p in dl for p in _FT_PREFIXES)
     has_ft_word = bool(dl_words & _FT_KEYWORDS)
-    is_line_or_func = any(k in dl for k in ["line", "lines", "comment", "comments", "function", "def", "method", "class", "commit", "push", "graph", "checkpoint", "design", "webpage", "architecture"])
+    is_line_or_func = any(k in dl for k in [
+        "line", "lines", "comment", "comments", "function", "def", "method", "class",
+        "commit", "push", "graph", "checkpoint", "design", "webpage", "architecture",
+        "ui", "component", "components", "layout", "appearance", "interface", "style", "styles", "visual"
+    ])
 
     # Dynamic regex: 'show me all kotlin files', 'list zig files', 'all lua scripts', etc.
-    _STOP_WORDS_DYNAMIC = {"me", "the", "a", "an", "all", "some", "our", "my", "this", "that", "code", "design", "page", "webpage", "entire", "show", "get", "find", "list"}
+    _STOP_WORDS_DYNAMIC = {
+        "me", "the", "a", "an", "all", "some", "our", "my", "this", "that",
+        "code", "design", "page", "webpage", "entire", "show", "get", "find", "list",
+        "ui", "component", "components", "layout", "appearance", "interface", "style", "styles", "visual"
+    }
     dynamic_match = _re_t1.search(
         r'(?:show\s+me|show|list|all|find|display|get)\s+(?:all\s+)?(?:the\s+)?([a-zA-Z0-9+#.]+)\s+(?:files|scripts|sources|docs)\b',
         dl
@@ -1184,6 +1194,17 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
 
     if (has_ft_prefix and has_ft_word and not is_line_or_func) or (dynamic_files_match and not is_line_or_func) or (dot_ext_match and not is_line_or_func):
         return "list_files", 100.0, [("list_files", 100.0)]
+
+    # ── Tier 0.53: Web / UI / Visual Design Early Route ──────────────────
+    _DESIGN_EARLY_TRIGGERS = {
+        "ui components", "ui component", "visual design", "digital layout",
+        "appearance", "user interface", "web design", "website design",
+        "webpage design", "page design", "design code", "code design",
+        "design architecture", "ui architecture", "component design",
+        "design system", "visual styling", "component styles", "css styles",
+    }
+    if any(t in dl for t in _DESIGN_EARLY_TRIGGERS):
+        return "graph", 100.0, [("graph", 100.0)]
 
     # ── Tier 0.55: App-Summary Early Exit — wins before file_info "what does" can steal it ─
     _APP_SUMMARY_EARLY = {
@@ -1328,6 +1349,17 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
                     # LLM wins if it agrees or scores higher than Python's fuzzy
                     if llm_conf >= best_score:
                         return llm_intent, float(llm_conf), top3
+
+                # Binary yes/no verification for borderline candidates
+                try:
+                    from llm import verify_intent_yes_no
+                    for cand_name, cand_score in top3[:2]:
+                        if cand_score >= 50.0:
+                            cand_examples = intents.get(cand_name, {}).get("require_any", [])[:4]
+                            if cand_examples and verify_intent_yes_no(directive, cand_name, cand_examples):
+                                return cand_name, 90.0, top3
+                except (ImportError, Exception):
+                    pass
             except ImportError:
                 pass
 
@@ -3019,18 +3051,23 @@ def _run_local_agent(directive: str) -> None:
             return
 
         # ── Web Design / UI Architecture & Cross-File Communities ──────
-        is_design_query = any(w in dl for w in ["design", "webpage", "website", "ui", "component", "layout", "style", "styles", "page"])
+        is_design_query = any(w in dl for w in [
+            "design", "webpage", "website", "ui", "component", "components",
+            "layout", "appearance", "interface", "style", "styles", "styling",
+            "visual", "page", "theme"
+        ])
         all_files = _collect_all_files()
 
         has_web_files = any(f.endswith((".html", ".htm", ".css", ".scss", ".jsx", ".tsx", ".js", ".ts", ".vue", ".svelte")) for f in all_files)
 
         if is_design_query or has_web_files:
+            ran_webdesign = False
             try:
                 from webdesign import build_communities
                 communities, all_nodes = build_communities(root=".", include_singletons=False)
                 if communities:
                     hdr("Web Design Architecture", f"{len(communities)} UI Communities")
-                    for idx, comm in enumerate(communities[:6], 1):
+                    for idx, comm in enumerate(communities[:8], 1):
                         members = comm["members"]
                         # Get representative label
                         html_members = [m for m in members if m.startswith("html:")]
@@ -3046,8 +3083,12 @@ def _run_local_agent(directive: str) -> None:
                                 ntype = node.type.upper()
                                 nfile = os.path.basename(node.file)
                                 print(f"    • {DIM}[{ntype}]{RST} {BOLD}{node.name}{RST} {DIM}({nfile} L{node.line}){RST}")
+                    ran_webdesign = True
             except Exception:
                 pass
+
+            if ran_webdesign and is_design_query:
+                return
 
         # ── Graphify AST Node Encapsulation Query ───────────────────────
         enriched_nodes = _find_nearest_nodes_with_encapsulation(active_directive, all_files, top_k=3)
@@ -3178,6 +3219,133 @@ def _run_local_agent(directive: str) -> None:
         if len(matched) > 1 and "show all" not in dl and "all files" not in dl:
             other_files = [os.path.basename(f) for f in matched[1:5]]
             print(f"\n  {DIM}Other matches: {', '.join(other_files)} (use 'show all' to scan all){RST}")
+        return
+
+    # ── STRAY SYMBOLS ─────────────────────────────────────────────────────
+    if intent == "stray_symbols":
+        from find_stray_symbols import find_stray_symbols
+        all_files = _collect_all_files()
+        matched = _fuzzy_match_files(active_directive, all_files) or all_files
+        hdr("Stray Symbol Check", os.getcwd())
+        total_issues = 0
+        for fp in matched:
+            try:
+                issues = find_stray_symbols(fp)
+            except Exception:
+                issues = []
+            for iss in issues:
+                line_no = iss.get("line", "?")
+                sym = iss.get("symbol", iss.get("message", str(iss)))
+                print(f"  {YELLOW}⚠{RST}  {os.path.basename(fp)}:{BOLD}{line_no}{RST}  {sym}")
+                total_issues += 1
+        if total_issues == 0:
+            print(f"  {GREEN}✔{RST}  No stray symbols found.")
+        else:
+            print(f"\n  {YELLOW}{total_issues} issue(s) found.{RST}")
+        return
+
+    # ── SYNTAX CHECK ──────────────────────────────────────────────────────
+    if intent == "syntax_check":
+        import ast as _ast
+        all_files = _collect_all_files()
+        matched = _fuzzy_match_files(active_directive, all_files) or all_files
+        hdr("Syntax Check", os.getcwd())
+        total_errors = 0
+        for fp in matched:
+            ext = os.path.splitext(fp)[1].lower()
+            if ext in (".jsx", ".tsx", ".html", ".vue", ".svelte"):
+                try:
+                    from jsx_tag_checker import check_jsx_tags
+                    errors = check_jsx_tags(fp)
+                except Exception as e:
+                    errors = [{"line": "?", "message": str(e)}]
+                for err in errors:
+                    line_no = err.get("line", "?")
+                    msg = err.get("message", str(err))
+                    print(f"  {RED}✖{RST}  {os.path.basename(fp)}:{BOLD}{line_no}{RST}  {msg}")
+                    total_errors += 1
+            elif ext == ".py":
+                try:
+                    with open(fp, "r", encoding="utf-8", errors="replace") as _f:
+                        src = _f.read()
+                    _ast.parse(src, filename=fp)
+                except SyntaxError as se:
+                    print(f"  {RED}✖{RST}  {os.path.basename(fp)}:{BOLD}{se.lineno}{RST}  {se.msg}")
+                    total_errors += 1
+                except Exception:
+                    pass
+        if total_errors == 0:
+            print(f"  {GREEN}✔{RST}  No syntax errors found.")
+        else:
+            print(f"\n  {RED}{total_errors} error(s) found.{RST}")
+        return
+
+    # ── INDENTATION CHECK ─────────────────────────────────────────────────
+    if intent == "indentation":
+        from indentation import analyze_indentation_scopes
+        all_files = _collect_all_files()
+        matched = _fuzzy_match_files(active_directive, all_files) or all_files
+        hdr("Indentation Check", os.getcwd())
+        total_issues = 0
+        for fp in matched:
+            ext = os.path.splitext(fp)[1].lower()
+            if ext not in (".py", ".js", ".ts", ".jsx", ".tsx", ".html", ".css"):
+                continue
+            try:
+                issues = analyze_indentation_scopes(fp)
+            except Exception:
+                issues = []
+            for iss in issues:
+                line_no = iss.get("line", iss.get("lineno", "?"))
+                msg = iss.get("message", iss.get("issue", str(iss)))
+                print(f"  {YELLOW}⚠{RST}  {os.path.basename(fp)}:{BOLD}{line_no}{RST}  {msg}")
+                total_issues += 1
+        if total_issues == 0:
+            print(f"  {GREEN}✔{RST}  No indentation issues found.")
+        else:
+            print(f"\n  {YELLOW}{total_issues} issue(s) found.{RST}")
+        return
+
+    # ── SMOKETEST ─────────────────────────────────────────────────────────
+    if intent == "smoketest":
+        hdr("Smoketest", os.getcwd())
+        # Try autoloop smoketest runner first
+        try:
+            from autoloop import run_smoketest
+            results = run_smoketest(os.getcwd())
+            if isinstance(results, list):
+                passed = sum(1 for r in results if r.get("passed"))
+                failed = len(results) - passed
+                for r in results:
+                    status = f"{GREEN}PASS{RST}" if r.get("passed") else f"{RED}FAIL{RST}"
+                    name = r.get("name", r.get("file", "?"))
+                    print(f"  [{status}]  {name}")
+                print(f"\n  {GREEN}{passed} passed{RST}  {RED}{failed} failed{RST}")
+            elif isinstance(results, str):
+                print(results)
+            return
+        except (ImportError, AttributeError):
+            pass
+        # Fallback: detect and run project test commands
+        cwd = os.getcwd()
+        ran = False
+        if os.path.exists(os.path.join(cwd, "pytest.ini")) or os.path.exists(os.path.join(cwd, "pyproject.toml")):
+            import subprocess
+            res = subprocess.run(["python", "-m", "pytest", "--tb=short", "-q"], capture_output=True, text=True, cwd=cwd)
+            print(res.stdout or res.stderr)
+            ran = True
+        elif os.path.exists(os.path.join(cwd, "package.json")):
+            import subprocess, json as _json
+            try:
+                pkg = _json.loads(open(os.path.join(cwd, "package.json")).read())
+                if "test" in pkg.get("scripts", {}):
+                    res = subprocess.run(["npm", "test", "--", "--watchAll=false"], capture_output=True, text=True, cwd=cwd)
+                    print(res.stdout or res.stderr)
+                    ran = True
+            except Exception:
+                pass
+        if not ran:
+            warn("No test runner detected. Add pytest.ini or a 'test' script in package.json.")
         return
 
     # ── PATCH (default) ───────────────────────────────────────────────
