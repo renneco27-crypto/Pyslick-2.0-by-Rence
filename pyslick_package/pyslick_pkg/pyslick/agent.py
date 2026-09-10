@@ -1221,17 +1221,22 @@ def _collect_all_files(root: str = ".") -> list[str]:
 def _fuzzy_match_files(directive: str, all_files: list[str]) -> list[str]:
     """
     Extract candidate file names from the directive and fuzzy-match them
-    against the real file list. Uses the vocab's strip_words list so
-    query noise doesn't pollute candidates.
-    Prioritizes exact/root file matches first.
+    against the real file list.
+    Prioritizes:
+      1. Prepositional phrases: 'of <file>', 'in <file>', 'file <file>'
+      2. Tokens near the end of the sentence (right-to-left)
+      3. Exact and root file matches
     """
+    if not all_files:
+        return []
+
     try:
         from rapidfuzz import process
         from rapidfuzz.fuzz import WRatio
     except ImportError:
         words = directive.lower().split()
         matched = []
-        for w in words:
+        for w in reversed(words):
             if len(w) < 3:
                 continue
             for f in all_files:
@@ -1243,31 +1248,56 @@ def _fuzzy_match_files(directive: str, all_files: list[str]) -> list[str]:
     strip_words = set(cfg.get("strip_words", []))
     min_len     = cfg.get("min_len", 3)
     min_score   = cfg.get("min_fuzzy_score", 58)
-    max_results = cfg.get("max_results", 3)
+    max_results = cfg.get("max_results", 4)
 
+    # 1. Prepositional extraction — matches 'of llmpy', 'in package.json', 'file agent.py'
+    prep_matches = re.findall(
+        r"(?:of|in|file|from|for|cat|scan|show|open|into|inside|inspect|read|view|with|between|and)\s+([a-zA-Z0-9_.\-\\/]+)",
+        directive,
+        re.IGNORECASE
+    )
+
+    # 2. General tokens
     tokens = [
         w for w in re.split(r"[\s\-_./\\]+", directive.lower())
         if len(w) >= min_len and w not in strip_words
     ]
 
-    matched: list[str] = []
-    for token in tokens:
-        basenames = [os.path.basename(f) for f in all_files]
-        hits = process.extract(token, basenames, scorer=WRatio, limit=max_results)
+    candidates: list[tuple[str, float]] = []
+    for pm in prep_matches:
+        candidates.append((pm.lower(), 30.0))  # strong preposition bonus
+
+    # Tokens ordered right-to-left so end of sentence has higher weight
+    for i, t in enumerate(reversed(tokens)):
+        pos_bonus = float((i + 1) * 3)
+        candidates.append((t, pos_bonus))
+
+    file_scores: dict[str, float] = {}
+    basenames = [os.path.basename(f) for f in all_files]
+
+    for cand, bonus in candidates:
+        hits = process.extract(cand, basenames, scorer=WRatio, limit=max_results)
         for base_match, score, idx in hits:
             if score >= min_score:
                 full_path = all_files[idx]
-                if full_path not in matched:
-                    matched.append(full_path)
+                total = score + bonus
+                # Extra bonus if basename is an exact substring of the directive
+                if os.path.basename(full_path).lower() in directive.lower():
+                    total += 20.0
+                if full_path not in file_scores or total > file_scores[full_path]:
+                    file_scores[full_path] = total
 
-    # Sort so exact matches and shorter root paths come first
-    dl = directive.lower()
-    matched.sort(key=lambda p: (
-        0 if os.path.basename(p).lower() in dl else 1,
-        len(Path(p).parts),
-        len(p)
-    ))
-    return matched
+    # Sort files by calculated score descending, then by shortest path
+    sorted_files = sorted(
+        file_scores.keys(),
+        key=lambda p: (
+            file_scores[p],
+            -len(Path(p).parts),
+            -len(p)
+        ),
+        reverse=True
+    )
+    return sorted_files
 
 
 def _print_file_cat_and_snippet(
@@ -1777,10 +1807,13 @@ def _run_local_agent(directive: str) -> None:
         _print_all_comments(target)
         return
 
-    # ── NEAREST NODE ──────────────────────────────────────────────────
+    # ── NEAREST NODE / FUNCTION / METHOD / OBJECT ─────────────────────
     if intent == "nearest":
         try:
-            from find_nearest_nodes import load_graph_nodes, find_closest_graph_nodes
+            from find_nearest_nodes import load_graph_nodes
+            from comment_blocks import scan_project_for_comment_blocks, comment_nodes_as_graph_nodes
+            from rapidfuzz import process
+            from rapidfuzz.fuzz import WRatio
         except ImportError:
             warn("find_nearest_nodes module not available.")
             return
@@ -1789,109 +1822,148 @@ def _run_local_agent(directive: str) -> None:
         line_match = re.search(r"(?:line|l)\s*(\d+)", dl)
         line_num   = int(line_match.group(1)) if line_match else None
 
-        # Extract a symbol name if present  e.g. "closest to run_agent"
+        # Extract a symbol name if present e.g. "closest to run_agent"
         sym_match  = re.search(r"closest to\s+[(\"]?(\w+)[)\"]?", dl)
         sym_name   = sym_match.group(1) if sym_match else None
 
         all_files = _collect_all_files()
-        matched   = _fuzzy_match_files(directive, all_files)
+        matched   = _fuzzy_match_files(active_directive, all_files)
         target    = matched[0] if matched else None
 
-        nodes = load_graph_nodes()
+        nodes = load_graph_nodes() or []
         if not nodes:
-            warn("No graph loaded. Run: graphify extract . --code-only")
+            # Fall back to comment blocks and AST symbols
+            comment_nodes_raw = scan_project_for_comment_blocks(os.getcwd())
+            nodes = comment_nodes_as_graph_nodes(comment_nodes_raw)
+
+        if not nodes:
+            # Search all project files directly for symbols
+            for fp in all_files:
+                content = tool_get_file(fp)
+                if content.startswith("ERROR"):
+                    continue
+                for idx, line in enumerate(content.splitlines()):
+                    m = re.search(r"^\s*(?:export\s+)?(?:async\s+)?(?:function|def|class)\s+([a-zA-Z0-9_$]+)", line)
+                    if m:
+                        nodes.append({
+                            "id": f"{fp}:{idx+1}",
+                            "label": m.group(1),
+                            "file": fp,
+                            "start_line": idx + 1,
+                            "type": "function"
+                        })
+
+        if not nodes:
+            warn("No symbols or graph nodes found.")
             return
 
-        hdr("Nearest Nodes", sym_name or str(line_num) or directive)
+        hdr("Nearest Functions / Methods / Objects", sym_name or str(line_num) or active_directive)
 
-        if sym_name:
-            query = sym_name
-        elif line_num and target:
-            query = f"line {line_num} in {target}"
-        else:
-            query = directive
+        query = sym_name if sym_name else (f"line {line_num} in {target}" if line_num and target else active_directive)
+        labels = [n.get("label", n.get("id", "")) for n in nodes]
+        results = process.extract(query, labels, scorer=WRatio, limit=2)
 
-        results = find_closest_graph_nodes(nodes, query, top_k=5)
-        for r in results:
-            node = r if isinstance(r, dict) else r.symbol
-            print(
-                f"  {CYAN}{node.get('label', node.get('name','?'))}{RST}  "
-                f"{DIM}L{node.get('start_line','?')}-{node.get('end_line','?')}{RST}"
-            )
-            if node.get("docstring"):
-                print(f"    {DIM}{node['docstring'][:80]}{RST}")
-            callees = sorted(node.get("callees", set()))
-            callers = sorted(node.get("callers", set()))
-            if callees:
-                print(f"    calls → {', '.join(list(callees)[:4])}")
-            if callers:
-                print(f"    called by ← {', '.join(list(callers)[:4])}")
+        for match, score, index in results:
+            node = nodes[index]
+            fp = node.get("file") or (node["_comment_node"].file if "_comment_node" in node else None)
+            if not fp and ":" in node.get("id", ""):
+                fp = node["id"].split(":")[0]
+
+            s_line = node.get("start_line", 1)
+            e_line = node.get("end_line", s_line + 30)
+
+            print(f"\n  {BOLD}[{score:5.1f}%]{RST} {CYAN}{node.get('label', '?')}{RST} {DIM}({fp or 'unknown'} L{s_line}-L{e_line}){RST}")
+
+            if fp and os.path.exists(fp):
+                content = tool_get_file(fp)
+                if not content.startswith("ERROR"):
+                    raw = content.splitlines()
+                    actual_end = min(e_line, len(raw))
+                    ps_cmd = f"Get-Content '{fp}' | Select-Object -Skip {max(0, s_line - 1)} -First {actual_end - s_line + 1}"
+                    print(f"  {CYAN}PowerShell:{RST} {BOLD}{ps_cmd}{RST}\n")
+
+                    for ln_idx in range(max(0, s_line - 1), actual_end):
+                        ln = ln_idx + 1
+                        line = raw[ln_idx]
+                        stripped = line.strip()
+                        if stripped.startswith("#") or stripped.startswith("//"):
+                            print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
+                        else:
+                            print(f"  {DIM}{ln:4d}│{RST} {line}")
         return
 
-    # ── SCAN FUNCTION (print end-to-end with comments) ────────────────
+    # ── SCAN FUNCTION (print function end-to-end with comments) ────────
     if intent == "scan_function":
-        # Pull out the function/class name from the directive
-        fn_match = re.search(
-            r"(?:function|def|class|method|the)\s+['\"]?(\w+)['\"]?",
-            dl,
-        )
-        fn_name = fn_match.group(1) if fn_match else None
-
         all_files = _collect_all_files()
-        matched   = _fuzzy_match_files(directive, all_files)
+        matched   = _fuzzy_match_files(active_directive, all_files)
         target    = matched[0] if matched else None
 
-        if not fn_name and not target:
-            warn("Could not identify a function name or file. Be more specific.")
-            return
+        # Clean search term: remove 'show me function', 'where is function', etc.
+        fn_clean = re.sub(
+            r"^(?:show me|show|find|scan|print|inspect|where is|which)\s+(?:the\s+)?(?:entire\s+)?(?:function|def|class|method)\s*",
+            "",
+            active_directive,
+            flags=re.IGNORECASE
+        ).strip()
+        fn_clean = re.sub(r"(?:function|def|class|method|in\s+.*|of\s+.*)$", "", fn_clean, flags=re.IGNORECASE).strip()
+        query_term = fn_clean or active_directive
 
-        hdr("Scan Function", fn_name or directive)
+        hdr("Scan Function", query_term)
 
-        # If we have a Python file, use AST to find the exact function
-        if target and target.endswith(".py") and fn_name:
-            content    = tool_get_file(target)
-            raw_lines  = content.splitlines()
-            try:
-                import ast
-                tree = ast.parse(content)
-                for node in ast.walk(tree):
-                    is_fn = isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-                    if is_fn and node.name.lower() == fn_name.lower():
-                        start = node.lineno - 1          # 0-indexed
-                        end   = getattr(node, "end_lineno", start + 60)
-                        print(f"{BOLD}{target}  L{node.lineno}-{end}{RST}\n")
-                        for ln_idx, ln in enumerate(raw_lines[start:end], start=node.lineno):
-                            # Highlight comment lines
-                            stripped = ln.strip()
-                            if stripped.startswith("#") or stripped.startswith("//"):
-                                print(f"  {ln_idx:4d}  {CYAN}{ln}{RST}")
-                            else:
-                                print(f"  {ln_idx:4d}  {ln}")
-                        return
-                warn(f"Function '{fn_name}' not found in {target}. Showing file summary instead.")
-            except SyntaxError as se:
-                warn(f"Syntax error in {target}: {se}")
+        # Search across target file first, or all project files
+        search_files = [target] if target else all_files
+        found_matches = []
 
-        # Generic fallback: grep for the function definition
-        if target and fn_name:
-            content   = tool_get_file(target)
+        for fp in search_files:
+            content = tool_get_file(fp)
+            if content.startswith("ERROR"):
+                continue
             raw_lines = content.splitlines()
             for i, line in enumerate(raw_lines):
-                if re.search(rf"\bdef\s+{fn_name}\b|\bfunction\s+{fn_name}\b|\bclass\s+{fn_name}\b", line, re.IGNORECASE):
-                    end = min(i + 80, len(raw_lines))
-                    print(f"{BOLD}{target}  L{i+1}-~{end}{RST}\n")
-                    for ln_idx, ln in enumerate(raw_lines[i:end], start=i+1):
-                        stripped = ln.strip()
-                        if stripped.startswith("#") or stripped.startswith("//"):
-                            print(f"  {ln_idx:4d}  {CYAN}{ln}{RST}")
-                        else:
-                            print(f"  {ln_idx:4d}  {ln}")
-                        # Stop at the next top-level def/class (dedent back to col 0)
-                        if ln_idx > i + 2 and re.match(r"^(def |class |async def )", ln):
-                            break
-                    return
+                m = re.search(
+                    r"^\s*(?:export\s+)?(?:async\s+)?(?:function|def|class)\s+([a-zA-Z0-9_$]+)"
+                    r"|(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*(?:async\s*)?\([^\)]*\)\s*=>"
+                    r"|([a-zA-Z0-9_$]+)\s*:\s*(?:async\s*)?\([^\)]*\)\s*=>",
+                    line
+                )
+                if m:
+                    fname = m.group(1) or m.group(2) or m.group(3)
+                    sim = max(
+                        fuzz.WRatio(query_term, fname),
+                        fuzz.token_set_ratio(query_term, fname),
+                        fuzz.partial_ratio(query_term, line)
+                    )
+                    if sim >= 55:
+                        found_matches.append((sim, fp, i, fname, raw_lines))
 
-        warn(f"Could not locate '{fn_name}'. Try: pyslick agent \"scan the entire <function> function in <file>\"")
+        found_matches.sort(key=lambda x: x[0], reverse=True)
+
+        if found_matches:
+            best_sim, best_fp, start_idx, best_fname, raw_lines = found_matches[0]
+            end_idx = min(start_idx + 60, len(raw_lines))
+
+            # Find logical end of function (next top-level def/class/function)
+            for j in range(start_idx + 1, min(start_idx + 120, len(raw_lines))):
+                if re.match(r"^(?:export\s+)?(?:async\s+)?(?:function|def|class)\s+", raw_lines[j]):
+                    end_idx = j
+                    break
+                end_idx = j + 1
+
+            ps_cmd = f"Get-Content '{best_fp}' | Select-Object -Skip {start_idx} -First {end_idx - start_idx}"
+            print(f"  {BOLD}{best_fp}{RST}  {CYAN}{best_fname}{RST}  {DIM}L{start_idx + 1}-L{end_idx}{RST}")
+            print(f"  {CYAN}PowerShell:{RST} {BOLD}{ps_cmd}{RST}\n")
+
+            for ln_idx in range(start_idx, end_idx):
+                ln = ln_idx + 1
+                line = raw_lines[ln_idx]
+                stripped = line.strip()
+                if stripped.startswith("#") or stripped.startswith("//"):
+                    print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
+                else:
+                    print(f"  {DIM}{ln:4d}│{RST} {line}")
+            return
+
+        warn(f"Could not locate function matching '{query_term}'. Try specifying the function name or file.")
         return
 
     # ── CALL GRAPH ────────────────────────────────────────────────────
