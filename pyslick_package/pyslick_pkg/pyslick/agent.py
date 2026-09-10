@@ -1220,14 +1220,75 @@ def _collect_all_files(root: str = ".") -> list[str]:
     return files
 
 
+def _load_graphify_semantic_index() -> dict:
+    """
+    Parse graphify.md (or graphify-out/) in current directory to build an active semantic index.
+    Returns a dict with:
+      - 'symbols': list of (symbol_label, source_file, refs, line_info, community)
+      - 'file_communities': dict mapping filename -> list of community tags
+      - 'god_nodes': dict mapping filename -> degree
+    """
+    index = {
+        "symbols": [],
+        "file_communities": {},
+        "god_nodes": {},
+    }
+
+    graphify_md = "graphify.md"
+    if os.path.exists(graphify_md):
+        try:
+            content = Path(graphify_md).read_text(encoding="utf-8", errors="replace")
+            curr_comm = ""
+            for line in content.splitlines():
+                # Community header: ### Community 0 — `package.json`  *(cohesion 0.15)*
+                comm_m = re.search(r"###\s+(Community\s+\w+)\s+—\s+`([^`]+)`(?:\s+\*\(cohesion\s+([\d.]+)\)\*)?", line)
+                if comm_m:
+                    c_id = comm_m.group(1)
+                    c_file = comm_m.group(2)
+                    c_coh = comm_m.group(3) or ""
+                    tag = f"{c_id} ({c_file})" + (f" · cohesion {c_coh}" if c_coh else "")
+                    curr_comm = tag
+                    base_f = os.path.basename(c_file).lower()
+                    index["file_communities"].setdefault(base_f, []).append(curr_comm)
+                    continue
+
+                # Member node: - **setContentProtection()** (3 refs) · `electron-main.js` L11
+                node_m = re.search(r"^-\s+\*\*([^*]+)\*\*(?:\s+\((\d+)\s+refs\))?(?:\s+·\s+`([^`]+)`(?:\s+L(\d+))?)?", line)
+                if node_m:
+                    label = node_m.group(1).strip()
+                    refs = int(node_m.group(2) or "1")
+                    src_file = node_m.group(3) or ""
+                    line_num = int(node_m.group(4) or "0") if node_m.group(4) else None
+                    if src_file:
+                        index["symbols"].append((label, src_file, refs, line_num, curr_comm))
+                        base_sf = os.path.basename(src_file).lower()
+                        if curr_comm and curr_comm not in index["file_communities"].get(base_sf, []):
+                            index["file_communities"].setdefault(base_sf, []).append(curr_comm)
+
+                # God nodes table: | `package_build` | build | 8 | `package.json` |
+                god_m = re.search(r"^\|\s*`[^`]+`\s*\|\s*([^|]+)\|\s*(\d+)\s*\|\s*`([^`]+)`\s*\|", line)
+                if god_m:
+                    g_lbl = god_m.group(1).strip()
+                    g_deg = int(god_m.group(2).strip())
+                    g_file = god_m.group(3).strip()
+                    base_gf = os.path.basename(g_file).lower()
+                    index["god_nodes"][base_gf] = max(index["god_nodes"].get(base_gf, 0), g_deg)
+                    index["symbols"].append((g_lbl, g_file, g_deg, None, "God Node"))
+        except Exception:
+            pass
+
+    return index
+
+
 def _fuzzy_match_files(directive: str, all_files: list[str]) -> list[str]:
     """
     Extract candidate file names from the directive and fuzzy-match them
     against the real file list.
     Prioritizes:
-      1. Prepositional phrases: 'of <file>', 'in <file>', 'file <file>'
-      2. Tokens near the end of the sentence (right-to-left)
-      3. Exact and root file matches
+      1. Semantic Graphify Lookup: matches concept/symbol to its source file from graphify.md
+      2. Prepositional phrases: 'of <file>', 'in <file>', 'file <file>'
+      3. Tokens near the end of the sentence (right-to-left)
+      4. Exact and root file matches
     """
     if not all_files:
         return []
@@ -1288,6 +1349,20 @@ def _fuzzy_match_files(directive: str, all_files: list[str]) -> list[str]:
                     total += 20.0
                 if full_path not in file_scores or total > file_scores[full_path]:
                     file_scores[full_path] = total
+
+    # 3. Semantic Graphify Lookup — if graphify.md exists, match query concepts to nodes
+    sem_index = _load_graphify_semantic_index()
+    for lbl, sf, refs, line_num, comm in sem_index.get("symbols", []):
+        lbl_clean = lbl.strip("()").strip("{}").strip().lower()
+        if len(lbl_clean) < 3 or lbl_clean in strip_words:
+            continue
+        if lbl_clean in directive.lower():
+            # Find matching file path
+            for f in all_files:
+                if os.path.basename(f).lower() == os.path.basename(sf).lower():
+                    sem_bonus = 50.0 + min(refs * 3.0, 40.0)
+                    file_scores[f] = max(file_scores.get(f, 0.0), 75.0 + sem_bonus)
+                    break
 
     # Sort files by calculated score descending, then by shortest path
     sorted_files = sorted(
@@ -1383,6 +1458,16 @@ def _print_file_summary(filepath: str, directive_lower: str = "") -> None:
     raw_lines = content.splitlines()
     print(f"  {DIM}Lines: {len(raw_lines)}{RST}")
     print(f"  {CYAN}PowerShell:{RST} {BOLD}Get-Content '{filepath}'{RST}")
+
+    # ── Semantic community info from graphify.md ────────────────────────
+    sem_idx = _load_graphify_semantic_index()
+    base_f = os.path.basename(filepath).lower()
+    comms = sem_idx.get("file_communities", {}).get(base_f, [])
+    god_deg = sem_idx.get("god_nodes", {}).get(base_f, 0)
+    if comms or god_deg:
+        comm_tag = f"{CYAN}{comms[0]}{RST}" if comms else ""
+        god_tag = f"  {BOLD}★ God Node ({god_deg} refs){RST}" if god_deg else ""
+        print(f"  {DIM}Graph Topology:{RST} {comm_tag}{god_tag}")
 
     # ── functions and classes ──────────────────────────────────────────
     funcs: list[dict] = []
