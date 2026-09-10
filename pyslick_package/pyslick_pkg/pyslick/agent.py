@@ -1717,13 +1717,13 @@ def _run_local_agent(directive: str) -> None:
             hdr("App Overview", "God Nodes + First Comments")
 
             def _first_comment_lines(filepath: str, max_lines: int = 3) -> list[str]:
-                """Return the first block of comment lines from a file (up to max_lines)."""
+                """Return the first meaningful comment lines from a file (up to max_lines)."""
                 try:
                     raw = Path(filepath).read_text(encoding="utf-8", errors="replace").splitlines()
                 except Exception:
                     return []
-                out, in_block = [], False
-                for ln in raw[:60]:
+                out: list[str] = []
+                for ln in raw[:80]:
                     s = ln.strip()
                     if not s:
                         if out:
@@ -1731,12 +1731,16 @@ def _run_local_agent(directive: str) -> None:
                         continue
                     if s.startswith(("//", "#", "/*", "*", "<!--", '"""', "'''")):
                         cleaned = s.lstrip("/*#!<>-= ").strip('"""').strip("'''").strip()
-                        if cleaned:
-                            out.append(cleaned)
+                        # Skip pure separator lines (─, ─, /, =, -, *) or very short
+                        if len(cleaned) < 5:
+                            continue
+                        if all(c in "-=_/*~#│─" for c in cleaned):
+                            continue
+                        out.append(cleaned)
                         if len(out) >= max_lines:
                             break
                     elif out:
-                        break  # first non-comment line after comments → done
+                        break  # first non-comment line after comments → stop
                 return out
 
             # Load graph.json from graphify-out/ if present
