@@ -60,7 +60,14 @@ from patchit import (
 from autoloop import run_auto_fix_loop, print_summary
 from llm import maybe_extract_find_replace
 
-from . import git_log, git_checkpoint
+try:
+    from . import git_log, git_checkpoint
+except ImportError:
+    try:
+        from pyslick import git_log, git_checkpoint
+    except ImportError:
+        def git_log(): pass
+        def git_checkpoint(commit_msg=None): pass
 
 BOLD  = "\033[1m"
 CYAN  = "\033[96m"

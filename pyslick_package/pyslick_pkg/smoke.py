@@ -39,6 +39,15 @@ import importlib
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
+import io
+
+# Set UTF-8 encoding for stdout/stderr (Windows PowerShell safe)
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 # ── colours ────────────────────────────────────────────────────────────────
 BOLD  = "\033[1m"
@@ -213,14 +222,14 @@ def phase_static(res: Result, pyslick_dir: str):
         try:
             if mod_name in ("recon", "__init__", "__main__"):
                 pkg_target = "pyslick" if mod_name == "__init__" else f"pyslick.{mod_name}"
-                # Invalidate any stale cached import so we always re-import
-                for k in list(sys.modules.keys()):
-                    if k == "pyslick" or k.startswith("pyslick."):
-                        del sys.modules[k]
-                mod = importlib.import_module(pkg_target)
+                if pkg_target in sys.modules:
+                    mod = importlib.reload(sys.modules[pkg_target])
+                else:
+                    mod = importlib.import_module(pkg_target)
             else:
                 _spec = importlib.util.spec_from_file_location(f"_smoke_{mod_name}", mod_path)
                 mod = importlib.util.module_from_spec(_spec)
+                sys.modules[_spec.name] = mod
                 _spec.loader.exec_module(mod)
             res.record(f"import: {mod_name}", True)
         except Exception as e:

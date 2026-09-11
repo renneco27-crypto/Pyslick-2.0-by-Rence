@@ -24,6 +24,14 @@ import urllib.request
 import shutil
 from pathlib import Path
 
+# Set UTF-8 encoding for stdout/stderr (Windows PowerShell safe)
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # ── colours ────────────────────────────────────────────────────────────────
 BOLD  = "\033[1m"
 GREEN = "\033[92m"

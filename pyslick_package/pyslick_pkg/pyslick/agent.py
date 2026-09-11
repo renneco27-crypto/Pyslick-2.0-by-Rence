@@ -1167,11 +1167,15 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     dl_words = set(_re_t1.findall(r"[a-zA-Z0-9+#.]+", dl))
     has_ft_prefix = any(p in dl for p in _FT_PREFIXES)
     has_ft_word = bool(dl_words & _FT_KEYWORDS)
-    is_line_or_func = any(k in dl for k in [
-        "line", "lines", "comment", "comments", "function", "def", "method", "class",
-        "commit", "push", "graph", "checkpoint", "design", "webpage", "architecture",
-        "ui", "component", "components", "layout", "appearance", "interface", "style", "styles", "visual"
-    ])
+    _LINE_FUNC_KEYWORDS = [
+        r"\bline\b", r"\blines\b", r"\bcomment\b", r"\bcomments\b",
+        r"\bfunction\b", r"\bdef\b", r"\bmethod\b", r"\bclass\b",
+        r"\bcommit\b", r"\bpush\b", r"\bgraph\b", r"\bcheckpoint\b",
+        r"\bdesign\b", r"\bwebpage\b", r"\barchitecture\b",
+        r"\bui\b", r"\bcomponent\b", r"\bcomponents\b", r"\blayout\b",
+        r"\bappearance\b", r"\binterface\b", r"\bstyle\b", r"\bstyles\b", r"\bvisual\b",
+    ]
+    is_line_or_func = any(_re_t1.search(kw, dl) for kw in _LINE_FUNC_KEYWORDS)
 
     # Dynamic regex: 'show me all kotlin files', 'list zig files', 'all lua scripts', etc.
     _STOP_WORDS_DYNAMIC = {
@@ -1206,6 +1210,16 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if any(t in dl for t in _DESIGN_EARLY_TRIGGERS):
         return "graph", 100.0, [("graph", 100.0)]
 
+    # ── Tier 0.54: General Recon / Multi-Target Early Route ──────────────
+    _RECON_EARLY_TRIGGERS = {
+        "find functions and files", "functions and files", "files and functions",
+        "nearest file names", "nearest functions", "find nearest file names",
+        "find nearest functions", "graphify the nodes", "graphify nodes",
+        "general recon", "find files and functions"
+    }
+    if any(t in dl for t in _RECON_EARLY_TRIGGERS):
+        return "nearest", 100.0, [("nearest", 100.0)]
+
     # ── Tier 0.55: App-Summary Early Exit — wins before file_info "what does" can steal it ─
     _APP_SUMMARY_EARLY = {
         "what does this app", "what does this project", "what does this repo",
@@ -1228,11 +1242,29 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if any(t in dl for t in _APP_SUMMARY_EARLY):
         return "run_info", 100.0, [("run_info", 100.0)]
 
-    # ── Tier 0.6: File-First Rule — "show me <filename/dotfile>" matches project files first ─
-    _SHOW_FILE_PREFIXES = ("show me", "show", "cat", "scan", "open", "read", "view", "display", "what is in", "contents of")
+    # ── Tier 0.6: File-First Rule — "show me / where is / find <filename>" matches project files first ─
+    _SHOW_FILE_PREFIXES = (
+        "show me", "show", "cat", "scan", "open", "read", "view", "display",
+        "what is in", "contents of",
+        "where is", "where's", "locate", "find me",
+    )
+    _WHERE_IS_PREFIXES = ("where is", "where's", "locate", "find me")
     has_show_prefix = any(p in dl for p in _SHOW_FILE_PREFIXES)
+    has_where_prefix = any(p in dl for p in _WHERE_IS_PREFIXES)
+
+    # Strip navigation prefixes to isolate the target filename
+    _prefix_strip_re = _re_t1.compile(
+        r'^(?:show\s+me|show|cat|scan|open|read|view|display'
+        r'|what\s+is\s+in|contents\s+of'
+        r'|where\s+is|where\'s|locate|find\s+me)'
+        r'\s+(?:the\s+)?'
+    )
+    # Also strip trailing location words like "located", "stored", "saved"
+    _suffix_strip_re = _re_t1.compile(r'\s+(?:located|stored|saved|at|in|found)\s*$')
+
     if has_show_prefix and not is_line_or_func:
-        clean_target = _re_t1.sub(r'^(?:show\s+me|show|cat|scan|open|read|view|display|what\s+is\s+in|contents\s+of)\s+(?:the\s+)?', '', dl).strip()
+        clean_target = _prefix_strip_re.sub('', dl).strip()
+        clean_target = _suffix_strip_re.sub('', clean_target).strip()
         clean_target_no_space = clean_target.replace(" ", "").replace(".", "").lower()
 
         _KNOWN_FILE_NAMES = {
@@ -1242,7 +1274,10 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
             "cargo.toml", "go.mod", "go.sum", "gemfile", "dockerfile", "makefile",
             "license", "readme", "readme.md", "changelog", "contributing",
             "env", ".env", "dockerignore", ".dockerignore", "editorconfig", ".editorconfig",
-            "eslintrc", ".eslintrc", "prettierrc", ".prettierrc", "babelrc", ".babelrc"
+            "eslintrc", ".eslintrc", "prettierrc", ".prettierrc", "babelrc", ".babelrc",
+            # pyslick-specific known files
+            "graphify.md", "graphify", "graphifymd",
+            "agent.py", "intentvocabjson", "intent_vocab.json",
         }
 
         if clean_target in _KNOWN_FILE_NAMES or clean_target_no_space in _KNOWN_FILE_NAMES:
@@ -1263,7 +1298,7 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
                     (len(clean_target) >= 4 and clean_target == bname_clean)):
                     return "file_info", 100.0, [("file_info", 100.0)]
 
-    # ── Tier 1: exact vocab match — word-boundary check for single-word patterns ─
+    # ── Tier 1: exact vocab match — word-boundary check for patterns ─
     for intent_name in priority:
         cfg = intents.get(intent_name, {})
         patterns = cfg.get("require_any", [])
@@ -1272,12 +1307,8 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
         if any(ex in dl for ex in excludes):
             continue
         for p in patterns:
-            if " " in p:
-                # Multi-word phrase — plain substring is fine (specific enough)
-                matched = p in dl
-            else:
-                # Single word — require whole-word match so "patch" doesn't fire on "patchit"
-                matched = bool(_re_t1.search(r'\b' + _re_t1.escape(p) + r'\b', dl))
+            pattern_regex = r'\b' + r'\s+'.join(_re_t1.escape(w) for w in p.split()) + r'\b'
+            matched = bool(_re_t1.search(pattern_regex, dl))
             if matched:
                 return intent_name, 100.0, [(intent_name, 100.0)]
 
@@ -2782,7 +2813,7 @@ def _run_local_agent(directive: str) -> None:
         _print_all_comments(target, start_line=start_ln, end_line=end_ln)
         return
 
-    # ── NEAREST NODE / FUNCTION / METHOD / OBJECT ─────────────────────
+    # ── NEAREST NODE / FUNCTION / METHOD / OBJECT / GENERAL RECON ──────
     if intent == "nearest":
         # Extract a line number if present
         line_match = re.search(r"(?:line|l)\s*(\d+)", dl)
@@ -2797,16 +2828,21 @@ def _run_local_agent(directive: str) -> None:
         target = matched_files[0] if matched_files else None
 
         query = sym_name if sym_name else (f"line {line_num} in {target}" if line_num and target else active_directive)
-        hdr("Nearest Functions / Methods / Objects", sym_name or str(line_num) or active_directive)
+        hdr("Nearest Functions / Files / Objects", sym_name or str(line_num) or active_directive)
 
-        enriched_nodes = _find_nearest_nodes_with_encapsulation(query, all_files, top_k=3)
+        enriched_nodes = _find_nearest_nodes_with_encapsulation(query, all_files, top_k=5)
 
-        if not enriched_nodes:
-            warn("No symbols or graph nodes found.")
-            return
+        if enriched_nodes:
+            print(f"  {CYAN}Nearest Functions & Symbols (Graphify Scope Encapsulation):{RST}")
+            for item in enriched_nodes:
+                _print_encapsulated_node_view(item, all_files, dl, max_compact_lines=20)
+        else:
+            print(f"  {DIM}No graph symbols matching '{query}' found.{RST}")
 
-        for item in enriched_nodes:
-            _print_encapsulated_node_view(item, all_files, dl, max_compact_lines=20)
+        if matched_files:
+            print(f"\n  {CYAN}Nearest File Names:{RST}")
+            for fp in matched_files[:6]:
+                print(f"    • {BOLD}{fp}{RST}")
         return
 
     # ── SCAN FUNCTION (print function end-to-end with comments) ────────
@@ -2892,7 +2928,22 @@ def _run_local_agent(directive: str) -> None:
                     print(f"  {DIM}{ln:4d}│{RST} {line}")
             return
 
-        warn(f"Could not locate function matching '{query_term}'. Try specifying the function name or file.")
+        # Fallback to Broad Recon Mode when single function match fails
+        hdr("Broad Recon Fallback", query_term)
+        enriched_nodes = _find_nearest_nodes_with_encapsulation(query_term, all_files, top_k=4)
+        if enriched_nodes:
+            print(f"  {CYAN}Nearest Functions / Symbols & Scope Encapsulation:{RST}")
+            for item in enriched_nodes:
+                _print_encapsulated_node_view(item, all_files, dl, max_compact_lines=20)
+
+        matched_files = _fuzzy_match_files(active_directive, all_files)
+        if matched_files:
+            print(f"\n  {CYAN}Nearest Matched Files:{RST}")
+            for fp in matched_files[:5]:
+                print(f"    • {BOLD}{fp}{RST}")
+
+        if not enriched_nodes and not matched_files:
+            warn(f"Could not locate function or files matching '{query_term}'. Try specifying the function name or file.")
         return
 
     # ── CALL GRAPH ────────────────────────────────────────────────────

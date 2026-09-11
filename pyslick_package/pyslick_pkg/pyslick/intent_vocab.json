@@ -157,6 +157,16 @@
     "nearest": {
       "weight": 1.05,
       "require_any": [
+        "find functions and files",
+        "functions and files",
+        "files and functions",
+        "find nearest file names",
+        "find nearest functions",
+        "nearest file names",
+        "nearest functions",
+        "find functions",
+        "find files",
+        "general recon",
         "function methods objects",
         "functions methods objects",
         "function method object",
@@ -208,7 +218,13 @@
         "function handles",
         "function that handles"
       ],
-      "exclude_if": []
+      "exclude_if": [
+        "files",
+        "and files",
+        "and file",
+        "file names",
+        "general recon"
+      ]
     },
     "graph": {
       "weight": 1.15,
@@ -280,7 +296,7 @@
         "visual styling",
         "design system"
       ],
-      "exclude_if": []
+      "exclude_if": ["where is", "where's", "locate", "located", "find me", "where can i find"]
     },
     "connect": {
       "weight": 1.10,

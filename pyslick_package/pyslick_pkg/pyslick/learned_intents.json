@@ -2,5 +2,7 @@
   "thats not what i meant i meant scan package.json line 24-72": "help",
   "i meant scan package.json line 24-72": "help",
   "what are lines 23-50 of llmpy": "file_info",
-  "show me git": "list_files"
+  "show me git": "list_files",
+  "options": "help",
+  "toshtml teeth": "nearest"
 }

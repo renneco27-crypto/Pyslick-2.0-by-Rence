@@ -69,13 +69,32 @@ queries = [
     ("check indentation", "indentation"),
     ("find indentation issues", "indentation"),
     ("indentation problems", "indentation"),
-    ("run smoketest", "smoketest"),
-    ("smoketest", "smoketest"),
-    ("run smoke test", "smoketest"),
+    # ── general recon & multi-target queries ───────────────
+    ("find functions and files card model schema state handlers", "nearest"),
+    ("find nearest file names", "nearest"),
+    ("find nearest functions", "nearest"),
+    ("general recon", "nearest"),
+    ("find function handle_click", "scan_function"),
+    # ── "where is" file-location queries → file_info ────────
+    ("where is graphify.md located", "file_info"),
+    ("where is graphify.md", "file_info"),
+    ("where's graphify.md", "file_info"),
+    ("locate graphify.md", "file_info"),
+    ("where is the readme", "file_info"),
 ]
 
 print("=== Testing Confidence-Scored Intent Classification ===")
+failed_count = 0
 for q, expected in queries:
     classified = agent._classify_intent(q)
-    status = "[PASS]" if classified == expected else f"[FAIL: got {classified}]"
+    is_ok = (classified == expected)
+    if not is_ok:
+        failed_count += 1
+    status = "[PASS]" if is_ok else f"[FAIL: got {classified}]"
     print(f"{status:18s} | \"{q}\" -> {classified}")
+
+if failed_count > 0:
+    print(f"\n❌ {failed_count} classification tests failed!")
+    sys.exit(1)
+else:
+    print("\n✔ All intent classification tests passed!")
