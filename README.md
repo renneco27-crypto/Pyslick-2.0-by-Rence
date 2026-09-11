@@ -252,4 +252,23 @@ Built for developers who move fast and want their tools to keep up.
 </div>
 
 
+<img width="1289" height="621" alt="image" src="https://github.com/user-attachments/assets/4fd21de3-41de-48b1-b2bf-994d1a9c18ed" />
+<img width="1156" height="517" alt="image" src="https://github.com/user-attachments/assets/b60194c8-6baf-4de4-993b-23d2009196c4" />
+<img width="1365" height="655" alt="image" src="https://github.com/user-attachments/assets/7da68aa7-daa1-4668-8b26-549cdcd749c8" />
 
+
+## 🚀 Recent Features & Capabilities (v0.2.0)
+
+### 🧠 1. App Summary & Architecture Overview
+* **Instant Project Summarization**: Ask `"what does this program do"`, `"what does this app do"`, or `"whats this project"` to generate an immediate high-level architecture overview without an LLM.
+* **Top 5 God Nodes & First Comments**: Reads graph centrality from `graph.json` or AST analysis to highlight the 5 most connected modules in the codebase alongside their initial purpose comments.
+* **Separator Cleaning**: Automatically ignores ASCII banner borders (`===`, `---`, `///`) to pull pure semantic comments.
+
+### 🔍 2. Node-First Encapsulation & Smart Scope Resolution
+* **Nearest Node Resolution**: Querying any keyword (e.g. `pyslick "weights"`) searches graph nodes, AST definitions, and comment blocks first.
+* **Enclosing Scope Detection**: Automatically discovers the parent function, class, struct, or code block enclosing the matched symbol across Python, JavaScript, TypeScript, Kotlin, Java, C/C++, Rust, and Go.
+* **$\le$ 20-Line Smart Compact View**: If the enclosing function exceeds 20 lines, PySlick displays a clean preview (header, docstring, first lines, and closing return) plus an exact PowerShell one-liner (`Get-Content | Select-Object`) to view the rest.
+* **End-to-End Caller Tracking**: Displays all functions and line numbers across the entire codebase that call the target function:
+  ```text
+  Called by (functions & line numbers end-to-end):
+    ← def _run_local_agent in agent.py (called at L2449, function scope L2219-L3211)
