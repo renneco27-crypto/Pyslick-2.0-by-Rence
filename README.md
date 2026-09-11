@@ -1,4 +1,4 @@
-[README (1).md](https://github.com/user-attachments/files/32055815/README.1.md)
+
 <div align="center">
 
 ```
@@ -277,3 +277,12 @@ Built for developers who move fast and want their tools to keep up.
   pyslick agent -override comments "show me comments in query.py"
 pyslick agent -override file_info "some weirdly phrased query"
 pyslick agent -override grep "the pattern I'm looking for"
+
+
+
+
+Permanently (survives restarts):
+[System.Environment]::SetEnvironmentVariable("NVIDIA_API_KEY", "nvapi-xxxxxxxxxxxxxxxxxxxx", "User")
+
+After the permanent one, restart PowerShell once and pyslick will automatically pick NVIDIA over the local GGUF. You can verify it's live with:
+echo $env:NVIDIA_API_KEY
