@@ -272,3 +272,8 @@ Built for developers who move fast and want their tools to keep up.
   ```text
   Called by (functions & line numbers end-to-end):
     ← def _run_local_agent in agent.py (called at L2449, function scope L2219-L3211)
+
+
+  pyslick agent -override comments "show me comments in query.py"
+pyslick agent -override file_info "some weirdly phrased query"
+pyslick agent -override grep "the pattern I'm looking for"
