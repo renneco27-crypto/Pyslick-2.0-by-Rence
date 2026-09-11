@@ -4,5 +4,6 @@
   "what are lines 23-50 of llmpy": "file_info",
   "show me git": "list_files",
   "options": "help",
-  "toshtml teeth": "nearest"
+  "toshtml teeth": "nearest",
+  "help": "help"
 }

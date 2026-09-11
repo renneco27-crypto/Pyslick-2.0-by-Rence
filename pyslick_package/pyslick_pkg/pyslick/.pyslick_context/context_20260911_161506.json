@@ -1,0 +1,106 @@
+{
+  "directive": "explain local llm model loading",
+  "expanded_query": "explain local llm model loading loading llm model loading_model",
+  "search_terms_used": [
+    "explain local llm model loading",
+    "local",
+    "model",
+    "llm",
+    "loading_model",
+    "explain local llm model loading loading llm model loading_model",
+    "explain",
+    "loading"
+  ],
+  "generated_at": "2026-09-11T16:15:06",
+  "budget": {
+    "whole_file_max_lines": 300,
+    "snippet_context_lines": 8,
+    "max_files": 6,
+    "max_total_lines": 1200,
+    "max_snippets_per_file": 5
+  },
+  "files": [
+    {
+      "path": "C:\\Users\\corte\\Documents\\do not delete second brain\\pyslick\\pyslick_package\\pyslick_pkg\\pyslick\\autoloop.py",
+      "mode": "snippet",
+      "line_count": 325,
+      "snippet_count": 2,
+      "snippets": [
+        {
+          "start_line": 101,
+          "end_line": 117,
+          "text": "  101:     replace_str: str,\n  102:     test_output: str,\n  103:     attempt_number: int,\n  104: ) -> tuple[str | None, str | None]:\n  105:     \"\"\"Ask the Claude API for a corrected find/replace pair given a test\n  106:     failure. Returns (new_find_str, new_replace_str) or (None, None) if the\n  107:     API is unavailable or the response can't be parsed.\"\"\"\n  108: \n  109:     # Give the model a window of context around the failed find_str so it\n  110:     # can see real surrounding code, not just the two strings.\n  111:     idx = file_before.find(find_str)\n  112:     if idx != -1:\n  113:         start = max(0, idx - 400)\n  114:         end = min(len(file_before), idx + len(find_str) + 400)\n  115:         context = file_before[start:end]\n  116:     else:\n  117:         context = file_before[:1500]"
+        },
+        {
+          "start_line": 138,
+          "end_line": 154,
+          "text": "  138: Give a corrected FIND and REPLACE pair that fixes the failure, using the\n  139: exact original code style. FIND must be an exact substring that exists in\n  140: the file above. Respond with ONLY valid JSON, no markdown fences, no\n  141: commentary:\n  142: {{\"find\": \"...\", \"replace\": \"...\"}}\"\"\"\n  143: \n  144:     try:\n  145:         payload = json.dumps({\n  146:             \"model\": \"claude-sonnet-4-6\",\n  147:             \"max_tokens\": 1000,\n  148:             \"messages\": [{\"role\": \"user\", \"content\": prompt}],\n  149:         }).encode()\n  150: \n  151:         req = urllib.request.Request(\n  152:             \"https://api.anthropic.com/v1/messages\",\n  153:             data=payload,\n  154:             headers={\"Content-Type\": \"application/json\"},"
+        }
+      ]
+    },
+    {
+      "path": "C:\\Users\\corte\\Documents\\do not delete second brain\\pyslick\\pyslick_package\\pyslick_pkg\\pyslick\\recon.py",
+      "mode": "snippet",
+      "line_count": 630,
+      "snippet_count": 2,
+      "snippets": [
+        {
+          "start_line": 53,
+          "end_line": 69,
+          "text": "   53: from graphify import query as graphify_query\n   54: from jsx_tag_checker import check_jsx_tags\n   55: from patchit import (\n   56:     mode_show_lines,\n   57:     mode_find_replace,\n   58:     read_file,\n   59: )\n   60: from autoloop import run_auto_fix_loop, print_summary\n   61: from llm import maybe_extract_find_replace\n   62: \n   63: try:\n   64:     from . import git_log, git_checkpoint\n   65: except ImportError:\n   66:     try:\n   67:         from pyslick import git_log, git_checkpoint\n   68:     except ImportError:\n   69:         def git_log(): pass"
+        },
+        {
+          "start_line": 337,
+          "end_line": 366,
+          "text": "  337: \n  338: \n  339: def phase4_identify(listing: str) -> tuple[str | None, str | None]:\n  340:     hdr(\"Phase 4\", \"Identify \u2014 find exact className to patch\")\n  341:     return _phase4_identify_core(listing)\n  342: \n  343: \n  344: def _phase4_identify_core(listing: str, directive: str = \"\") -> tuple[str | None, str | None]:\n  345:     \"\"\"Try local LLM first to extract find/replace, fall back to manual input.\"\"\"\n  346: \n  347:     # Try local LLM if directive is provided\n  348:     if directive:\n  349:         print(f\"\\n  {DIM}[local LLM] Attempting to extract find/replace blocks...{RST}\")\n  350:         find_str, replace_str = maybe_extract_find_replace(directive, listing)\n  351:         if find_str and replace_str:\n  352:             ok(f\"Local LLM extracted find/replace:\")\n  353:             print(f\"  {YELL}Find:    {find_str[:100]}{'...' if len(find_str) > 100 else ''}{RST}\")\n  354:             print(f\"  {GREEN}Replace: {replace_str[:100]}{'...' if len(replace_str) > 100 else ''}{RST}\")\n  355:             confirm = input(f\"\\n  {BOLD}Use this LLM suggestion? (yes/no){RST}: \").strip().lower()\n  356:             if confirm in (\"yes\", \"y\"):\n  357:                 return find_str, replace_str\n  358:             warn(\"LLM suggestion declined \u2014 falling back to manual input.\")\n  359: \n  360:     class_re = re.compile(r'(\\d+)\\s+.*className=[\"\\']([^\"\\']{10,})[\"\\']')\n  361:     hits = class_re.findall(listing)\n  362: \n  363:     if hits:\n  364:         print(\"\\n  className entries found:\")\n  365:         for i, (lineno, classes) in enumerate(hits):\n  366:             print(f\"  [{i}]  line {lineno}: {YELL}{classes}{RST}\")"
+        }
+      ]
+    },
+    {
+      "path": "C:\\Users\\corte\\Documents\\do not delete second brain\\pyslick\\pyslick_package\\pyslick_pkg\\pyslick\\agent.py",
+      "mode": "snippet",
+      "line_count": 3750,
+      "snippet_count": 5,
+      "snippets": [
+        {
+          "start_line": 6,
+          "end_line": 30,
+          "text": "    6:     pyslick agent \"make the mic button 40% larger\"\n    7:     pyslick agent \"the flashcard bottom has too much padding\"\n    8:     pyslick agent \"rename the handleClick function to onMicPress\"\n    9: \n   10: Unlike `recon` (guided, human-driven) or `query` (read-only lookup),\n   11: the agent is given a VOCABULARY of tool calls and uses Claude to:\n   12: \n   13:   1. Plan which tools to call and in what order\n   14:   2. Call them autonomously (all read-only, all local)\n   15:   3. Synthesise what it found into a concrete patch proposal\n   16:   4. Show you the diff and ask ONE confirmation question before writing\n   17: \n   18: The agent never writes, commits, or modifies anything without your\n   19: explicit \"yes\". One human gate. Everything before that is autonomous.\n   20: \n   21: \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   22: TOOL VOCABULARY  (PowerShell-equivalent, all local, all read-only)\n   23: \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   24: \n   25:   get_file(path)\n   26:       Read a file's full content.\n   27:       PowerShell: Get-Content -Path <path> -Raw\n   28: \n   29:   get_file_lines(path)\n   30:       Read with 3-digit line numbers prefixed."
+        },
+        {
+          "start_line": 53,
+          "end_line": 108,
+          "text": "   53:       Run graphify's AST call-graph query on a .py file: returns matched\n   54:       functions/classes + their callers/callees, scored by relevance.\n   55:       Equivalent to `pyslick graphify-query <path> <question>`\n   56: \n   57:   jsx_check(path)\n   58:       Validate JSX/HTML tag matching in a file.\n   59:       Returns a list of any mismatched tags, or \"OK\".\n   60: \n   61:   llm_expand(directive)\n   62:       If the local LLM is available, expand the directive into extra\n   63:       search terms for richer fuzzy matching. Falls back to the directive\n   64:       unchanged if no model is present.\n   65: \n   66: \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   67: FLOW\n   68: \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   69: \n   70:   1. Send the directive + tool schema to Claude (Anthropic API)\n   71:   2. Claude returns a PLAN (which tools to call, why)\n   72:   3. Execute each tool call locally (no data leaves your machine)\n   73:   4. Feed results back to Claude for synthesis\n   74:   5. Claude proposes: file, find_str, replace_str, explanation\n   75:   6. Show diff \u2192 ONE confirmation \u2192 patchit writes it\n   76:   7. git checkpoint\n   77: \n   78: The tool calls in steps 2-4 loop up to MAX_TOOL_ROUNDS times so the\n   79: agent can react to what it finds (e.g. \"that file had no className,\n   80: let me check the CSS file instead\").\n   81: \n   82: \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   83: LOCAL LLM MODE (no API key)\n   84: \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   85: \n   86: When no ANTHROPIC_API_KEY / NVIDIA_API_KEY is set, the agent falls back\n   87: to _run_local_agent(). That function uses intent_vocab.json to route the\n   88: query to the right handler \u2014 no reasoning required from the 124M model.\n   89: \n   90: Intent routing order (first match wins):\n   91:   help         \u2192 print pyslick command docs\n   92:   git          \u2192 show git status / push\n   93:   list_files   \u2192 walk directory, show files + their main symbols\n   94:   comments     \u2192 show every comment in the matched file\n   95:   nearest      \u2192 find_nearest_nodes around a line or symbol\n   96:   scan_function\u2192 print a named function end-to-end with comments\n   97:   graph        \u2192 ast_query / graphify call graph\n   98:   connect      \u2192 cross-file call-graph walk\n   99:   file_info    \u2192 purpose + key functions + first 3 lines per function\n  100:   patch        \u2192 fuzzy match \u2192 LLM find/replace \u2192 diff \u2192 confirm\n  101: \n  102: The vocab file lives next to this file: intent_vocab.json\n  103: \"\"\"\n  104: \n  105: from __future__ import annotations\n  106: \n  107: import os\n  108: import sys"
+        },
+        {
+          "start_line": 143,
+          "end_line": 165,
+          "text": "  143: def ok(msg):   print(f\"{GREEN}  \u2714 {msg}{RST}\")\n  144: def warn(msg): print(f\"{YELL}  \u26a0 {msg}{RST}\")\n  145: def err(msg):  print(f\"{RED}  \u2716 {msg}{RST}\")\n  146: \n  147: # \u2500\u2500 API providers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  148: PROVIDERS = {\n  149:     \"anthropic\": {\n  150:         \"api_url\": \"https://api.anthropic.com/v1/messages\",\n  151:         \"model\": \"claude-sonnet-4-6\",\n  152:         \"key_env\": \"ANTHROPIC_API_KEY\",\n  153:         \"headers\": {\"anthropic-version\": \"2023-06-01\"},\n  154:     },\n  155:     \"nvidia\": {\n  156:         \"api_url\": \"https://integrate.api.nvidia.com/v1/chat/completions\",\n  157:         \"model\": \"meta/llama-3.1-70b-instruct\",\n  158:         \"key_env\": \"NVIDIA_API_KEY\",\n  159:         \"headers\": {},\n  160:     },\n  161: }\n  162: \n  163: DEFAULT_PROVIDER = \"anthropic\"\n  164: MAX_TOOL_ROUNDS  = 6\n  165: "
+        },
+        {
+          "start_line": 181,
+          "end_line": 197,
+          "text": "  181:     # Shell / Scripts\n  182:     \".sh\", \".bash\", \".zsh\", \".ps1\", \".bat\", \".cmd\",\n  183:     # Config / Data\n  184:     \".json\", \".yaml\", \".yml\", \".toml\", \".sql\", \".md\", \".env\", \".xml\",\n  185: }\n  186: \n  187: \n  188: # \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n  189: # LOCAL TOOL IMPLEMENTATIONS\n  190: # \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n  191: \n  192: def tool_get_file(path: str) -> str:\n  193:     \"\"\"Read a file's full content.\"\"\"\n  194:     p = Path(path)\n  195:     if not p.exists():\n  196:         return f\"ERROR: file not found: {path}\"\n  197:     try:"
+        },
+        {
+          "start_line": 349,
+          "end_line": 392,
+          "text": "  349:         output = buf.getvalue().strip()\n  350:         return output if output else \"OK \u2014 no JSX tag mismatches found.\"\n  351:     except ImportError:\n  352:         return \"(jsx_tag_checker not available)\"\n  353:     except Exception as e:\n  354:         return f\"ERROR: {e}\"\n  355: \n  356: \n  357: def tool_llm_expand(directive: str) -> str:\n  358:     \"\"\"Expand directive using local LLM (if available).\"\"\"\n  359:     try:\n  360:         from llm import maybe_expand_query, is_available\n  361:         if not is_available():\n  362:             return f\"(LLM not available \u2014 using directive as-is: {directive})\"\n  363:         expanded = maybe_expand_query(directive)\n  364:         if expanded == directive:\n  365:             return f\"(LLM returned no expansion: {directive})\"\n  366:         return f\"Expanded: {expanded}\"\n  367:     except ImportError:\n  368:         return f\"(llm module unavailable: {directive})\"\n  369:     except Exception as e:\n  370:         return f\"ERROR: {e}\"\n  371: \n  372: \n  373: def tool_llm_patch(directive: str, code_context: str) -> str:\n  374:     \"\"\"Use local LLM to extract find/replace blocks from code context.\"\"\"\n  375:     try:\n  376:         from llm import maybe_extract_find_replace, is_available\n  377:         if not is_available():\n  378:             return f\"(LLM not available \u2014 cannot auto-extract patch)\"\n  379:         find_str, replace_str = maybe_extract_find_replace(directive, code_context)\n  380:         if find_str and replace_str:\n  381:             return json.dumps({\"find\": find_str, \"replace\": replace_str})\n  382:         return f\"(LLM could not extract patch from context)\"\n  383:     except ImportError:\n  384:         return f\"(llm module unavailable)\"\n  385:     except Exception as e:\n  386:         return f\"ERROR: {e}\"\n  387: \n  388: \n  389: def tool_pyslick_help() -> str:\n  390:     \"\"\"Show pyslick help information.\"\"\"\n  391:     try:\n  392:         from pyslick import print_help"
+        }
+      ]
+    },
+    {
+      "path": "C:\\Users\\corte\\Documents\\do not delete second brain\\pyslick\\pyslick_package\\pyslick_pkg\\pyslick\\comment_blocks.py",
+      "mode": "snippet",
+      "line_count": 381,
+      "snippet_count": 1,
+      "snippets": [
+        {
+          "start_line": 29,
+          "end_line": 45,
+          "text": "   29:    The \"block\" it labels is: the next contiguous non-blank lines until\n   30:    either a blank line, a lower/equal-indentation dedent (Python), or a\n   31:    closing brace back at the comment's own indentation (C-like langs).\n   32: \n   33: Both kinds are returned as \"comment nodes\" in the same shape as\n   34: find_nearest_nodes.load_graph_nodes(), so they can be merged into the same\n   35: rapidfuzz match pass pyslick already runs.\n   36: \n   37: No LLM. No external deps beyond what pyslick already uses.\n   38: \"\"\"\n   39: \n   40: from __future__ import annotations\n   41: \n   42: import os\n   43: import re\n   44: from dataclasses import dataclass, field\n   45: "
+        }
+      ]
+    }
+  ]
+}
