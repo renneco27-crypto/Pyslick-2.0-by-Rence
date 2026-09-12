@@ -3143,54 +3143,6 @@ def _ask_did_you_mean(directive: str, intent: str, confidence: float, top3: list
 # LOCAL LLM AGENT (no API key required)
 # ═════════════════════════════════════════════════════════════════════════
 
-def _run_relay_agent(directive: str) -> None:
-    """
-    Relay path: package context into relay.json so the browser extension
-    can inject it into claude.ai, then block until /claude-response fires.
-    """
-    import json as _json, time as _time
-
-    STATE_DIR = Path.home() / ".pyslick"
-    RELAY_FILE = STATE_DIR / "relay.json"
-    RESPONSE_FILE = STATE_DIR / "claude_response.json"
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Collect context the same way recon-pack does
-    all_files = _collect_all_files()
-    matched   = _fuzzy_match_files(directive, all_files)[:3]
-    blocks    = []
-    for f in matched:
-        try:
-            content = Path(f).read_text(encoding="utf-8", errors="replace")
-            blocks.append({"file": f, "content": content})
-        except Exception:
-            pass
-
-    payload = {"directive": directive, "files": blocks}
-    RELAY_FILE.write_text(_json.dumps(payload, indent=2), encoding="utf-8")
-    print(f"{DIM}  [relay] Context written â†' waiting for extension to POST response…{RST}")
-
-    # Clear any stale response
-    if RESPONSE_FILE.exists():
-        RESPONSE_FILE.unlink()
-
-    # Poll for response (extension POSTs to /claude-response â†' relay_server saves it)
-    timeout, interval = 120, 1
-    for _ in range(timeout):
-        _time.sleep(interval)
-        if RESPONSE_FILE.exists():
-            try:
-                data = _json.loads(RESPONSE_FILE.read_text(encoding="utf-8"))
-                print(f"\n{BOLD}Claude (via relay):{RST}")
-                for block in data.get("blocks", []):
-                    print(block.get("content", ""))
-            except Exception as exc:
-                print(f"{YELL}  [relay] Could not parse response: {exc}{RST}")
-            return
-
-    print(f"{YELL}  [relay] Timed out after {timeout}s — no response received.{RST}")
-    print(f"{DIM}  Is the browser extension running and connected to claude.ai?{RST}")
-
 def _run_local_agent(directive: str) -> None:
     """
     Vocab-driven local agent for the 124M-param model.
