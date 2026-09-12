@@ -96,14 +96,6 @@ def _start_thread(port: int) -> HTTPServer:
     return server
 
 
-def is_running(port: int = PORT) -> bool:
-    """Return True if the relay server is already listening on the given port."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        return sock.connect_ex(("127.0.0.1", port)) == 0
-    finally:
-        sock.close()
-
 def ensure_running(port: int = PORT) -> None:
     """Start server in daemon thread if not already up. Called from __init__.py."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
