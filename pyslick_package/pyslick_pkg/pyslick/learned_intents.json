@@ -5,5 +5,7 @@
   "show me git": "list_files",
   "options": "help",
   "toshtml teeth": "nearest",
-  "help": "help"
+  "help": "help",
+  "functions aichatbot": "scan_function",
+  "api keys": "graph"
 }

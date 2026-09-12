@@ -114,23 +114,37 @@ def _merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
     return merged
 
 
-def _find_match_ranges(lines: list[str], terms: list[str], context: int) -> list[tuple[int, int]]:
-    """Return merged 0-indexed (lo, hi) ranges around every line that
-    matches any search term (case-insensitive substring or regex)."""
+def _find_match_ranges(lines: list[str], terms: list[str], context: int) -> list[tuple[int, int, str]]:
+    """Return merged 0-indexed (lo, hi, matched_term) ranges around every
+    line that matches any search term (case-insensitive substring or
+    regex). The matched term is kept so callers can report *why* a snippet
+    was pulled in, not just where."""
     compiled = []
     for t in terms:
         try:
-            compiled.append(re.compile(t, re.IGNORECASE))
+            compiled.append((t, re.compile(t, re.IGNORECASE)))
         except re.error:
-            compiled.append(re.compile(re.escape(t), re.IGNORECASE))
+            compiled.append((t, re.compile(re.escape(t), re.IGNORECASE)))
 
     hits = []
     for i, line in enumerate(lines):
-        if any(rx.search(line) for rx in compiled):
-            lo = max(0, i - context)
-            hi = min(len(lines) - 1, i + context)
-            hits.append((lo, hi))
-    return _merge_ranges(hits)
+        for term, rx in compiled:
+            if rx.search(line):
+                lo = max(0, i - context)
+                hi = min(len(lines) - 1, i + context)
+                hits.append((lo, hi, term))
+                break
+
+    # merge overlapping ranges, keeping the first matched term for each group
+    hits.sort(key=lambda h: h[0])
+    merged: list[tuple[int, int, str]] = []
+    for lo, hi, term in hits:
+        if merged and lo <= merged[-1][1] + 1:
+            prev_lo, prev_hi, prev_term = merged[-1]
+            merged[-1] = (prev_lo, max(prev_hi, hi), prev_term)
+        else:
+            merged.append((lo, hi, term))
+    return merged
 
 
 def pack_file(path: str, terms: list[str], budget: dict) -> dict | None:
@@ -164,11 +178,12 @@ def pack_file(path: str, terms: list[str], budget: dict) -> dict | None:
 
     ranges = ranges[: budget["max_snippets_per_file"]]
     snippets = []
-    for lo, hi in ranges:
+    for lo, hi, matched_term in ranges:
         snippet_lines = [f"{i+1:5d}: {lines[i]}" for i in range(lo, hi + 1)]
         snippets.append({
             "start_line": lo + 1,
             "end_line": hi + 1,
+            "matched_term": matched_term,
             "text": "\n".join(snippet_lines),
         })
 
@@ -181,35 +196,94 @@ def pack_file(path: str, terms: list[str], budget: dict) -> dict | None:
     }
 
 
+MIN_GRAPH_MATCH_SCORE = 45  # below this, a fuzzy label match is noise, not signal
+
+FALLBACK_SKIP_DIRS = {
+    "node_modules", ".git", ".next", "dist", "build", "__pycache__",
+    ".venv", "venv", ".turbo", ".cache", "coverage", "out", "graphify-out",
+    ".pyslick_backups", ".pyslick_context",
+}
+FALLBACK_SKIP_EXTS = {
+    ".css", ".json", ".lock", ".svg", ".png", ".jpg", ".jpeg", ".gif",
+    ".pdf", ".ico", ".map", ".bak", ".woff", ".woff2", ".ttf",
+}
+
+
+def _grep_fallback_search(search_terms: list[str], already_found: list[str]) -> list[str]:
+    """Direct file-content grep across the project, used when the AST graph
+    match comes back empty or low-confidence (e.g. the query used concept
+    words like "system prompt formatting" that don't match any function or
+    class name in graph.json). Scores files by how many distinct search
+    terms appear in their content, favoring files with more hits."""
+    terms = [t.lower() for t in search_terms if len(t) > 3]
+    if not terms:
+        return []
+
+    scored: list[tuple[int, str]] = []
+    for dirpath, dirnames, filenames in os.walk(os.getcwd()):
+        dirnames[:] = [d for d in dirnames
+                       if d not in FALLBACK_SKIP_DIRS and not d.startswith(".")]
+        for fn in filenames:
+            if fn.startswith(".") or any(fn.endswith(e) for e in FALLBACK_SKIP_EXTS):
+                continue
+            fpath = os.path.normpath(os.path.join(dirpath, fn))
+            if fpath in already_found:
+                continue
+            try:
+                with open(fpath, "r", encoding="utf-8", errors="ignore") as fh:
+                    content = fh.read().lower()
+            except Exception:
+                continue
+            hits = sum(1 for t in terms if t in content)
+            if hits >= 2:
+                scored.append((hits, fpath))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [path for _, path in scored]
+
+
 def gather_candidate_files(directive: str, expanded: str) -> list[str]:
-    """Reuse recon's existing search machinery to rank candidate files —
-    same fuzzy graph match + comment-block scan, no new matching logic."""
+    """Rank candidate files via fuzzy graph match + comment-block scan first;
+    fall back to direct file-content grep when the graph match is weak or
+    empty. The graph only knows AST symbol names (function/class labels), so
+    a concept-style query ("system prompt formatting") can score a false
+    positive against an unrelated symbol (e.g. a CSS class) — the confidence
+    threshold below filters that out, and the grep fallback catches the case
+    where nothing scored well at all."""
     nodes = load_graph_nodes() or []
 
     comment_nodes_raw = scan_project_for_comment_blocks(os.getcwd())
     comment_nodes = comment_nodes_as_graph_nodes(comment_nodes_raw)
 
     all_nodes = nodes + comment_nodes
-    if not all_nodes:
-        return []
 
-    from rapidfuzz import process
-    from rapidfuzz.fuzz import WRatio
+    ranked_paths: list[str] = []
 
-    labels = [n["label"] for n in all_nodes]
-    raw_results = process.extract(expanded, labels, scorer=WRatio, limit=20)
+    if all_nodes:
+        from rapidfuzz import process
+        from rapidfuzz.fuzz import WRatio
 
-    ranked_paths = []
-    for match, score, index in raw_results:
-        node = all_nodes[index]
-        if node["type"] in ("marker_block", "descriptive_block"):
-            path = node["_comment_node"].file
-        else:
-            # node ids from graph nodes are expected to carry a file hint;
-            # fall back to skipping if we can't resolve one cleanly.
-            path = node.get("file") or node.get("path")
-        if path and os.path.isfile(path) and path not in ranked_paths:
-            ranked_paths.append(path)
+        labels = [n["label"] for n in all_nodes]
+        raw_results = process.extract(expanded, labels, scorer=WRatio, limit=20)
+
+        for match, score, index in raw_results:
+            if score < MIN_GRAPH_MATCH_SCORE:
+                continue
+            node = all_nodes[index]
+            if node["type"] in ("marker_block", "descriptive_block"):
+                path = node["_comment_node"].file
+            else:
+                # node ids from graph nodes are expected to carry a file hint;
+                # fall back to skipping if we can't resolve one cleanly.
+                path = node.get("file") or node.get("path")
+            if path and os.path.isfile(path) and path not in ranked_paths:
+                ranked_paths.append(path)
+
+    # ── fallback: graph match found nothing (or too little) worth trusting ──
+    if len(ranked_paths) < 2:
+        search_terms = list({directive, expanded, *expanded.split(), *directive.split()})
+        fallback_paths = _grep_fallback_search(search_terms, ranked_paths)
+        ranked_paths.extend(fallback_paths)
 
     return ranked_paths
 
@@ -262,6 +336,12 @@ def build_pack(directive: str, budget: dict) -> dict:
         mode_label = {"full": "full file", "snippet": f"{entry.get('snippet_count', 0)} snippet(s)",
                       "skipped_no_match": "skipped (no match, too large)"}[entry["mode"]]
         print(f"  {DIM}·{RST} {path}  {DIM}({entry['line_count']} lines){RST} → {mode_label}")
+        # ── show exactly which lines/terms justified pulling this file in,
+        # so you can eyeball relevance before pasting the pack into an LLM ──
+        if entry["mode"] == "snippet":
+            for s in entry.get("snippets", []):
+                print(f"      {DIM}lines {s['start_line']}-{s['end_line']}: "
+                      f"matched '{s.get('matched_term', '?')}'{RST}")
 
     return {
         "directive": directive,

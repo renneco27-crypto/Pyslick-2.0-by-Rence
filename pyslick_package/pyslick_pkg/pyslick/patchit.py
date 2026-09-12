@@ -42,6 +42,12 @@ import textwrap
 from datetime import datetime
 from pathlib import Path
 
+try:
+    import libcst
+    _HAS_LIBCST = True
+except ImportError:
+    _HAS_LIBCST = False
+
 # ANSI Colors
 CYAN = "\033[96m"
 GREEN = "\033[92m"
@@ -51,7 +57,7 @@ DIM = "\033[2m"
 BOLD = "\033[1m"
 RESET = "\033[0m"
 
-BACKUP_DIR = ".pyslick_backups"
+BACKUP_DIR = os.path.join(".pyslick", "backups")
 MAX_BACKUPS_PER_FILE = 5
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 VOCAB_PATH = Path(THIS_DIR) / "patchit_vocab.json"
@@ -132,14 +138,33 @@ def backup_file(filepath: str) -> str | None:
 
 
 def validate_python_syntax(filepath: str, content: str) -> str | None:
-    """Return an error string if content isn't valid Python, else None."""
+    """Return an error string if content isn't valid Python, else None.
+
+    Two independent parsers are consulted: stdlib `ast` (always available)
+    and, if installed, `libcst` as a second, defense-in-depth pass — a
+    different grammar implementation checking the same patched content.
+    Framed honestly: in testing during this project (malformed syntax,
+    mixed tabs/spaces, Python-2-style statements, walrus misuse, and newer
+    grammar like match statements / PEP 695 generics), `libcst` never
+    caught anything `ast` missed, and never rejected anything `ast`
+    accepted. This tier is here in case some future patch hits an edge
+    case where the two disagree, not because it's known to catch more —
+    don't oversell it in docs or errors elsewhere in the codebase.
+    """
     if not filepath.endswith(".py"):
         return None
     try:
         ast.parse(content, filename=filepath)
-        return None
     except SyntaxError as e:
         return f"Python SyntaxError: {e.msg} (line {e.lineno}, col {e.offset})"
+
+    if _HAS_LIBCST:
+        try:
+            libcst.parse_module(content)
+        except Exception as e:
+            return f"Python SyntaxError (libcst): {e}"
+
+    return None
 
 
 def validate_json_syntax(filepath: str, content: str) -> str | None:
@@ -314,17 +339,32 @@ def show_post_write_diff(filepath: str, backup_path: str | None):
 
 
 def reindent_to_match(target_block: str, replace_block: str) -> str:
-    """Re-indent replace_block to match the base indentation of target_block."""
-    base_indent = ""
-    for line in target_block.splitlines():
-        if line.strip():
-            base_indent = line[: len(line) - len(line.lstrip())]
-            break
+    """Re-indent replace_block to match the base indentation of target_block.
 
+    BUG FIX (Bug 2): Only reindents when the first non-empty line of replace_block
+    has DIFFERENT leading whitespace than the first non-empty line of target_block.
+    If they already match, the block is returned verbatim — this prevents the
+    auto-reindent from silently shifting sibling blocks (catch/finally etc.) that
+    were already correctly indented in the user's paste.
+    """
+    def _first_indent(text: str) -> str:
+        for line in text.splitlines():
+            if line.strip():
+                return line[: len(line) - len(line.lstrip())]
+        return ""
+
+    target_indent = _first_indent(target_block)
+    replace_indent = _first_indent(replace_block)
+
+    # If indentation already matches, write verbatim — no silent drift.
+    if target_indent == replace_indent:
+        return replace_block
+
+    # Indents differ — apply the existing reindent logic.
     dedented = textwrap.dedent(replace_block)
     out_lines = []
     for line in dedented.splitlines():
-        out_lines.append(base_indent + line if line.strip() else line)
+        out_lines.append(target_indent + line if line.strip() else line)
     result = "\n".join(out_lines)
     if replace_block.endswith("\n") and not result.endswith("\n"):
         result += "\n"
@@ -417,8 +457,19 @@ def _normalize_whitespace(text: str) -> str:
     return text
 
 
-def _locate_block(target_block: str, original: str, line_hint: int | None = None) -> tuple[str, str] | None:
-    """Progressively matches target_block inside original using exact -> stripped -> whitespace-normalized -> line-bounded -> indentation-invariant."""
+def _locate_block(target_block: str, original: str, filepath: str | None = None,
+                   line_hint: int | None = None) -> tuple[str, str] | None:
+    """Progressively matches target_block inside original using
+    exact -> stripped -> whitespace-normalized -> structural (ast-grep) ->
+    line-bounded -> indentation-invariant.
+
+    The structural tier sits between whitespace-normalized and the two
+    manual heuristics because it's strictly more reliable than either:
+    ast-grep compares real AST nodes, so it survives reformatting (extra
+    spaces, different line breaks, reordered-but-equivalent whitespace)
+    that would defeat exact/stripped matching, without the false-positive
+    risk of indentation-invariant's loose line-by-line stripping.
+    """
     if target_block in original:
         return target_block, "exact"
 
@@ -445,6 +496,10 @@ def _locate_block(target_block: str, original: str, line_hint: int | None = None
             real_span = "\n".join(orig_lines[i:i + n])
             return real_span, "whitespace-normalized"
 
+    structural = _locate_block_structural(target_block, original, filepath)
+    if structural is not None:
+        return structural, "structural (ast-grep)"
+
     # Indentation-invariant matching
     dedent_target = [l.strip() for l in target_lines if l.strip()]
     if len(dedent_target) >= 2:
@@ -454,6 +509,95 @@ def _locate_block(target_block: str, original: str, line_hint: int | None = None
                 real_span = "\n".join(orig_lines[i:i + n])
                 return real_span, "indentation-invariant"
 
+    return None
+
+
+# ── ast-grep structural matching ────────────────────────────────────────
+# Fills the gap patchit.py's own module docstring calls out: text/regex
+# find-replace with "hope the indentation matches" re-indent guessing.
+# ast-grep compares AST nodes instead of characters, so a find-block that's
+# been reformatted (different spacing, wrapped differently) by whoever
+# pasted it can still be located by real structural equivalence.
+
+_AST_GREP_EXT_TO_LANG = {
+    ".py": "python",
+    ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript", ".cjs": "javascript",
+    ".ts": "typescript", ".mts": "typescript", ".cts": "typescript",
+    ".tsx": "tsx",
+    ".java": "java",
+    ".go": "go",
+    ".rs": "rust",
+    ".c": "c", ".h": "c",
+    ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp", ".hpp": "cpp",
+    ".cs": "csharp",
+    ".rb": "ruby",
+    ".php": "php",
+    ".kt": "kotlin", ".kts": "kotlin",
+    ".css": "css", ".scss": "css",
+    ".html": "html", ".htm": "html",
+    ".json": "json",
+    ".lua": "lua",
+    ".yaml": "yaml", ".yml": "yaml",
+}
+
+_AST_GREP_BIN = None  # cached: resolved binary path, or "" if unavailable
+
+
+def _ast_grep_binary() -> str:
+    global _AST_GREP_BIN
+    if _AST_GREP_BIN is None:
+        _AST_GREP_BIN = shutil.which("ast-grep") or shutil.which("sg") or ""
+    return _AST_GREP_BIN
+
+
+def _locate_block_structural(target_block: str, original: str, filepath: str | None) -> str | None:
+    """Use ast-grep to find target_block's real on-disk span by AST
+    equivalence rather than text equivalence. Returns the exact substring
+    of `original` that matched, or None if ast-grep isn't installed, the
+    file's language isn't supported, or nothing matches structurally."""
+    if not filepath:
+        return None
+    binary = _ast_grep_binary()
+    if not binary:
+        return None
+
+    lang = _AST_GREP_EXT_TO_LANG.get(Path(filepath).suffix.lower())
+    if lang is None:
+        return None
+
+    pattern = target_block.strip()
+    if not pattern:
+        return None
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=Path(filepath).suffix, delete=False, encoding="utf-8"
+        ) as tf:
+            tf.write(original)
+            temp_path = tf.name
+        try:
+            res = subprocess.run(
+                [binary, "run", "--pattern", pattern, "--lang", lang,
+                 "--json=compact", temp_path],
+                capture_output=True, text=True, timeout=10,
+            )
+            if res.returncode != 0 or not res.stdout.strip():
+                return None
+            matches = json.loads(res.stdout)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError):
+        return None
+    except Exception:
+        return None
+
+    if not matches:
+        return None
+
+    matched_text = matches[0].get("text")
+    if matched_text and matched_text in original:
+        return matched_text
     return None
 
 
@@ -671,7 +815,7 @@ def mode_smart_patch(filepath: str | None = None, initial_paste: str | None = No
         replace_str = p["replace"]
         line_hint = p.get("line_hint")
 
-        located = _locate_block(find_str, modified, line_hint=line_hint)
+        located = _locate_block(find_str, modified, filepath=target_file, line_hint=line_hint)
         if located is None:
             print(f"\n{RED}✖ Block {i} not found in {target_file}:{RESET}")
             print(f"  {DIM}{find_str[:160]}{RESET}")
@@ -700,13 +844,66 @@ def mode_smart_patch(filepath: str | None = None, initial_paste: str | None = No
         write_with_safety(target_file, modified, verify_cmd=verify_cmd)
 
 
+_FIND_SEPARATOR = re.compile(r'^\s*---+\s*$', re.MULTILINE)
+
+
+def _split_find_replace_input(raw: str) -> list[tuple[str, str]]:
+    """Parse one or more Find/Replace pairs from a single pasted block.
+
+    Supported formats
+    -----------------
+    Single patch (original behaviour):
+        <find block>
+        ---            ← separator line (3+ dashes)
+        <replace block>
+
+    Multiple patches (new):
+        <find 1>
+        ---
+        <replace 1>
+        ===            ← patch boundary (3+ equals) separates pairs
+        <find 2>
+        ---
+        <replace 2>
+
+    If no separator is found the raw text is returned as the find block alone
+    (caller will prompt for replace separately — legacy fallback).
+    """
+    PATCH_BOUNDARY = re.compile(r'^\s*={3,}\s*$', re.MULTILINE)
+    pairs = []
+    for chunk in PATCH_BOUNDARY.split(raw):
+        parts = _FIND_SEPARATOR.split(chunk, maxsplit=1)
+        if len(parts) == 2:
+            find_part, replace_part = parts
+            pairs.append((find_part.strip('\n'), replace_part.strip('\n')))
+    return pairs
+
+
 def mode_find(filepath: str):
-    """Interactive Find & Replace (with automatic fallback to smart multi-patch if full AI text is pasted)."""
+    """Interactive Find & Replace supporting multiple patches in one session.
+
+    NEW: Paste multiple Find/Replace pairs separated by '===' between pairs
+    and '---' between the find and replace halves of each pair:
+
+        <old code 1>
+        ---
+        <new code 1>
+        ===
+        <old code 2>
+        ---
+        <new code 2>
+
+    All pairs are shown as a single combined diff before you confirm once.
+    Falls back to the original single-prompt flow if no separator is found.
+    Also detects full AI multi-patch text (existing behaviour).
+    """
     if not os.path.exists(filepath):
         print(f"{RED}Error: File '{filepath}' does not exist.{RESET}")
         return
 
-    target_block = read_multiline_input("Find (paste the OLD block or full AI response)")
+    target_block = read_multiline_input(
+        "Find (paste OLD block, or OLD---NEW pairs separated by ===, or full AI response)"
+    )
     if not target_block.strip():
         print(f"{RED}Error: Search block cannot be empty.{RESET}")
         return
@@ -719,7 +916,39 @@ def mode_find(filepath: str):
     with open(filepath, "r", encoding="utf-8", errors="replace") as f:
         original = f.read()
 
-    located = _locate_block(target_block, original)
+    # --- Multi-patch shorthand path ---
+    pairs = _split_find_replace_input(target_block)
+    if pairs:
+        print(f"\n{CYAN}⚡ Detected {len(pairs)} Find/Replace pair(s) in pasted block.{RESET}")
+        modified = original
+        applied = 0
+        for i, (find_raw, replace_raw) in enumerate(pairs, 1):
+            located = _locate_block(find_raw, modified, filepath=filepath)
+            if located is None:
+                print(f"{RED}  Pair {i}: block not found — skipping.{RESET}")
+                continue
+            found_block, match_kind = located
+            if match_kind != "exact":
+                print(f"{YELLOW}  Pair {i}: matched via {match_kind}.{RESET}")
+            else:
+                print(f"{GREEN}  Pair {i}: matched exactly.{RESET}")
+            fixed = reindent_to_match(found_block, replace_raw)
+            if fixed != replace_raw:
+                print(f"{DIM}  Pair {i}: [auto-reindent] adjusted indentation.{RESET}")
+            modified = modified.replace(found_block, fixed, 1)
+            applied += 1
+
+        if applied == 0:
+            print(f"{RED}Error: None of the {len(pairs)} blocks could be found in {filepath}.{RESET}")
+            return
+
+        changed = show_diff(original, modified, filepath)
+        if changed and confirm(f"Apply {applied}/{len(pairs)} patch(es) to {filepath}? [y/N]: "):
+            write_with_safety(filepath, modified)
+        return
+
+    # --- Legacy single-patch path (no separator detected) ---
+    located = _locate_block(target_block, original, filepath=filepath)
     if located is None:
         print(f"{RED}Error: Specified block was not found in {filepath}.{RESET}")
         print(f"{DIM}Tried exact, stripped, and whitespace-normalized matching — none matched.{RESET}")
@@ -881,9 +1110,10 @@ def main():
     print_banner()
     if len(sys.argv) < 2:
         print("Usage: pyslick patchit <filepath> [-a|-f|-r|-i|-l|--check|--verify <cmd>]")
+        print()
         print("Modes:")
         print("  -a, --auto   Smart AI Auto-Patch (paste full ChatGPT/Claude responses)")
-        print("  -f, --find   Find & Replace exact block (supports multi-block AI paste)")
+        print("  -f, --find   Find & Replace — single or MULTIPLE patches in one shot")
         print("  -r, --regex  Regex Find & Replace")
         print("  -i, --insert Insert lines after line number or anchor string")
         print("  -l, --lines  Show file with line numbers (read-only)")
@@ -891,6 +1121,26 @@ def main():
         print("  --verify CMD Run custom verification command (e.g. --verify 'pnpm build')")
         print("  --dict       Show verification commands and syntax dictionary")
         print("  (none)       Full overwrite mode with safety gate on drastic size drops")
+        print()
+        print("-f / --find  multi-patch format (one confirm for all):")
+        print("  Paste the entire block when prompted:")
+        print()
+        print("    <old block 1>")
+        print("    ---")
+        print("    <new block 1>")
+        print("    ===")
+        print("    <old block 2>")
+        print("    ---")
+        print("    <new block 2>")
+        print()
+        print("  Separators:  --- between find and replace halves")
+        print("               === between patch pairs")
+        print()
+        print("Safety:")
+        print("  • Every write is backed up to .pyslick_backups/ before touching the file.")
+        print("  • Syntax is validated (Python AST / Node --check / JSX tag check) before write.")
+        print("  • Auto-reindent only fires when old and new blocks have different leading")
+        print("    whitespace — it will NOT silently shift sibling blocks (catch/finally etc.).")
         sys.exit(1)
 
     first_arg = sys.argv[1]

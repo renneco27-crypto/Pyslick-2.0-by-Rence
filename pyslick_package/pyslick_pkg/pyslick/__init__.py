@@ -91,6 +91,10 @@ def import_toolbox():
     from toolbox import mode_ls, mode_lines, mode_grep
     return mode_ls, mode_lines, mode_grep
 
+def import_watch():
+    from watch import watch
+    return watch
+
 def import_comment_blocks():
     from comment_blocks import (
         scan_project_for_comment_blocks,
@@ -228,50 +232,91 @@ def git_checkpoint(commit_msg: str = None):
         return create_local_backup()
 
 def create_local_backup(commit_msg: str = None):
-    """Create a local backup if git is not available. Keeps only the newest 5 backups,
-    deleting the oldest when a new one is created."""
+    """Delta backup: store unified diffs of changed files in .pyslick/backups/.
+    Falls back to full file copy only if no previous snapshot exists."""
+    import difflib
+    pyslick_dir = os.path.join(os.getcwd(), ".pyslick")
+    backup_root = os.path.join(pyslick_dir, "backups")
+    os.makedirs(backup_root, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    snap_dir = os.path.join(backup_root, f"snap_{timestamp}")
+    os.makedirs(snap_dir, exist_ok=True)
+
+    skip = {"node_modules", ".git", "__pycache__", ".next", "dist", "build",
+            ".pyslick", "pyslick_backup_"}
+    changed = 0
     try:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_dir = f"pyslick_backup_{timestamp}"
-        shutil.copytree('.', backup_dir, ignore=shutil.ignore_patterns(
-            '__pycache__', '*.pyc', '.git', 'node_modules', '.next', 'dist', 'build'
-        ))
-        print(f"✓ Local backup created: {backup_dir}")
-        
-        # Prune old backups, keep only 5 newest
+        for dirpath, dirnames, filenames in os.walk("."):
+            dirnames[:] = [d for d in dirnames if not any(d.startswith(s) for s in skip)]
+            for fn in filenames:
+                if fn.endswith((".pyc", ".bak")):
+                    continue
+                fpath = os.path.join(dirpath, fn)
+                rel = os.path.relpath(fpath, ".")
+                # Find newest previous snap for delta
+                prev_snaps = sorted([
+                    d for d in os.listdir(backup_root)
+                    if d.startswith("snap_") and d < f"snap_{timestamp}"
+                ], reverse=True)
+                prev_content = None
+                for ps in prev_snaps:
+                    prev_file = os.path.join(backup_root, ps, rel + ".orig")
+                    if os.path.exists(prev_file):
+                        with open(prev_file, "r", encoding="utf-8", errors="replace") as pf:
+                            prev_content = pf.readlines()
+                        break
+                try:
+                    with open(fpath, "r", encoding="utf-8", errors="replace") as cf:
+                        curr_content = cf.readlines()
+                except Exception:
+                    continue
+                out_path = os.path.join(snap_dir, rel)
+                os.makedirs(os.path.dirname(out_path), exist_ok=True)
+                if prev_content is None:
+                    # First time — store full file
+                    with open(out_path + ".orig", "w", encoding="utf-8") as of:
+                        of.writelines(curr_content)
+                    changed += 1
+                else:
+                    diff = list(difflib.unified_diff(prev_content, curr_content, fromfile=rel, tofile=rel))
+                    if diff:
+                        with open(out_path + ".diff", "w", encoding="utf-8") as df:
+                            df.writelines(diff)
+                        changed += 1
+        if changed:
+            print(f"✓ Delta backup saved: .pyslick/backups/snap_{timestamp} ({changed} file(s))")
+        else:
+            # Nothing changed — remove empty snap
+            shutil.rmtree(snap_dir, ignore_errors=True)
+            print("✓ No changes since last backup.")
         _prune_local_backups(keep=5)
-        
         return True
     except Exception as e:
-        print(f"Error creating local backup: {e}")
+        print(f"Error creating backup: {e}")
         return False
 
 
 def _prune_local_backups(keep: int = 5):
-    """Keep only the newest `keep` local backups, deleting the oldest."""
+    """Keep only the newest `keep` snapshots in .pyslick/backups/, deleting the oldest."""
+    backup_root = os.path.join(os.getcwd(), ".pyslick", "backups")
+    if not os.path.isdir(backup_root):
+        return
     try:
-        # Find all pyslick_backup_* directories
-        backups = []
-        for item in os.listdir('.'):
-            if item.startswith('pyslick_backup_') and os.path.isdir(item):
-                backups.append(item)
-        
-        if len(backups) <= keep:
+        snaps = sorted([
+            d for d in os.listdir(backup_root)
+            if d.startswith("snap_") and os.path.isdir(os.path.join(backup_root, d))
+        ])
+        if len(snaps) <= keep:
             return
-        
-        # Sort by timestamp (embedded in directory name)
-        backups.sort()
-        
-        # Delete the oldest ones
-        to_delete = backups[:-keep]
-        for old_backup in to_delete:
+        for old in snaps[:-keep]:
             try:
-                shutil.rmtree(old_backup)
-                print(f"  Removed old backup: {old_backup}")
+                shutil.rmtree(os.path.join(backup_root, old))
+                print(f"  Removed old snapshot: {old}")
             except Exception as e:
-                print(f"  Warning: could not remove {old_backup}: {e}")
+                print(f"  Warning: could not remove {old}: {e}")
     except Exception as e:
-        print(f"Warning: error pruning old backups: {e}")
+        print(f"Warning: error pruning snapshots: {e}")
 
 def git_stash():
     try:
@@ -440,6 +485,18 @@ Usage:
       Check whether llama-cpp-python and a GGUF model are installed.
       The local LLM (~90 MB) expands vague directives into better search
       terms before fuzzy matching runs. Optional — everything works without it.
+
+━━  Watch Mode  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  watch [--root .] [--auto-apply]
+      Watch the project for a saved file containing a marker comment
+      (// pyslick? <directive>  or  # pyslick? <directive>) and detect it
+      automatically. Without --auto-apply, a detected marker just prints
+      what to run next — it never invokes the agent on its own. With
+      --auto-apply, it invokes the agent for you on save, which still
+      shows a diff and asks before writing anything (same as running
+      `pyslick agent` yourself — this flag does not skip that step).
+      Requires: watchdog (pip install watchdog). Ctrl+C to stop.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Quick start:
@@ -699,6 +756,20 @@ def main():
                 try:
                     from .llm import status_report
                     print(status_report())
+                except Exception as e:
+                    print(f"Error: {e}")
+                    sys.exit(1)
+
+            elif command == "watch":
+                try:
+                    watch_fn = import_watch()
+                    watch_root = "."
+                    auto_apply = "--auto-apply" in args
+                    if "--root" in args:
+                        idx = args.index("--root")
+                        if idx + 1 < len(args):
+                            watch_root = args[idx + 1]
+                    watch_fn(root=watch_root, auto_apply=auto_apply)
                 except Exception as e:
                     print(f"Error: {e}")
                     sys.exit(1)

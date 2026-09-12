@@ -14,6 +14,31 @@ def check_jsx_tags(file_path):
     content = re.sub(r'<script[\s>].*?</script>', '', content, flags=re.DOTALL)
     content = re.sub(r'<style[\s>].*?</style>', '', content, flags=re.DOTALL)
 
+    # Strip TypeScript generic type arguments BEFORE tag matching.
+    # Patterns like useRef<HTMLDivElement>, useState<Message[]>, Array<T>, Promise<void>
+    # are indistinguishable from JSX opening tags to the regex below — so blank them out.
+    # We use a two-pass approach: known hook/utility names first, then any PascalCase<...>
+    # that isn't preceded by '<' (which would make it an actual JSX tag).
+    _GENERIC_HOOKS = re.compile(
+        r'\b(use[A-Z]\w*|Array|Promise|Map|Set|Record|Partial|Required|Readonly|'
+        r'ReturnType|InstanceType|Parameters|NonNullable|Awaited|Extract|Exclude)'
+        r'<[^<>]*>'
+    )
+    # Also catch PascalCase<...> that is NOT preceded by a literal '<' (i.e. not a JSX tag open)
+    _GENERIC_PASCAL = re.compile(r'(?<![<\s])([A-Z][a-zA-Z0-9_]*)<([^<>]*)>')
+
+    def _strip_generics(src: str) -> str:
+        # Repeat until stable (handles nested like Promise<Array<T>>)
+        for _ in range(5):
+            prev = src
+            src = _GENERIC_HOOKS.sub(lambda m: m.group(0)[:len(m.group(1))], src)
+            src = _GENERIC_PASCAL.sub(lambda m: m.group(1), src)
+            if src == prev:
+                break
+        return src
+
+    content = _strip_generics(content)
+
     def collapse_multiline_tags(text):
         result = []
         lines = text.split('\n')

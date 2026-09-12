@@ -83,7 +83,8 @@ let me check the CSS file instead").
 LOCAL LLM MODE (no API key)
 ─────────────────────────────────────────────────────────────────────────
 
-When no ANTHROPIC_API_KEY / NVIDIA_API_KEY is set, the agent falls back
+When no ANTHROPIC_API_KEY / NVIDIA_API_KEY / GROQ_API_KEY / OPENROUTER_API_KEY
+is set, the agent falls back
 to _run_local_agent(). That function uses intent_vocab.json to route the
 query to the right handler — no reasoning required from the 124M model.
 
@@ -112,6 +113,7 @@ import io
 import difflib
 import argparse
 import subprocess
+import shutil
 import urllib.request
 from pathlib import Path
 
@@ -157,6 +159,21 @@ PROVIDERS = {
         "model": "meta/llama-3.1-70b-instruct",
         "key_env": "NVIDIA_API_KEY",
         "headers": {},
+        "openai_compatible": True,
+    },
+    "groq": {
+        "api_url": "https://api.groq.com/openai/v1/chat/completions",
+        "model": "llama-3.3-70b-versatile",
+        "key_env": "GROQ_API_KEY",
+        "headers": {},
+        "openai_compatible": True,
+    },
+    "openrouter": {
+        "api_url": "https://openrouter.ai/api/v1/chat/completions",
+        "model": "meta-llama/llama-3.3-70b-instruct:free",
+        "key_env": "OPENROUTER_API_KEY",
+        "headers": {},
+        "openai_compatible": True,
     },
 }
 
@@ -246,11 +263,85 @@ def tool_scan_lines(path: str, keyword: str) -> str:
         return f"ERROR: {e}"
 
 
+_RG_BIN = None  # cached: resolved ripgrep binary path, or "" if unavailable
+
+
+def _ripgrep_binary() -> str:
+    global _RG_BIN
+    if _RG_BIN is None:
+        _RG_BIN = shutil.which("rg") or ""
+    return _RG_BIN
+
+
+def _grep_via_ripgrep(path: str, patterns: list[str], context: int) -> list[tuple] | None:
+    """Runs one `rg --json` invocation per pattern (rg's JSON stream doesn't
+    say which -e matched, and tool_grep needs to tag each hit with its
+    pattern, same as the pure-Python loop below). Returns a list of
+    (line_idx0, matched_pattern, {line_idx0: text, ...}) tuples — the dict
+    is the context window rg already computed for that match — or None if
+    `rg` isn't installed or anything about the call goes wrong, in which
+    case the caller falls back to the pure-Python scan unchanged."""
+    binary = _ripgrep_binary()
+    if not binary:
+        return None
+    hits: list[tuple] = []
+    try:
+        for pat in patterns:
+            cmd = [binary, "--json", "-i", f"-C{context}", "-e", pat, "--", path]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            if res.returncode not in (0, 1):  # 1 == "no matches", not an error
+                return None
+            window: dict[int, str] = {}
+            match_lines: list[int] = []
+            for line in res.stdout.splitlines():
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if obj.get("type") not in ("match", "context"):
+                    continue
+                data = obj["data"]
+                lno = data["line_number"] - 1
+                text = data["lines"]["text"].rstrip("\n")
+                window[lno] = text
+                if obj["type"] == "match":
+                    match_lines.append(lno)
+            for lno in match_lines:
+                hits.append((lno, pat, window))
+        return hits
+    except (subprocess.TimeoutExpired, OSError, Exception):
+        return None
+
+
 def tool_grep(path: str, patterns: list[str], context: int = 2) -> str:
-    """Search file for patterns with N lines of context."""
+    """Search file for patterns with N lines of context.
+
+    Tries ripgrep first (fast, respects .gitignore-style conventions even
+    though this is a single-file search) and falls back to the pure-Python
+    regex scan below if `rg` isn't installed or the call fails for any
+    reason — this fallback path is unchanged from before ripgrep support
+    was added, so tool_grep keeps working with zero extra dependencies."""
     p = Path(path)
     if not p.exists():
         return f"ERROR: file not found: {path}"
+
+    rg_hits = _grep_via_ripgrep(path, patterns, context)
+    if rg_hits is not None:
+        if not rg_hits:
+            return f"(no matches for {patterns} in {path})"
+        out = ["  (via ripgrep)"]
+        seen_ranges: set[int] = set()
+        for i, pat, window in rg_hits:
+            lo, hi = min(window), max(window)
+            if any(j in seen_ranges for j in range(lo, hi + 1)):
+                continue
+            out.append(f"  --- match: line {i+1} ---")
+            for j in range(lo, hi + 1):
+                marker = ">>>" if j == i else "   "
+                out.append(f"  {marker} {j+1:4d}: {window.get(j, '')}")
+            seen_ranges.update(range(lo, hi + 1))
+        return "\n".join(out)
+
     try:
         lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
         out = []
@@ -761,7 +852,8 @@ def _call_api(messages: list[dict], use_tools: bool = True, provider_name: str =
     provider_name, provider = _get_provider()
     if not provider:
         raise RuntimeError(
-            "No API key found. Set ANTHROPIC_API_KEY or NVIDIA_API_KEY, "
+            "No API key found. Set ANTHROPIC_API_KEY, NVIDIA_API_KEY, "
+            "GROQ_API_KEY, or OPENROUTER_API_KEY, "
             "or use local LLM mode by unsetting all API keys."
         )
 
@@ -770,7 +862,7 @@ def _call_api(messages: list[dict], use_tools: bool = True, provider_name: str =
     key_env = provider["key_env"]
     api_key = os.environ.get(key_env)
 
-    if provider_name == "nvidia":
+    if provider.get("openai_compatible"):
         openai_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
         openai_tools = []
         if use_tools:
@@ -794,7 +886,13 @@ def _call_api(messages: list[dict], use_tools: bool = True, provider_name: str =
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            **provider["headers"],
         }
+        # OpenRouter asks OpenAI-compatible callers to identify their app —
+        # harmless no-op for Groq/NVIDIA, but keeps OpenRouter's dashboard useful.
+        if provider_name == "openrouter":
+            headers.setdefault("HTTP-Referer", "https://github.com/pyslick")
+            headers.setdefault("X-Title", "pyslick")
     else:
         payload = {
             "model": model,
@@ -815,7 +913,7 @@ def _call_api(messages: list[dict], use_tools: bool = True, provider_name: str =
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             response = json.loads(resp.read())
-            if provider_name == "nvidia":
+            if provider.get("openai_compatible"):
                 return _convert_openai_to_anthropic(response)
             return response
     except urllib.error.HTTPError as e:

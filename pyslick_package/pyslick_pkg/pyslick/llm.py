@@ -33,6 +33,15 @@ MODEL_DIR = os.path.join(os.path.expanduser("~"), ".pyslick", "models")
 _llm_singleton = None
 _load_attempted = False
 
+# ── Semantic (embedding) search config ──────────────────────────────────
+# Independent of the llama_cpp causal-model path above. Overridable via env
+# var so users can trade the default's quality for size, e.g.:
+#   export PYSLICK_EMBED_MODEL="codesage/codesage-small-v2"
+DEFAULT_EMBED_MODEL = "jinaai/jina-embeddings-v2-base-code"
+_embedder_singleton = None
+_embedder_load_attempted = False
+_embed_cache: dict[str, "object"] = {}  # text -> embedding tensor, session-lifetime only
+
 
 def find_model_path() -> str | None:
     if not os.path.isdir(MODEL_DIR):
@@ -248,6 +257,77 @@ def verify_intent_yes_no(directive: str, intent_name: str, examples: list[str]) 
 
 
 
+def is_semantic_available() -> bool:
+    """Whether sentence-transformers is installed. Independent of the
+    llama_cpp/GGUF path — no model needs to be manually placed anywhere;
+    the embedding model downloads once (from Hugging Face) and caches
+    itself the first time it's used."""
+    try:
+        import sentence_transformers  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _embed_model_name() -> str:
+    return os.environ.get("PYSLICK_EMBED_MODEL", DEFAULT_EMBED_MODEL)
+
+
+def _load_embedder():
+    global _embedder_singleton, _embedder_load_attempted
+    if _embedder_singleton is not None or _embedder_load_attempted:
+        return _embedder_singleton
+    _embedder_load_attempted = True
+    try:
+        from sentence_transformers import SentenceTransformer
+        _embedder_singleton = SentenceTransformer(_embed_model_name(), trust_remote_code=True)
+    except Exception:
+        _embedder_singleton = None
+    return _embedder_singleton
+
+
+def semantic_rank(directive: str, candidates: list[str], top_k: int = 5) -> list[tuple[int, float]]:
+    """Rank candidate strings (symbol name + signature + docstring, etc.)
+    against a natural-language directive using local code-embedding cosine
+    similarity — no LLM call, fully offline once the model is cached.
+
+    This is what lets "resize mic button bigger" match a function like
+    `handleMicScale()` with zero shared words: token/fuzzy matching (in
+    graphify.py and repomap.py) requires literal or near-literal overlap,
+    but embeddings capture meaning instead of spelling.
+
+    Returns [(index_into_candidates, similarity_score), ...] sorted
+    descending, or [] if sentence-transformers / the model isn't available,
+    or candidates is empty. Never raises.
+    """
+    if not candidates:
+        return []
+    model = _load_embedder()
+    if model is None:
+        return []
+    try:
+        from sentence_transformers import util
+        query_emb = model.encode(directive, convert_to_tensor=True)
+        cand_emb = model.encode(candidates, convert_to_tensor=True)
+        sims = util.cos_sim(query_emb, cand_emb)[0]
+        scored = sorted(enumerate(sims.tolist()), key=lambda x: x[1], reverse=True)
+        return scored[:top_k]
+    except Exception:
+        return []
+
+
+def _semantic_status_lines() -> str:
+    lines = []
+    if not is_semantic_available():
+        lines.append("sentence-transformers: NOT installed  ->  pip install sentence-transformers")
+        return "\n".join(lines)
+    lines.append("sentence-transformers: installed")
+    lines.append(f"embedding model: {_embed_model_name()}")
+    lines.append("  (downloads + caches automatically on first semantic query — needs")
+    lines.append("   internet access to huggingface.co the very first time only)")
+    return "\n".join(lines)
+
+
 def status_report() -> str:
     lines = []
     try:
@@ -267,6 +347,10 @@ def status_report() -> str:
 
     lines.append("")
     lines.append(f"Active: {'YES — pyslick query will use it to expand your directive' if is_available() else 'NO — pyslick query works fine without it, just less fuzzy on odd phrasing'}")
+
+    lines.append("")
+    lines.append("── Semantic search (sentence-transformers, no LLM call) ──")
+    lines.append(_semantic_status_lines())
     return "\n".join(lines)
 
 
