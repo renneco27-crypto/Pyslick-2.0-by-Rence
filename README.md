@@ -279,6 +279,10 @@ pyslick agent -override file_info "some weirdly phrased query"
 pyslick agent -override grep "the pattern I'm looking for"
 
 
+run this command to install dependencies:
+python install_pyslick_deps.py
+
+
 
 
 export GROQ_API_KEY="gsk_..."          # free tier, fast inference
