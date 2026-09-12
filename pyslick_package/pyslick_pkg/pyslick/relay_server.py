@@ -9,12 +9,14 @@ GET  /relay            → serve ~/.pyslick/relay.json to extension
 POST /claude-response  → receive code blocks harvested from Claude's reply,
                          write to ~/.pyslick/claude_response.json,
                          print them to terminal if response_watcher is active
+POST /tab-ready        → mark that a claude.ai tab has checked in,
+                         write to ~/.pyslick/claude_tab_ready.json
 
 Port: 27182
 """
 
 from __future__ import annotations
-
+import time as _time_mod
 import json
 import socket
 import sys
@@ -26,6 +28,7 @@ PORT = 27182
 STATE_DIR       = Path.home() / ".pyslick"
 RELAY_FILE      = STATE_DIR / "relay.json"
 RESPONSE_FILE   = STATE_DIR / "claude_response.json"
+TAB_READY_FILE  = STATE_DIR / "claude_tab_ready.json"
 
 _CORS = {
     "Access-Control-Allow-Origin":  "*",
@@ -65,10 +68,21 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(404, b'{"error":"not found"}')
 
     def do_POST(self):
+        if self.path.rstrip("/") == "/tab-ready":
+            length  = int(self.headers.get("Content-Length", 0))
+            payload = json.loads(self.rfile.read(length) or b"{}")
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
+            TAB_READY_FILE.write_text(
+                json.dumps({"ready": True, "ts": _time_mod.time()}),
+                encoding="utf-8",
+            )
+            self._send(200, b'{"ok":true}')
+            return
+
         if self.path.rstrip("/") != "/claude-response":
             self._send(404, b'{"error":"not found"}')
             return
-
+        
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length)
         try:
@@ -111,6 +125,23 @@ def ensure_running(port: int = PORT) -> None:
     sock.close()
     if not already_up:
         _start_thread(port)
+
+
+def is_claude_tab_ready() -> bool:
+    """True if a claude.ai tab checked in within the last 30 seconds."""
+    try:
+        data = json.loads(TAB_READY_FILE.read_text(encoding="utf-8"))
+        return (_time_mod.time() - data.get("ts", 0)) < 30
+    except Exception:
+        return False
+
+
+def clear_tab_ready() -> None:
+    """Reset the tab-ready flag before a new ask session."""
+    try:
+        TAB_READY_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

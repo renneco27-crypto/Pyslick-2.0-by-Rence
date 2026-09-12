@@ -416,6 +416,16 @@ straight to that file. Combine multiple: "compare /a.js and /b.js".
       Example:  pyslick recon-pack "connect bing extension websocket to electron main"
       Example:  pyslick recon-pack "resize mic button" --max-files 4 --max-lines 800
 
+  ask <question> [--auto]
+      Recon loop via browser relay (Miamico extension). Sends your question
+      to Claude in Edge, then Claude responds one pyslick command at a time.
+      Each command is shown with a y/n prompt before running (skip with --auto).
+      Results feed back to Claude automatically. Stops when Claude outputs
+      "I have enough information." and prints its findings summary.
+      Requires: Miamico extension installed + relay server running.
+      Example:  pyslick ask "how does the mic button get its size"
+      Example:  pyslick ask "what calls ensure_running" --auto
+
 ━━  Read / Search Commands  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   ls [root] [--full-path]
@@ -786,6 +796,20 @@ def main():
                     from .agent import main as agent_main
                     sys.argv = ["agent"] + args
                     agent_main()
+                except Exception as e:
+                    print(f"Error: {e}")
+                    sys.exit(1)
+
+            elif command == "ask":
+                if not args:
+                    print('Error: ask requires a question, e.g. pyslick ask "how does the mic button get its size"')
+                    print('       Add --auto to run commands without y/n prompts.')
+                    sys.exit(1)
+                try:
+                    from .ask import run_ask
+                    auto     = "--auto" in args
+                    raw_args = [a for a in args if a != "--auto"]
+                    run_ask(" ".join(raw_args), auto=auto)
                 except Exception as e:
                     print(f"Error: {e}")
                     sys.exit(1)

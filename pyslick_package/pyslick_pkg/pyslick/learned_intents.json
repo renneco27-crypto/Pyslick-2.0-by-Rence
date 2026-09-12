@@ -13,5 +13,6 @@
   "whats the deal with the intent classifier": "nearest",
   "walk me through how llm.py decides if semantic search works": "file_info",
   "what handles copy": "file_info",
-  "nearestnode copy terminal output clipboard": "nearest"
+  "nearestnode copy terminal output clipboard": "nearest",
+  "what are spawns": "file_info"
 }

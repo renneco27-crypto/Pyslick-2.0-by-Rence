@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 420px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 16px;
+    }
+
+    .container { display: flex; flex-direction: column; gap: 12px; }
+
+    h1 { color: white; font-size: 18px; }
+    .description { color: rgba(255,255,255,0.9); font-size: 12px; }
+
+    textarea#messageInput {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 13px;
+      resize: vertical;
+      min-height: 100px;
+      background: rgba(255,255,255,0.95);
+      color: #333;
+    }
+    textarea#messageInput:focus {
+      outline: none;
+      border-color: white;
+      background: white;
+    }
+
+    .button-group { display: flex; gap: 8px; }
+
+    button {
+      flex: 1;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .inject-btn { background: white; color: #667eea; }
+    .inject-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,0.25); }
+    .clear-btn { background: rgba(255,255,255,0.2); color: white; border: 2px solid rgba(255,255,255,0.5); flex: 0 0 auto; padding: 10px 16px; }
+    .clear-btn:hover { background: rgba(255,255,255,0.3); }
+
+    .read-btn {
+      width: 100%;
+      padding: 9px;
+      background: rgba(0,0,0,0.2);
+      border: 1px solid rgba(255,255,255,0.35);
+      color: white;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .read-btn:hover { background: rgba(0,0,0,0.3); }
+
+    .status {
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      text-align: center;
+      color: white;
+      background: rgba(0,0,0,0.1);
+      display: none;
+    }
+    .status.show { display: block; }
+    .status.success { background: rgba(76,175,80,0.3); border: 1px solid rgba(76,175,80,0.6); }
+    .status.error   { background: rgba(244,67,54,0.3);  border: 1px solid rgba(244,67,54,0.6); }
+
+    /* ── Page reader panel ── */
+    #readerPanel {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+    }
+    #readerPanel.open { display: flex; }
+
+    #readerToolbar {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    #readerToolbar span {
+      color: white;
+      font-size: 12px;
+      font-weight: 600;
+      flex: 1;
+    }
+    #copyReaderBtn, #closeReaderBtn {
+      flex: 0 0 auto;
+      padding: 5px 10px;
+      font-size: 11px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.2);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.4);
+    }
+    #copyReaderBtn:hover, #closeReaderBtn:hover { background: rgba(255,255,255,0.35); }
+
+    #readerOutput {
+      width: 100%;
+      height: 220px;
+      resize: vertical;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 6px;
+      padding: 8px;
+      font-family: monospace;
+      font-size: 11px;
+      color: #ffe;
+      white-space: pre-wrap;
+      overflow-y: auto;
+    }
+
+    /* ── Debug panel ── */
+    #debugPanel {
+      display: none;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 6px;
+      padding: 8px;
+      max-height: 160px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 11px;
+      color: #FFE66D;
+      line-height: 1.4;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid rgba(255,255,255,0.2);
+      margin: 2px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div>
+      <h1>📝 Chat Injector</h1>
+      <p class="description">Inject text into Claude — or read the whole conversation</p>
+    </div>
+
+    <textarea id="messageInput" placeholder="Type your message here…"></textarea>
+
+    <div class="button-group">
+      <button class="inject-btn" id="injectBtn">💉 Inject Now</button>
+      <button class="clear-btn" id="clearBtn">✕ Clear</button>
+    </div>
+
+    <button class="read-btn" id="readBtn">📖 Read Page → show conversation</button>
+    <button class="read-btn" id="sendRelayBtn" style="background:rgba(76,175,80,0.35);border-color:rgba(76,175,80,0.7);">⚡ Send Response to pyslick</button>
+
+    <div id="readerPanel">
+      <div id="readerToolbar">
+        <span>📄 Page Transcript</span>
+        <button id="copyReaderBtn">📋 Copy all</button>
+        <button id="closeReaderBtn">✕</button>
+      </div>
+      <textarea id="readerOutput" readonly></textarea>
+    </div>
+
+    <div class="status" id="status"></div>
+
+    <hr class="divider">
+
+    <button id="debugToggle" style="width:100%;padding:8px;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.3);color:white;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;">
+      📋 View Debug Logs
+    </button>
+    <div id="debugPanel"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

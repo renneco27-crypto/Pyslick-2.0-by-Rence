@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "Chat Auto-Injector",
+  "version": "1.0",
+  "description": "Inject text from popup into chat input fields",
+  "permissions": [
+    "scripting",
+    "activeTab",
+    "alarms"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "skill.md"
+      ],
+      "matches": [
+        "https://claude.ai/*"
+      ]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Chat Auto-Injector",
+    "default_icon": {
+      "48": "miamico_icon_48.png",
+      "128": "miamico_icon_128.png"
+    }
+  },
+  "icons": {
+    "48": "miamico_icon_48.png",
+    "128": "miamico_icon_128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_end"
+    }
+  ]
+}
