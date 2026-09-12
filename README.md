@@ -281,8 +281,7 @@ pyslick agent -override grep "the pattern I'm looking for"
 
 
 
-Permanently (survives restarts):
-[System.Environment]::SetEnvironmentVariable("NVIDIA_API_KEY", "nvapi-xxxxxxxxxxxxxxxxxxxx", "User")
-
-After the permanent one, restart PowerShell once and pyslick will automatically pick NVIDIA over the local GGUF. You can verify it's live with:
-echo $env:NVIDIA_API_KEY
+export GROQ_API_KEY="gsk_..."          # free tier, fast inference
+# or
+export OPENROUTER_API_KEY="sk-or-..."  # routes to free-tier models like the one set above
+export PYSLICK_API_PROVIDER=groq       # or openrouter
