@@ -1074,18 +1074,6 @@ def _get_provider():
     return None, None
 
 
-def _relay_active() -> bool:
-    """Return True if the relay server (browser extension bridge) is listening."""
-    import socket as _socket
-    try:
-        s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-        return s.connect_ex(("127.0.0.1", 27182)) == 0
-    except Exception:
-        return False
-    finally:
-        try: s.close()
-        except: pass
-
 def _call_api(messages: list[dict], use_tools: bool = True, provider_name: str = None) -> dict:
     provider_name, provider = _get_provider()
     if not provider:
