@@ -114,6 +114,7 @@ import io
 import difflib
 import argparse
 import subprocess
+import time
 import shutil
 import urllib.request
 from pathlib import Path
@@ -526,6 +527,102 @@ def _get_repo_name() -> str:
     except Exception:
         pass
     return ""
+
+
+def _resolve_commit_reference(directive: str):
+    """
+    Parse a commit reference out of a rollback/revert/undo directive.
+
+    Handles three distinct phrasings, which must NOT be conflated:
+      - "N commits ago"      -> HEAD~N (relative to current HEAD)
+      - "commit 3" / "#3"    -> the 3rd entry in `git log --oneline`,
+                                 1-indexed from HEAD (NOT the same target
+                                 as "3 commits ago" whenever any commits
+                                 have been made since — one counts back
+                                 from now, the other picks a fixed position
+                                 in the visible log)
+      - "the fix commit" / "initial commit" / etc.
+                              -> word-overlap fuzzy match against the last
+                                 30 commit messages, same approach as
+                                 _fuzzy_match_files (no new dependency)
+
+    Returns one of:
+      ("resolved", commit_hash, commit_msg, label)
+      ("ambiguous", [(commit_hash, commit_msg), ...])   # top-scoring ties
+      ("none", None)                                    # no confident match
+    Never guesses silently — an ambiguous or absent match is reported as
+    such so the caller can ask the user rather than picking for them.
+    """
+    dl = directive.lower()
+
+    # "N commits ago" -> HEAD~N
+    m = re.search(r"(\d+)\s+commits?\s+ago", dl)
+    if m:
+        n = int(m.group(1))
+        rp = subprocess.run(["git", "rev-parse", f"HEAD~{n}"], capture_output=True, text=True, timeout=5)
+        if rp.returncode != 0:
+            return ("none", None)
+        commit_hash = rp.stdout.strip()
+        msg_res = subprocess.run(["git", "log", "-1", "--pretty=%s", commit_hash],
+                                  capture_output=True, text=True, timeout=5)
+        commit_msg = msg_res.stdout.strip() if msg_res.returncode == 0 else ""
+        return ("resolved", commit_hash, commit_msg, f"HEAD~{n} ({n} commit(s) ago)")
+
+    # "commit #3" / "commit number 3" / "commit 3" -> 3rd entry in the log
+    m = re.search(r"commit\s*(?:#|number|num)?\s*(\d+)\b", dl)
+    if m:
+        n = int(m.group(1))
+        if n < 1:
+            return ("none", None)
+        lg = subprocess.run(["git", "log", "--oneline", f"-{n}"], capture_output=True, text=True, timeout=5)
+        if lg.returncode != 0:
+            return ("none", None)
+        lines = [l for l in lg.stdout.splitlines() if l.strip()]
+        if len(lines) < n:
+            return ("none", None)
+        target = lines[n - 1].split(" ", 1)
+        commit_hash = target[0]
+        commit_msg = target[1] if len(target) > 1 else ""
+        return ("resolved", commit_hash, commit_msg, f"commit #{n}")
+
+    # Keyword / fuzzy match against recent commit messages, e.g.
+    # "rollback to the fix commit", "revert to initial commit".
+    lg = subprocess.run(["git", "log", "--oneline", "-30"], capture_output=True, text=True, timeout=5)
+    if lg.returncode != 0:
+        return ("none", None)
+    lines = [l for l in lg.stdout.splitlines() if l.strip()]
+    if not lines:
+        return ("none", None)
+
+    phrase_match = re.search(r"\b(?:to|commit)\b\s+(.*)", dl)
+    search_text = phrase_match.group(1) if phrase_match else dl
+    stop_words = {"the", "a", "an", "commit", "to", "of", "that", "one", "please", "pls"}
+    search_tokens = {
+        w for w in re.findall(r"[a-z0-9]+", search_text)
+        if w not in stop_words and len(w) > 2
+    }
+    if not search_tokens:
+        return ("none", None)
+
+    scored = []
+    for line in lines:
+        parts = line.split(" ", 1)
+        commit_hash = parts[0]
+        commit_msg = parts[1] if len(parts) > 1 else ""
+        msg_tokens = set(re.findall(r"[a-z0-9]+", commit_msg.lower()))
+        score = len(search_tokens & msg_tokens)
+        if score > 0:
+            scored.append((score, commit_hash, commit_msg))
+
+    if not scored:
+        return ("none", None)
+
+    best_score = max(s[0] for s in scored)
+    top = [(h, m) for s, h, m in scored if s == best_score]
+    if len(top) > 1:
+        return ("ambiguous", top)
+    commit_hash, commit_msg = top[0]
+    return ("resolved", commit_hash, commit_msg, commit_msg)
 
 
 def tool_pyslick_add_commit_push(message: str = None) -> tuple:
@@ -1423,6 +1520,20 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if (has_explicit_file_ref or has_bare_file_ref) and not has_strong_override:
         return "file_info", 92.0, [("file_info", 92.0)]
 
+    # ── Tier 0.145: "rollback/revert/undo to <target>" → git, with a target ──
+    # Distinct from bare Tier 0.15 below: this variant names a specific
+    # commit to land on ("rollback to commit 3", "revert to the fix commit",
+    # "undo to before the merge"), which the git handler needs to route to
+    # the confirm-then-reset flow rather than the generic status fallback.
+    # Must be checked BEFORE Tier 0.15, since Tier 0.15's bare keyword match
+    # would otherwise catch these same directives first (same words) and
+    # return before the "to <target>" wording is ever noticed. Confidence is
+    # slightly higher than Tier 0.15 since the directive is more specific,
+    # but this only decides confidence/tier bucketing — the git handler
+    # still requires an explicit "yes" before running anything destructive.
+    if re.search(r"\b(?:rollback|revert|undo|go\s+back)\b.*(?:\bto\b|\bcommits?\s+ago\b|\bcommit\s*#?\d+\b)", dl):
+        return "git", 96.0, [("git", 96.0)]
+
     # ── Tier 0.15: "undo / revert / rollback / go back" → git, not patch ──
     # These words describe reversing a change that already happened, which
     # is git's job (checkout/reset/revert), not patch's (which proposes a
@@ -1449,6 +1560,20 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     # smoke-testing caught the gap.
     if re.search(r"\b(?:commit|push|checkpoint)\b", dl) and not re.search(r"\bdid\s+i\b", dl):
         return "git", 88.0, [("git", 88.0)]
+
+    # ── Tier 0.166: bare "commits" / "show commits" / "commit history" → git ──
+    # NOT already covered by Tier 0.165 above: that tier's regex is
+    # `\bcommit\b`, and \b requires a word boundary immediately after
+    # "commit" — which never exists in "commits" (the "s" is still a word
+    # character, so there's no boundary between "commit" and "s"). Verified
+    # directly: re.search(r"\bcommit\b", "show commits") does not match.
+    # So "commits" / "show commits" / "commit history" fell through every
+    # tier with no keyword path at all, landing wherever Tier 2's fuzzy
+    # fallback happened to guess. This tier catches the plural/noun form
+    # explicitly. ("did i commit" etc. is excluded — that's Tier 0.17's
+    # state-check phrasing, not a request to see the log.)
+    if re.search(r"\b(?:commits?|commit\s+history)\b", dl) and not re.search(r"\bdid\s+i\b", dl):
+        return "git", 90.0, [("git", 90.0)]
 
     # ── Tier 0.17: "did I already [X]" → state-check → git status ─────────
     # "did I save", "did I already run this") — informational, never an
@@ -3071,6 +3196,108 @@ def _run_local_agent(directive: str) -> None:
 
     # ── GIT ───────────────────────────────────────────────────────────
     if intent == "git":
+        # Rollback/revert/undo must be checked FIRST, before the log and
+        # push/commit/checkpoint branches below — a directive like
+        # "rollback to commit 3" or "undo 3 commits ago" contains the
+        # substrings "commit"/"commits", which would otherwise get
+        # swallowed by those branches (plain `in dl` substring checks)
+        # before ever reaching this one.
+        if re.search(r"\b(?:undo|revert|rollback|roll\s+back|discard|go\s+back)\b", dl):
+            repo_name = _get_repo_name()
+            if not repo_name:
+                warn("Not inside a git repository — nothing to roll back.")
+                return
+
+            has_target = bool(re.search(r"\b(?:rollback|revert|undo|go\s+back)\b.*(?:\bto\b|\bcommits?\s+ago\b|\bcommit\s*#?\d+\b)", dl))
+            if not has_target:
+                # Bare "rollback"/"undo" with no named target. Previously
+                # this silently fell through to a plain `git status` print
+                # with no indication anything related to the rollback
+                # request had even been noticed. Show recent commits and
+                # ask for an explicit target instead of guessing one.
+                hdr("Git", "Rollback — target needed")
+                warn("Rollback needs a target. Recent commits:")
+                print(tool_pyslick_log())
+                print("\n  Try: \"rollback to commit 2\", \"rollback 2 commits ago\", or \"rollback to <message keywords>\".")
+                return
+
+            result = _resolve_commit_reference(dl)
+            status = result[0]
+
+            if status == "none":
+                hdr("Git", "Rollback — no match")
+                warn("Couldn't confidently resolve that commit reference. Recent commits:")
+                print(tool_pyslick_log())
+                return
+
+            if status == "ambiguous":
+                hdr("Git", "Rollback — ambiguous target")
+                warn("More than one commit matches that description — be more specific:")
+                for h, m in result[1]:
+                    print(f"    {h}  {m}")
+                return
+
+            _, commit_hash, commit_msg, label = result
+
+            # Show exactly what would be lost before asking for confirmation.
+            hdr("Git", f"Rollback to {label}")
+            print(f"  Repo: {YELL}{repo_name}{RST}")
+            show_res = subprocess.run(
+                ["git", "log", "-1", "--pretty=format:%H%n%an%n%ad%n%s", commit_hash],
+                capture_output=True, text=True, timeout=5,
+            )
+            if show_res.returncode == 0:
+                full_hash, author, date, subject = (show_res.stdout.split("\n", 3) + ["", "", "", ""])[:4]
+                print(f"  Target commit: {full_hash[:10]}  \"{subject}\"")
+                print(f"  Author: {author}    Date: {date}")
+
+            lost_res = subprocess.run(
+                ["git", "log", "--oneline", f"{commit_hash}..HEAD"],
+                capture_output=True, text=True, timeout=5,
+            )
+            lost_lines = [l for l in lost_res.stdout.splitlines() if l.strip()]
+            print(f"\n  This will discard {len(lost_lines)} commit(s) above the target:")
+            for l in lost_lines:
+                print(f"    {l}")
+
+            diff_res = subprocess.run(
+                ["git", "diff", commit_hash, "--stat"], capture_output=True, text=True, timeout=10
+            )
+            if diff_res.stdout.strip():
+                print(f"\n  Files that would change:\n{diff_res.stdout}")
+
+            confirm = input(
+                f"\n{BOLD}  ⏸  Rollback to {commit_hash[:10]} \"{commit_msg[:60]}\"? "
+                f"This discards {len(lost_lines)} commit(s) above it. (yes/no): {RST}"
+            ).strip().lower()
+            if confirm not in ("y", "yes"):
+                print("  Rollback cancelled.")
+                return
+
+            # Safety net: tag current HEAD with a recoverable backup branch
+            # before doing anything destructive. `git reset --hard` is the
+            # only thing that actually delivers "rollback to X" as asked —
+            # --soft/--mixed leave the discarded commits' changes sitting in
+            # the working tree, which isn't a rollback, it's an undo-staging.
+            # A backup branch makes --hard fully recoverable without
+            # changing that behavior.
+            head_res = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=5)
+            short_head = head_res.stdout.strip() if head_res.returncode == 0 else "backup"
+            backup_branch = f"backup/pre-rollback-{short_head}-{int(time.time())}"
+            branch_res = subprocess.run(["git", "branch", backup_branch], capture_output=True, text=True, timeout=5)
+            if branch_res.returncode != 0:
+                warn(f"Could not create backup branch ({(branch_res.stderr or '').strip()[:200]}) — aborting rollback for safety.")
+                return
+            ok(f"Backup created: {backup_branch} (points at current HEAD, for recovery)")
+
+            reset_res = subprocess.run(["git", "reset", "--hard", commit_hash], capture_output=True, text=True, timeout=10)
+            if reset_res.returncode == 0:
+                ok(f"Rolled back to {commit_hash[:10]} \"{commit_msg[:60]}\"")
+                print(f"  If this was a mistake: git reset --hard {backup_branch}")
+            else:
+                warn(f"Rollback FAILED: {(reset_res.stderr or reset_res.stdout or '').strip()[:300]}")
+            return
+
         if any(kw in dl for kw in ["log", "logs", "history", "commits"]):
             hdr("Git", "Log (Recent Commits)")
             print(tool_pyslick_log())
