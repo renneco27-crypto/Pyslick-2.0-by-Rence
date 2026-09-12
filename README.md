@@ -1,4 +1,4 @@
-[README (1).md](https://github.com/user-attachments/files/32055815/README.1.md)
+
 <div align="center">
 
 ```
@@ -277,3 +277,11 @@ Built for developers who move fast and want their tools to keep up.
   pyslick agent -override comments "show me comments in query.py"
 pyslick agent -override file_info "some weirdly phrased query"
 pyslick agent -override grep "the pattern I'm looking for"
+
+
+
+
+export GROQ_API_KEY="gsk_..."          # free tier, fast inference
+# or
+export OPENROUTER_API_KEY="sk-or-..."  # routes to free-tier models like the one set above
+export PYSLICK_API_PROVIDER=groq       # or openrouter
