@@ -11,5 +11,7 @@
   "where is the render url or transcriber endpoint configured": "connect",
   "clean up the old commented-out code in recon_pack.py": "comments",
   "whats the deal with the intent classifier": "nearest",
-  "walk me through how llm.py decides if semantic search works": "file_info"
+  "walk me through how llm.py decides if semantic search works": "file_info",
+  "what handles copy": "file_info",
+  "nearestnode copy terminal output clipboard": "nearest"
 }
