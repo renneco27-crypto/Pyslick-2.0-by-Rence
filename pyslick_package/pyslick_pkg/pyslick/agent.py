@@ -1794,20 +1794,68 @@ def _collect_all_files(root: str = ".") -> list[str]:
 
 
 def _first_comment_lines(filepath: str, max_lines: int = 5) -> list[str]:
-    """Return the first meaningful comment lines from a file (up to max_lines)."""
+    """Return the first meaningful comment/docstring lines from a file (up to max_lines)."""
     try:
         raw = Path(filepath).read_text(encoding="utf-8", errors="replace").splitlines()
     except Exception:
         return []
     out: list[str] = []
+    in_docstring = False
+    docstring_quote = None
     for ln in raw[:120]:
         s = ln.strip()
+
+        # Shebang lines ("#!/usr/bin/env python3") are never a description —
+        # skip entirely rather than cleaning them into "usr/bin/env python3".
+        # This was the actual bug: '/' was in the strip-charset, so the
+        # leading '/' of '/usr/bin/env' got stripped along with '#!', and
+        # the cleaned shebang text got kept as if it were the file's
+        # opening comment — before the real docstring below it was ever read.
+        if s.startswith("#!"):
+            continue
+
+        if in_docstring:
+            if docstring_quote in s:
+                # Closing line — take any text before the closing quote
+                before = s.split(docstring_quote)[0].strip()
+                if before and len(before) >= 5:
+                    out.append(before)
+                in_docstring = False
+                if len(out) >= max_lines:
+                    break
+                continue
+            if len(s) >= 5 and not all(c in "-=_/*~#│─" for c in s):
+                out.append(s)
+                if len(out) >= max_lines:
+                    break
+            continue
+
         if not s:
             if out:
                 break
             continue
-        if s.startswith(("//", "#", "/*", "*", "<!--", '"""', "'''")):
-            cleaned = s.lstrip("/*#!<>-= ").strip('"""').strip("'''").strip()
+
+        if s.startswith(('"""', "'''")):
+            docstring_quote = s[:3]
+            rest = s[3:]
+            if docstring_quote in rest:
+                # Single-line docstring: """like this"""
+                text = rest.split(docstring_quote)[0].strip()
+                if len(text) >= 5:
+                    out.append(text)
+                    if len(out) >= max_lines:
+                        break
+                continue
+            rest = rest.strip()
+            if len(rest) >= 5:
+                out.append(rest)
+                if len(out) >= max_lines:
+                    break
+            in_docstring = True
+            continue
+
+        if s.startswith(("//", "#", "/*", "*", "<!--")):
+            cleaned = s.lstrip("/*#<>-= ").strip()
             if len(cleaned) < 5:
                 continue
             if all(c in "-=_/*~#│─" for c in cleaned):
@@ -1949,6 +1997,70 @@ def _graph_functions_with_comments(filepath: str) -> list[dict]:
             })
     nodes.sort(key=lambda n: -n["size"])
     return nodes
+
+
+def _rank_functions_by_connectivity(filepath: str, top_n: int = 3) -> list[dict]:
+    """
+    Stdlib-only (ast module) in-file call-graph ranking: how many times each
+    function/method defined in this file is called by other code in the
+    SAME file. This is a real count of ast.Call nodes whose callee name
+    matches a def in this file — not a size proxy, not a guess. Cross-file
+    calls aren't tracked (that needs project-wide symbol resolution, which
+    is exactly the graphify/rapidfuzz territory that isn't available in
+    every environment) — this is deliberately scoped to what stdlib ast
+    can answer honestly on its own.
+    """
+    if not filepath.endswith(".py"):
+        return []
+    try:
+        source = Path(filepath).read_text(encoding="utf-8", errors="replace")
+        tree = ast.parse(source, filename=filepath)
+    except Exception:
+        return []
+
+    defined_names = set()
+    def_nodes = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            defined_names.add(node.name)
+            def_nodes[node.name] = node
+
+    call_counts = {name: 0 for name in defined_names}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            callee = None
+            if isinstance(node.func, ast.Name):
+                callee = node.func.id
+            elif isinstance(node.func, ast.Attribute):
+                callee = node.func.attr
+            if callee in call_counts:
+                call_counts[callee] += 1
+
+    ranked = []
+    for name, count in call_counts.items():
+        fn_node = def_nodes[name]
+        # A function calling itself (recursion) still counts, but subtract
+        # 1 self-call from "called by others" so a purely-recursive helper
+        # with no external callers doesn't look falsely well-connected.
+        self_calls = sum(
+            1 for n in ast.walk(fn_node)
+            if isinstance(n, ast.Call)
+            and ((isinstance(n.func, ast.Name) and n.func.id == name)
+                 or (isinstance(n.func, ast.Attribute) and n.func.attr == name))
+        )
+        external_count = max(0, count - self_calls)
+        doc = ast.get_docstring(fn_node)
+        comment = doc.strip().splitlines()[0][:100] if doc else None
+        ranked.append({
+            "name": name,
+            "start": fn_node.lineno,
+            "end": getattr(fn_node, "end_lineno", fn_node.lineno),
+            "callers_in_file": external_count,
+            "comment": comment,
+        })
+
+    ranked.sort(key=lambda n: -n["callers_in_file"])
+    return [r for r in ranked if r["callers_in_file"] > 0][:top_n]
 
 
 def _print_file_size_graph(filepath: str) -> None:
@@ -3116,6 +3228,19 @@ def _run_local_agent(directive: str) -> None:
                             print(f"    {DIM}→ {c}{RST}")
                     else:
                         print(f"    {DIM}(no opening comments){RST}")
+
+                    # Most-connected function blocks within this file —
+                    # in-file call count via stdlib ast, 2-3 per file, not
+                    # a full function dump.
+                    top_fns = _rank_functions_by_connectivity(sf, top_n=3)
+                    if top_fns:
+                        print(f"    {CYAN}Most-connected functions:{RST}")
+                        for fn in top_fns:
+                            print(f"      {BOLD}{fn['name']}{RST}  "
+                                  f"{DIM}L{fn['start']}-{fn['end']} "
+                                  f"({fn['callers_in_file']} calls in file){RST}")
+                            if fn["comment"]:
+                                print(f"        {DIM}→ {fn['comment']}{RST}")
                     print()
             else:
                 print(f"  {DIM}No graphify-out/graph.json found — run graphify first for richer results.{RST}\n")
