@@ -379,6 +379,10 @@ PySlick — Local code analysis, search, and AI-assisted patching
 Usage:
     pyslick <command> [args]
 
+Tip: reference an exact file with a leading slash, e.g. "/server.js" or
+"/relay/server.js" — this skips fuzzy file-guessing entirely and goes
+straight to that file. Combine multiple: "compare /a.js and /b.js".
+
 ━━  AI Commands  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   agent <directive>

@@ -257,16 +257,53 @@ def verify_intent_yes_no(directive: str, intent_name: str, examples: list[str]) 
 
 
 
-def is_semantic_available() -> bool:
-    """Whether sentence-transformers is installed. Independent of the
-    llama_cpp/GGUF path — no model needs to be manually placed anywhere;
-    the embedding model downloads once (from Hugging Face) and caches
-    itself the first time it's used."""
-    try:
+_semantic_available_cache = None  # memoized across calls in one process
+
+
+def is_semantic_available(timeout_seconds: float = 5.0) -> bool:
+    """Whether sentence-transformers (and its torch dependency) actually
+    imports cleanly and quickly. Independent of the llama_cpp/GGUF path —
+    no model needs to be manually placed anywhere; the embedding model
+    downloads once (from Hugging Face) and caches itself the first time
+    it's used.
+
+    Runs the import in a worker thread with a timeout, because on some
+    machines a broken/slow torch install doesn't raise ImportError — it
+    just hangs partway through import (seen in practice: get_data() on a
+    corrupted/incomplete torch install stalls indefinitely). Previously
+    this function only guarded against a clean ImportError, so that kind
+    of hang propagated all the way up through query.py's semantic
+    fallback with a raw traceback the user had to Ctrl+C out of. Now any
+    failure mode — ImportError, timeout, or any other exception — is
+    treated the same way: semantic search is unavailable, fall back
+    silently to plain fuzzy/AST matching.
+    """
+    global _semantic_available_cache
+    if _semantic_available_cache is not None:
+        return _semantic_available_cache
+
+    import concurrent.futures
+
+    def _try_import():
         import sentence_transformers  # noqa: F401
         return True
-    except ImportError:
-        return False
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            future = ex.submit(_try_import)
+            result = future.result(timeout=timeout_seconds)
+    except concurrent.futures.TimeoutError:
+        print(
+            f"  [pyslick] semantic search skipped: sentence-transformers/torch "
+            f"import took longer than {timeout_seconds:.0f}s (likely a slow or "
+            f"broken torch install) — continuing with fuzzy/AST matching only."
+        )
+        result = False
+    except Exception:
+        result = False
+
+    _semantic_available_cache = result
+    return result
 
 
 def _embed_model_name() -> str:

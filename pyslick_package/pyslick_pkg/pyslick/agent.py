@@ -1245,6 +1245,29 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if dl in learned and learned[dl] in priority:
         return learned[dl], 100.0, [(learned[dl], 100.0)]
 
+    # ── Tier 0.1: explicit "/filename" reference with no strong verb ─────
+    # If the directive names a file explicitly (leading-slash syntax) and
+    # doesn't also contain a clear git/patch/comment/graph keyword, the
+    # file reference itself is the strongest signal we have — route to
+    # file_info rather than falling through to whatever the classifier's
+    # default happens to be (previously: generic verbs like "explain" had
+    # no keyword weight anywhere and could misroute to an unrelated intent
+    # such as "git" at low confidence).
+    has_explicit_file_ref = bool(
+        re.search(r"(?<!\S)/[a-zA-Z0-9_./\\\-]+\.[a-zA-Z0-9]+", directive)
+    )
+    _STRONG_OVERRIDE_KEYWORDS = [
+        r"\bcommit\b", r"\bpush\b", r"\bcheckpoint\b", r"\bgit\b",
+        r"\bdiff\b", r"\blog\b", r"\bhistory\b",
+        r"\bpatch\b", r"\breplace\b", r"\bfix\b", r"\bchange\b", r"\bmake\b",
+        r"\bcomment\b", r"\bcomments\b",
+        r"\bgraph\b", r"\bconnect\b", r"\bcall(?:s|ed by|er)?\b",
+        r"\bfunction\b", r"\bmethod\b", r"\bline\b", r"\blines\b",
+    ]
+    has_strong_override = any(re.search(kw, dl) for kw in _STRONG_OVERRIDE_KEYWORDS)
+    if has_explicit_file_ref and not has_strong_override:
+        return "file_info", 92.0, [("file_info", 92.0)]
+
     # ── Tier 0.5: Rule — "show me / list / all <filetype/lang> files" always looks for filetype first ─
     import re as _re_t1
     _FT_KEYWORDS = {
@@ -2000,6 +2023,39 @@ def _fuzzy_match_files(directive: str, all_files: list[str]) -> list[str]:
     """
     if not all_files:
         return []
+
+    # Tier 0 — explicit "/filename" or "/relative/path" token. This is an
+    # unambiguous "I mean this exact file" signal from the user, so it
+    # skips fuzzy scoring entirely: resolve by exact path/basename match
+    # first, then substring-in-path as a fallback, and return immediately
+    # if anything resolves. This exists specifically so a directive like
+    # "explain /relay/server.js and /electron-main.js" doesn't fall
+    # through to fuzzy matching (which can pick the wrong file, or force
+    # a picker prompt) when the user already told you exactly which
+    # file(s) they mean.
+    explicit_refs = re.findall(r"(?<!\S)/([a-zA-Z0-9_./\\\-]+\.[a-zA-Z0-9]+)", directive)
+    if explicit_refs:
+        resolved = []
+        norm_files = {os.path.normpath(f).replace("\\", "/"): f for f in all_files}
+        for ref in explicit_refs:
+            ref_norm = ref.replace("\\", "/").lstrip("/")
+            hit = None
+            # exact relative-path match first
+            for norm_path, orig in norm_files.items():
+                if norm_path == ref_norm or norm_path.endswith("/" + ref_norm):
+                    hit = orig
+                    break
+            # fall back to basename match if no path-level hit
+            if hit is None:
+                base = os.path.basename(ref_norm)
+                for f in all_files:
+                    if os.path.basename(f).lower() == base.lower():
+                        hit = f
+                        break
+            if hit and hit not in resolved:
+                resolved.append(hit)
+        if resolved:
+            return resolved
 
     try:
         from rapidfuzz import process
@@ -2900,15 +2956,44 @@ def _run_local_agent(directive: str) -> None:
 
         # When a line range is given, use the top match directly — no picker
         target = matched[0]
-        if len(matched) > 1 and start_ln is None:
+        targets = [target]
+
+        # If the directive itself explicitly names multiple files, skip
+        # the interactive picker entirely and show all of them — the user
+        # already told us what they want, no need to ask again.
+        explicit_file_refs = re.findall(
+            r"(?<!\S)/[a-zA-Z0-9_./\\\-]+\.[a-zA-Z0-9]+", active_directive
+        )
+        auto_multi = len(explicit_file_refs) >= 2 and len(matched) > 1
+
+        if auto_multi and start_ln is None:
+            targets = list(matched)
+        elif len(matched) > 1 and start_ln is None:
             print("Multiple files matched:")
             for i, f in enumerate(matched):
                 print(f"  [{i}] {f}")
-            choice = input("Select (or Enter for first): ").strip()
-            if choice.isdigit() and int(choice) < len(matched):
-                target = matched[int(choice)]
+            choice = input(
+                "Select (comma-separated indices, 'all', or Enter for first): "
+            ).strip()
 
-        _print_all_comments(target, start_line=start_ln, end_line=end_ln)
+            if not choice:
+                targets = [matched[0]]
+            elif choice.lower() == "all":
+                targets = list(matched)
+            else:
+                picked = []
+                for part in choice.split(","):
+                    part = part.strip()
+                    if part.isdigit() and int(part) < len(matched):
+                        picked.append(matched[int(part)])
+                # fall back to first match if nothing valid was entered,
+                # rather than silently printing nothing
+                targets = picked or [matched[0]]
+
+        for i, t in enumerate(targets):
+            if i > 0:
+                print(f"\n{DIM}{'─' * 60}{RST}")
+            _print_all_comments(t, start_line=start_ln, end_line=end_ln)
         return
 
     # ── NEAREST NODE / FUNCTION / METHOD / OBJECT / GENERAL RECON ──────
@@ -2949,6 +3034,14 @@ def _run_local_agent(directive: str) -> None:
         matched   = _fuzzy_match_files(active_directive, all_files)
         target    = matched[0] if matched else None
 
+        # If the directive explicitly names multiple files, search across
+        # all of them rather than collapsing to just the first match —
+        # same "multi-file when multi-file is asked for" rule as file_info.
+        explicit_file_refs = re.findall(
+            r"(?<!\S)/[a-zA-Z0-9_./\\\-]+\.[a-zA-Z0-9]+", active_directive
+        )
+        search_across_matched = len(explicit_file_refs) >= 2 and len(matched) > 1
+
         # Clean search term: remove 'show me function', 'where is function', etc.
         fn_clean = re.sub(
             r"^(?:show me|show|find|scan|print|inspect|where is|which)\s+(?:the\s+)?(?:entire\s+)?(?:function|def|class|method)\s*",
@@ -2974,7 +3067,7 @@ def _run_local_agent(directive: str) -> None:
             fuzz = _FuzzFallback()
 
         # Search across target file first, or all project files
-        search_files = [target] if target else all_files
+        search_files = matched if search_across_matched else ([target] if target else all_files)
         found_matches = []
 
         for fp in search_files:
@@ -3358,14 +3451,33 @@ def _run_local_agent(directive: str) -> None:
         summary_kw = summarize_intent_keywords(active_directive, intent, target_file, line_str)
         print(f"  {CYAN}Action:{RST} {BOLD}{summary_kw}{RST}")
 
-        # If user asks 'show all', show all matched files, otherwise show ONLY primary
-        files_to_show = matched if ("show all" in dl or "all files" in dl) else [target_file]
-        for fp in files_to_show:
+        # Multi-file intent: the user gets ALL matched files shown, without
+        # needing a follow-up "show all", whenever the original directive
+        # itself makes multi-file intent explicit — either by naming ≥2
+        # files directly (e.g. "compare /a.js and /b.js", "/a.js /b.js
+        # /c.js all three pls") or by using an explicit "show all"/"all
+        # files"/"both files" phrase. A single named file (even with other
+        # fuzzy-matched candidates lurking behind it) still shows just the
+        # primary match — we only expand when the user's own wording asked
+        # for more than one.
+        explicit_file_refs = re.findall(
+            r"(?<!\S)/[a-zA-Z0-9_./\\\-]+\.[a-zA-Z0-9]+", active_directive
+        )
+        wants_multi_phrase = any(
+            p in dl for p in ("show all", "all files", "both files", "all of them")
+        )
+        wants_multi = wants_multi_phrase or len(explicit_file_refs) >= 2
+
+        files_to_show = matched if wants_multi else [target_file]
+        for i, fp in enumerate(files_to_show):
+            if i > 0:
+                print(f"\n{DIM}{'─' * 60}{RST}")
             hdr("File Cat / Scan", fp)
             _print_file_cat_and_snippet(fp, dl, start_line=start_line, end_line=end_line)
 
-        # If there are other matching files and not showing all, list them concisely
-        if len(matched) > 1 and "show all" not in dl and "all files" not in dl:
+        # If there are other matching files and we didn't show everything,
+        # list them concisely so the user knows they exist.
+        if len(matched) > 1 and not wants_multi:
             other_files = [os.path.basename(f) for f in matched[1:5]]
             print(f"\n  {DIM}Other matches: {', '.join(other_files)} (use 'show all' to scan all){RST}")
         return

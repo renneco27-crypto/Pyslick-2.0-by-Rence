@@ -93,16 +93,21 @@ def rank_files_by_name(directive: str, files: list[str], top_n: int = 6) -> list
     return [(files[idx], score) for _label, score, idx in results]
 
 
-def rank_via_graph(directive: str, top_n: int = 6):
-    """Use an existing graphify-out/graph.json for a richer node-level match, if present."""
-    if not os.path.exists(GRAPH_PATH):
-        return None
+def rank_via_graph(directive: str, top_n: int = 6, root: str = ".", _retried: bool = False):
+    """Use graphify-out/graph.json (root + any pnpm/lerna workspace packages)
+    for a richer node-level match. Self-heals a missing/thin graph via a
+    code-only extract before giving up — see find_nearest_nodes.ensure_graph_freshness.
+    """
     try:
-        from find_nearest_nodes import load_graph_nodes, load_graphify_vocab, expand_query_with_vocab
+        from find_nearest_nodes import (
+            load_all_graph_nodes, load_graphify_vocab, expand_query_with_vocab,
+            ensure_graph_freshness, LOW_CONFIDENCE_SCORE,
+        )
         from rapidfuzz import process
         from rapidfuzz.fuzz import WRatio
 
-        nodes = load_graph_nodes()
+        _, workspace_dirs = ensure_graph_freshness(root, verbose=False)
+        nodes = load_all_graph_nodes(root, workspace_dirs)
         if not nodes:
             return None
         vocab = load_graphify_vocab()
@@ -111,18 +116,37 @@ def rank_via_graph(directive: str, top_n: int = 6):
         labels = [n["label"] for n in nodes]
         raw = process.extract(expanded, labels, scorer=WRatio, limit=top_n)
 
+        # Thin/low-confidence result: force one uncached re-extract and retry,
+        # same self-repair contract as find_nearest_nodes.main(). Only once,
+        # to avoid looping if the repo genuinely has little to find.
+        top_score = raw[0][1] if raw else 0
+        if (not raw or top_score < LOW_CONFIDENCE_SCORE or len(raw) <= 3) and not _retried:
+            from find_nearest_nodes import _run_graphify_extract, _discover_workspace_dirs
+            _run_graphify_extract(root, quiet=True)
+            for wdir in _discover_workspace_dirs(root):
+                _run_graphify_extract(wdir, quiet=True)
+            return rank_via_graph(directive, top_n=top_n, root=root, _retried=True)
+
         candidate_files = []
         seen = set()
         for _match, score, idx in raw:
-            nid = nodes[idx]["id"]
+            node = nodes[idx]
+            # prefer the node's own recorded source file (works for any
+            # language/module layout), falling back to the old id-guessing
+            # heuristic only if source_file wasn't captured on this node.
+            src = node.get("source_file", "")
+            if src and os.path.isfile(src) and src not in seen:
+                seen.add(src)
+                candidate_files.append((src, score))
+                continue
+            nid = node["id"]
             parts = nid.split("_")
             if len(parts) >= 2:
                 module = parts[1]
-                for ext in (".py",):
-                    cand = f"{module}{ext}"
-                    if os.path.isfile(cand) and cand not in seen:
-                        seen.add(cand)
-                        candidate_files.append((cand, score))
+                cand = f"{module}.py"
+                if os.path.isfile(cand) and cand not in seen:
+                    seen.add(cand)
+                    candidate_files.append((cand, score))
         return candidate_files or None
     except Exception:
         return None
@@ -278,7 +302,7 @@ def print_report(directive: str, hits: list, full: bool):
 # ─────────────────────────────────────────────────────────────────────────
 def run(directive: str, root: str = ".", top_files: int = 3, top_symbols: int = 3,
         depth: int = 2, full: bool = False):
-    graph_ranked = rank_via_graph(directive, top_n=top_files * 2)
+    graph_ranked = rank_via_graph(directive, top_n=top_files * 2, root=root)
 
     if graph_ranked:
         candidates = graph_ranked
