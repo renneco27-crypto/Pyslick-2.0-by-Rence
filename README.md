@@ -251,7 +251,7 @@ MIT — do what you want, keep the credit.
 Built for developers who move fast and want their tools to keep up.
 </div>
 
-![pyslick setup](setup.svg)
+![pyslick setup](pyslick_setup_animation.svg)
 
 ## ⚡ Quick Setup
 
