@@ -106,6 +106,7 @@ The vocab file lives next to this file: intent_vocab.json
 from __future__ import annotations
 
 import os
+import ast
 import sys
 import json
 import re
@@ -511,6 +512,64 @@ def tool_pyslick_status() -> str:
         return buf.getvalue()
     except Exception as e:
         return f"ERROR: {e}"
+
+
+def _get_repo_name() -> str:
+    """Best-effort repo name from the git root directory. Empty string if not a repo."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            return os.path.basename(result.stdout.strip())
+    except Exception:
+        pass
+    return ""
+
+
+def tool_pyslick_add_commit_push(message: str = None) -> tuple:
+    """
+    Full auto flow for a plain 'push' request: git add . -> git commit -m
+    <message> -> git push. Runs unconditionally when a repo is found — no
+    per-step confirmation, since 'push' is already the user's explicit
+    instruction, not an ambiguous checkpoint. Returns (ok: bool, log: str).
+    """
+    log_lines = []
+    try:
+        add_res = subprocess.run(["git", "add", "."], capture_output=True, text=True, timeout=10)
+        log_lines.append("git add .")
+
+        if message is None:
+            try:
+                from pyslick import generate_smart_commit_message
+                message = generate_smart_commit_message(None)
+            except Exception:
+                message = "pyslick auto-commit"
+
+        commit_res = subprocess.run(
+            ["git", "commit", "-m", message], capture_output=True, text=True, timeout=10
+        )
+        if commit_res.returncode == 0:
+            log_lines.append(f'git commit -m "{message}"')
+        else:
+            # Nothing to commit is not a failure for a push request — the
+            # existing ahead-by-N commit(s) may already be exactly what
+            # needs pushing (this is precisely the case in the reported
+            # terminal output: 1 commit ahead, nothing new staged).
+            log_lines.append("(nothing new to commit — pushing existing commits)")
+
+        push_res = subprocess.run(["git", "push"], capture_output=True, text=True, timeout=15)
+        if push_res.returncode == 0:
+            log_lines.append("git push — succeeded")
+            return True, "\n".join(log_lines)
+        else:
+            err = (push_res.stderr or push_res.stdout or "").strip()
+            log_lines.append(f"git push — FAILED: {err[:300]}")
+            return False, "\n".join(log_lines)
+    except Exception as e:
+        log_lines.append(f"ERROR: {e}")
+        return False, "\n".join(log_lines)
 
 
 def tool_pyslick_log() -> str:
@@ -1245,17 +1304,40 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if dl in learned and learned[dl] in priority:
         return learned[dl], 100.0, [(learned[dl], 100.0)]
 
-    # ── Tier 0.1: explicit "/filename" reference with no strong verb ─────
-    # If the directive names a file explicitly (leading-slash syntax) and
-    # doesn't also contain a clear git/patch/comment/graph keyword, the
-    # file reference itself is the strongest signal we have — route to
-    # file_info rather than falling through to whatever the classifier's
-    # default happens to be (previously: generic verbs like "explain" had
-    # no keyword weight anywhere and could misroute to an unrelated intent
-    # such as "git" at low confidence).
+    # ── Tier 0.1: explicit "/filename" or bare "filename.ext" reference ───
+    # If the directive names a file explicitly — either leading-slash
+    # syntax, or just the bare filename as long as it actually exists in
+    # the project — and doesn't also contain a clear git/patch/comment/
+    # graph keyword, the file reference itself is the strongest signal we
+    # have — route to file_info rather than falling through to whatever
+    # the classifier's default happens to be. (Previously: generic verbs
+    # like "explain" had no keyword weight anywhere and could misroute to
+    # an unrelated intent such as "git" at low confidence; separately, a
+    # directive that named a real file by its bare name — e.g. "why is
+    # patchit.py so huge" — got no special treatment at all and could
+    # misroute just as easily as one with no file mentioned.)
     has_explicit_file_ref = bool(
         re.search(r"(?<!\S)/[a-zA-Z0-9_./\\\-]+\.[a-zA-Z0-9]+", directive)
     )
+
+    # Bare filename check: only counts as a signal if the token actually
+    # names a real file in the project — otherwise words that merely
+    # happen to contain a dot (version numbers, "e.g.", etc.) would
+    # false-positive. Deliberately conservative: exact basename match only.
+    has_bare_file_ref = False
+    if not has_explicit_file_ref:
+        bare_tokens = re.findall(r"\b([a-zA-Z0-9_\-]+\.[a-zA-Z0-9]{1,5})\b", directive)
+        if bare_tokens:
+            try:
+                _known_basenames = {
+                    os.path.basename(f).lower() for f in _collect_all_files()
+                }
+                has_bare_file_ref = any(
+                    tok.lower() in _known_basenames for tok in bare_tokens
+                )
+            except Exception:
+                has_bare_file_ref = False
+
     _STRONG_OVERRIDE_KEYWORDS = [
         r"\bcommit\b", r"\bpush\b", r"\bcheckpoint\b", r"\bgit\b",
         r"\bdiff\b", r"\blog\b", r"\bhistory\b",
@@ -1263,10 +1345,101 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
         r"\bcomment\b", r"\bcomments\b",
         r"\bgraph\b", r"\bconnect\b", r"\bcall(?:s|ed by|er)?\b",
         r"\bfunction\b", r"\bmethod\b", r"\bline\b", r"\blines\b",
+        r"\bundo\b", r"\brevert\b", r"\brollback\b",
+        r"\bbroken\b", r"\berrors?\b", r"\bbugs?\b", r"\bsyntax\s*error\b",
+        r"\bcrash(?:ing|es)?\b", r"\bfail(?:ing|s)?\b",
     ]
     has_strong_override = any(re.search(kw, dl) for kw in _STRONG_OVERRIDE_KEYWORDS)
-    if has_explicit_file_ref and not has_strong_override:
+    if (has_explicit_file_ref or has_bare_file_ref) and not has_strong_override:
         return "file_info", 92.0, [("file_info", 92.0)]
+
+    # ── Tier 0.15: "undo / revert / rollback / go back" → git, not patch ──
+    # These words describe reversing a change that already happened, which
+    # is git's job (checkout/reset/revert), not patch's (which proposes a
+    # NEW forward-looking edit). Previously "undo my last change" matched
+    # "patch" at 100% confidence with no did-you-mean gate at all, since
+    # nothing in the vocab connected "undo" to git.
+    #
+    # "go back (to before...)" was a later-discovered gap in this same
+    # family — smoke-testing found it landing on "patch" at 100% confidence
+    # (worse than the original bug: no did-you-mean gate at that score).
+    # Added here rather than as a new tier since it's the same intent.
+    if re.search(r"\b(?:undo|revert|rollback|roll\s+back|discard|go\s+back)\b", dl):
+        return "git", 95.0, [("git", 95.0)]
+
+    # ── Tier 0.165: bare "commit/push/checkpoint [file]" → git ────────────
+    # The vocab's git require_any needs the exact phrase "git commit" etc.
+    # A bare "commit patchit.py please" correctly gets BLOCKED from the
+    # Tier 0.1 file_info shortcut (via _STRONG_OVERRIDE_KEYWORDS above,
+    # which is real and working) but was never actually caught anywhere
+    # afterward — it fell through every tier and landed on "patch" at 0%
+    # confidence. This was previously assumed fixed in the log ("correctly
+    # stays out of the file_info shortcut... should route to git via the
+    # commit keyword") but that was never actually verified by running it;
+    # smoke-testing caught the gap.
+    if re.search(r"\b(?:commit|push|checkpoint)\b", dl) and not re.search(r"\bdid\s+i\b", dl):
+        return "git", 88.0, [("git", 88.0)]
+
+    # ── Tier 0.17: "did I already [X]" → state-check → git status ─────────
+    # "did I save", "did I already run this") — informational, never an
+    # edit. Smoke-testing found ALL of these landing on "patch" at 0%
+    # confidence (a random no-match guess), the worst kind of miss since
+    # it's silent and gives no useful signal to the did-you-mean gate.
+    # Route to git status: it's the closest honest answer pyslick can give
+    # without actually knowing what "this" refers to for save/run.
+    if re.search(r"\bdid\s+i\s+(?:already\s+)?(?:commit|save|push|checkpoint)\b", dl):
+        return "git", 90.0, [("git", 90.0)]
+
+    # ── Tier 0.18: "what happens when I [X]" → behavioral question ────────
+    # Smoke-testing found these landing on "patch" at 0% confidence two out
+    # of three times — a generic-phrasing gap, same root cause as the
+    # original #3 log case (no keyword path recognizes this phrasing at
+    # all). This does not solve true behavioral-semantics matching (that's
+    # the same fragile-semantic-search ceiling documented elsewhere) — it
+    # only makes sure the question routes to run_info's app-summary/file
+    # lookup instead of a silent 0%-confidence "patch" guess, which is a
+    # strictly more honest failure mode even when it can't fully answer.
+    if re.search(r"\bwhat\s+happens\s+(?:when|if)\s+i\b", dl) and not (has_bare_file_ref or has_explicit_file_ref):
+        return "run_info", 70.0, [("run_info", 70.0)]
+
+    # ── Tier 0.19: "what's the deal with [X]" → nearest / concept lookup ──
+    # Previously this phrase only reached "nearest" by accident (vocab
+    # overlap with "closest"/"nearest" words in some cases) — smoke-testing
+    # showed "what's the deal with watch mode" falling to "patch" at 0%
+    # instead. Route the phrase itself to "nearest" explicitly so the
+    # concept-summary fallback (folder/file comment scan) always gets a
+    # chance to run, regardless of what follows "the deal with".
+    if re.search(r"what'?s?\s+the\s+deal\s+with\b", dl):
+        return "nearest", 80.0, [("nearest", 80.0)]
+
+    # ── Tier 0.20: "why is [this file/it] so big/huge" with NO filename ──
+    # Tier 0.1 already routes "why is patchit.py so huge" to file_info when
+    # a real filename is present. This covers the no-filename case ("why
+    # is this file so big") which previously fell through everything and
+    # landed on "patch" at 0% confidence. file_info's handler falls back
+    # to the project's single most-connected file when nothing is matched.
+    if re.search(r"\bwhy\b.*\b(?:so\s+)?(?:big|huge|large|long)\b", dl) and not (has_bare_file_ref or has_explicit_file_ref):
+        return "file_info", 75.0, [("file_info", 75.0)]
+
+    # ── Tier 0.16: "broken / errors / bugs" → syntax_check ────────────────
+    # syntax_check actually runs ast.parse() (or jsx_tag_checker for
+    # JS/HTML) and reports real line-numbered errors — a genuinely correct
+    # answer to "is there anything broken in X". Previously this had no
+    # explicit keyword weight and lost to scan_function's looser fuzzy
+    # match, which then searched for a function literally named "is there
+    # anything broken" and returned an unrelated coincidental match
+    # instead of actually checking the file for errors.
+    #
+    # NOTE: "broken"/"errors"/etc. are ALSO in _STRONG_OVERRIDE_KEYWORDS
+    # above, specifically so Tier 0.1's bare-filename shortcut doesn't
+    # claim these directives first — that ordering bug was caught by
+    # simulation before shipping (a directive like "is there anything
+    # broken in query.py" has a bare file ref AND the word "broken"; if
+    # "broken" weren't an override keyword, Tier 0.1 would return
+    # file_info before this tier ever ran).
+    if has_bare_file_ref or has_explicit_file_ref:
+        if re.search(r"\b(?:broken|errors?|bugs?|syntax\s*error|crash(?:ing|es)?|fail(?:ing|s)?)\b", dl):
+            return "syntax_check", 90.0, [("syntax_check", 90.0)]
 
     # ── Tier 0.5: Rule — "show me / list / all <filetype/lang> files" always looks for filetype first ─
     import re as _re_t1
@@ -1548,6 +1721,195 @@ def _collect_all_files(root: str = ".") -> list[str]:
             if ext in CODE_EXTS or is_known or (ext == "" and not is_dotfile):
                 files.append(os.path.normpath(os.path.join(dirpath, fn)))
     return files
+
+
+def _first_comment_lines(filepath: str, max_lines: int = 5) -> list[str]:
+    """Return the first meaningful comment lines from a file (up to max_lines)."""
+    try:
+        raw = Path(filepath).read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return []
+    out: list[str] = []
+    for ln in raw[:120]:
+        s = ln.strip()
+        if not s:
+            if out:
+                break
+            continue
+        if s.startswith(("//", "#", "/*", "*", "<!--", '"""', "'''")):
+            cleaned = s.lstrip("/*#!<>-= ").strip('"""').strip("'''").strip()
+            if len(cleaned) < 5:
+                continue
+            if all(c in "-=_/*~#│─" for c in cleaned):
+                continue
+            out.append(cleaned)
+            if len(out) >= max_lines:
+                break
+        elif out:
+            break  # first non-comment line after comments → stop
+    return out
+
+
+def _extract_folder_or_file_target(directive: str, all_files: list[str]) -> tuple:
+    """
+    Best-effort: does the directive name a real folder or a real file that
+    exists in the project? Returns (folder_path_or_None, file_path_or_None).
+    Deliberately conservative — only returns a hit when something on disk
+    actually matches, never a guess.
+    """
+    tokens = re.findall(r"[a-zA-Z0-9_\-./\\]+", directive)
+    known_dirs = sorted({os.path.dirname(f) for f in all_files if os.path.dirname(f)})
+
+    # Folder match: a token equals (or path-matches) a real directory name
+    for tok in tokens:
+        tok_clean = tok.strip("/\\").rstrip("/\\")
+        if not tok_clean or len(tok_clean) < 2:
+            continue
+        for d in known_dirs:
+            if d == tok_clean or os.path.basename(d) == tok_clean:
+                return d, None
+
+    # File match: a token's basename matches a real file exactly
+    known_basenames = {os.path.basename(f).lower(): f for f in all_files}
+    for tok in tokens:
+        base = os.path.basename(tok).lower()
+        if base in known_basenames:
+            return None, known_basenames[base]
+
+    return None, None
+
+
+def _top_connected_files_in(folder: str, top_n: int = 3) -> list[str]:
+    """
+    Rank files within `folder` by connectivity. Prefers repomap's real
+    import/reference ranking; falls back to plain file count if repomap
+    isn't importable or the folder is too small to rank meaningfully.
+    """
+    try:
+        from repomap import rank_top_files
+        ranked = rank_top_files(folder, top_n=top_n)
+        files = [f for f, _score in ranked]
+        if files:
+            return files
+    except Exception:
+        pass
+    # Fallback: just take the first top_n source files found, largest first
+    # (a rough proxy for "more going on" when real ranking isn't available)
+    candidates = _collect_all_files(folder)
+    try:
+        candidates.sort(key=lambda f: os.path.getsize(f), reverse=True)
+    except Exception:
+        pass
+    return candidates[:top_n]
+
+
+def _print_concept_summary_for_folder(folder: str, all_files: list[str]) -> None:
+    """Top-3 most-connected files in `folder`, first 10 comment lines each."""
+    top_files = _top_connected_files_in(folder, top_n=3)
+    if not top_files:
+        print(f"  {DIM}No source files found under '{folder}'.{RST}")
+        return
+    print(f"  {CYAN}Top {len(top_files)} most-connected files in {folder}:{RST}\n")
+    for f in top_files:
+        print(f"  {BOLD}{f}{RST}")
+        comments = _first_comment_lines(f, max_lines=10)
+        if comments:
+            for c in comments:
+                print(f"    {DIM}→ {c}{RST}")
+        else:
+            print(f"    {DIM}(no opening comments){RST}")
+        print()
+
+
+def _print_concept_summary_for_file(filepath: str) -> None:
+    """A single file's first 5 comment lines."""
+    print(f"  {BOLD}{filepath}{RST}")
+    comments = _first_comment_lines(filepath, max_lines=5)
+    if comments:
+        for c in comments:
+            print(f"    {DIM}→ {c}{RST}")
+    else:
+        print(f"    {DIM}(no opening comments){RST}")
+
+
+def _graph_functions_with_comments(filepath: str) -> list[dict]:
+    """
+    Stdlib-only (ast module) function/class inventory for a .py file, each
+    with its size and the comment (docstring, or a leading '#' comment
+    directly above it) that explains it. No external deps (graphify /
+    rapidfuzz not required) — this is the whole point: answer "why is this
+    file so big" by showing its structure and comments, not its full body.
+    Non-Python files return an empty list; caller falls back to
+    _first_comment_lines for those.
+    """
+    if not filepath.endswith(".py"):
+        return []
+    try:
+        source = Path(filepath).read_text(encoding="utf-8", errors="replace")
+        tree = ast.parse(source, filename=filepath)
+    except Exception:
+        return []
+
+    raw_lines = source.splitlines()
+    nodes = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            start = node.lineno
+            end = getattr(node, "end_lineno", start)
+            size = end - start + 1
+            doc = ast.get_docstring(node)
+            comment = None
+            if doc:
+                comment = doc.strip().splitlines()[0][:100]
+            else:
+                # Look at the line(s) directly above the def/class for a
+                # leading '#' comment, same convention as _first_comment_lines.
+                above = start - 2  # -1 for 0-index, -1 again for "line above"
+                if 0 <= above < len(raw_lines):
+                    s = raw_lines[above].strip()
+                    if s.startswith("#"):
+                        comment = s.lstrip("# ").strip()
+            nodes.append({
+                "name": node.name,
+                "kind": type(node).__name__.replace("Def", "").replace("Async", "async "),
+                "start": start,
+                "end": end,
+                "size": size,
+                "comment": comment,
+            })
+    nodes.sort(key=lambda n: -n["size"])
+    return nodes
+
+
+def _print_file_size_graph(filepath: str) -> None:
+    """
+    Answer "why is X so big": function/class breakdown by size, largest
+    first, with each one's comment/docstring — not a full-file dump.
+    """
+    total_lines = 0
+    try:
+        total_lines = len(Path(filepath).read_text(encoding="utf-8", errors="replace").splitlines())
+    except Exception:
+        pass
+
+    print(f"  {BOLD}{filepath}{RST}  {DIM}({total_lines} lines total){RST}\n")
+
+    nodes = _graph_functions_with_comments(filepath)
+    if nodes:
+        print(f"  {CYAN}Functions/classes by size (largest first):{RST}\n")
+        for n in nodes[:15]:
+            print(f"  {BOLD}{n['kind']:5s}{RST} {n['name']:<30s} "
+                  f"{DIM}L{n['start']}-{n['end']} ({n['size']} lines){RST}")
+            if n["comment"]:
+                print(f"        {DIM}→ {n['comment']}{RST}")
+        if len(nodes) > 15:
+            print(f"\n  {DIM}...and {len(nodes) - 15} more.{RST}")
+    else:
+        # Non-Python file, or nothing parsed — fall back to opening comments
+        print(f"  {DIM}(no Python function/class structure to graph — showing opening comments){RST}\n")
+        comments = _first_comment_lines(filepath, max_lines=10)
+        for c in comments:
+            print(f"    {DIM}→ {c}{RST}")
 
 
 def _load_graphify_semantic_index() -> dict:
@@ -2537,6 +2899,29 @@ def _run_local_agent(directive: str) -> None:
             print(tool_pyslick_diff())
             return
 
+        if any(kw in dl for kw in ["push"]) and not any(kw in dl for kw in ["commit", "checkpoint"]):
+            # Real push-only path: auto add -> commit -> push, no per-step
+            # confirmation ("push" is already an explicit instruction, not
+            # an ambiguous checkpoint request). Previously "push" was
+            # bucketed with "commit"/"checkpoint" and always stopped at a
+            # "Create checkpoint?" prompt, never actually reaching a push —
+            # confirmed by reproducing the exact reported terminal output.
+            repo_name = _get_repo_name()
+            if not repo_name:
+                warn("Not inside a git repository — nothing to push.")
+                return
+            print(f"  Repo: {YELL}{repo_name}{RST}")
+            hdr("Git", "Auto Add → Commit → Push")
+            msg_match = re.search(r'(?:message|msg|with)[:\s]+["\']?(.+?)["\']?\s*$', dl)
+            commit_msg = msg_match.group(1).strip() if msg_match else None
+            success, log = tool_pyslick_add_commit_push(commit_msg)
+            print(log)
+            if success:
+                ok(f"Pushed to {repo_name}")
+            else:
+                warn(f"Push to {repo_name} did not complete — see log above.")
+            return
+
         if any(kw in dl for kw in ["push", "commit", "checkpoint"]):
             hdr("Git", "Status")
             status = tool_pyslick_status()
@@ -2586,33 +2971,6 @@ def _run_local_agent(directive: str) -> None:
 
         if is_app_summary:
             hdr("App Overview", "God Nodes + First Comments")
-
-            def _first_comment_lines(filepath: str, max_lines: int = 3) -> list[str]:
-                """Return the first meaningful comment lines from a file (up to max_lines)."""
-                try:
-                    raw = Path(filepath).read_text(encoding="utf-8", errors="replace").splitlines()
-                except Exception:
-                    return []
-                out: list[str] = []
-                for ln in raw[:80]:
-                    s = ln.strip()
-                    if not s:
-                        if out:
-                            break
-                        continue
-                    if s.startswith(("//", "#", "/*", "*", "<!--", '"""', "'''")):
-                        cleaned = s.lstrip("/*#!<>-= ").strip('"""').strip("'''").strip()
-                        # Skip pure separator lines (─, ─, /, =, -, *) or very short
-                        if len(cleaned) < 5:
-                            continue
-                        if all(c in "-=_/*~#│─" for c in cleaned):
-                            continue
-                        out.append(cleaned)
-                        if len(out) >= max_lines:
-                            break
-                    elif out:
-                        break  # first non-comment line after comments → stop
-                return out
 
             # Load graph.json from graphify-out/ if present
             graph_path = os.path.join("graphify-out", "graph.json")
@@ -2994,6 +3352,23 @@ def _run_local_agent(directive: str) -> None:
             if i > 0:
                 print(f"\n{DIM}{'─' * 60}{RST}")
             _print_all_comments(t, start_line=start_ln, end_line=end_ln)
+
+        # "comments" is read-only. If the directive's own wording implies
+        # an actual EDIT (clean up, remove, delete, strip out...), say so
+        # explicitly rather than silently under-delivering — previously
+        # "clean up the old commented-out code in X" would just print the
+        # comments and stop, with nothing telling the user this view can't
+        # act on what they asked for.
+        _EDIT_VERBS = (
+            "clean up", "cleanup", "remove", "delete", "strip out",
+            "get rid of", "take out", "delete the",
+        )
+        if any(v in dl for v in _EDIT_VERBS):
+            print(
+                f"\n  {DIM}Note: this only shows comments (read-only). "
+                f"To actually remove/edit them, try:{RST}\n"
+                f"  {DIM}pyslick agent \"{directive}\"{RST}"
+            )
         return
 
     # ── NEAREST NODE / FUNCTION / METHOD / OBJECT / GENERAL RECON ──────
@@ -3026,6 +3401,25 @@ def _run_local_agent(directive: str) -> None:
             print(f"\n  {CYAN}Nearest File Names:{RST}")
             for fp in matched_files[:6]:
                 print(f"    • {BOLD}{fp}{RST}")
+
+        # ── Concept-lookup fallback ──────────────────────────────────────
+        # Nothing matched by graph symbol OR filename — e.g. "what's the
+        # deal with the intent classifier" where no file/symbol literally
+        # contains those words. Rather than leave the user with nothing,
+        # fall back to a comment-based summary: if the directive names a
+        # real folder, summarize its top-3 most-connected files (first 10
+        # comment lines each); if it names a real file, show that file's
+        # first 5 comment lines. This is a distinct, honest "here's what's
+        # around that might be relevant" answer, not a claim that the
+        # concept itself was found.
+        if not enriched_nodes and not matched_files:
+            folder_hit, file_hit = _extract_folder_or_file_target(active_directive, all_files)
+            if folder_hit:
+                print(f"\n  {DIM}No exact match — summarizing top files in '{folder_hit}' instead:{RST}\n")
+                _print_concept_summary_for_folder(folder_hit, all_files)
+            elif file_hit:
+                print(f"\n  {DIM}No exact match — summarizing '{file_hit}' instead:{RST}\n")
+                _print_concept_summary_for_file(file_hit)
         return
 
     # ── SCAN FUNCTION (print function end-to-end with comments) ────────
@@ -3425,6 +3819,29 @@ def _run_local_agent(directive: str) -> None:
     if intent == "file_info":
         all_files = _collect_all_files()
         matched   = _fuzzy_match_files(active_directive, all_files)
+
+        # ── "why is X so big/huge/large" → function/comment size graph ────
+        # Answers with structure (functions+classes by size, with their
+        # comments), never a full-file dump. Handles both "why is
+        # patchit.py so huge" (filename given) and "why is this file so
+        # big" (no filename — falls back to the single most-connected file
+        # project-wide, same god-node ranking used for folder summaries).
+        is_size_question = bool(re.search(r"\b(?:so\s+)?(?:big|huge|large|long)\b", dl)) and \
+            bool(re.search(r"\bwhy\b", dl))
+        if is_size_question:
+            if matched:
+                target_file = matched[0]
+                hdr("File Size Graph", target_file)
+                _print_file_size_graph(target_file)
+            else:
+                top = _top_connected_files_in(".", top_n=1)
+                if top:
+                    print(f"  {DIM}No filename given — using the most-connected file in the project:{RST}\n")
+                    hdr("File Size Graph", top[0])
+                    _print_file_size_graph(top[0])
+                else:
+                    warn("No file matched and no project files found to fall back to.")
+            return
 
         if not matched:
             warn("No file matched. Try naming the file more explicitly.")
