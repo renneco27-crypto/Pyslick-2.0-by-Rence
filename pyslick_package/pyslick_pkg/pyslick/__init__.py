@@ -145,7 +145,7 @@ def generate_smart_commit_message(fallback_directive: str | None = None) -> str:
                         current_file = current_file[2:]
             elif line.startswith("+") and not line.startswith("+++"):
                 clean = line[1:].strip()
-                if clean.startswith(("#", "//", "/*", "*", '"""', "'''")):
+                if clean.startswith(("#", "//", "/*", "*")):
                     c_text = re.sub(r"^[#/*\s─\-=•]+", "", clean).strip()
                     c_text = re.sub(r"[\"']+$", "", c_text).strip()
                     if len(c_text) >= 10 and not c_text.startswith(("import", "http", "from ", "def ", "class ", "<", ">")):

@@ -530,13 +530,56 @@ def _get_repo_name() -> str:
 
 def tool_pyslick_add_commit_push(message: str = None) -> tuple:
     """
-    Full auto flow for a plain 'push' request: git add . -> git commit -m
-    <message> -> git push. Runs unconditionally when a repo is found — no
-    per-step confirmation, since 'push' is already the user's explicit
-    instruction, not an ambiguous checkpoint. Returns (ok: bool, log: str).
+    Full auto flow for a plain 'push' request:
+      1. Detect an unresolved merge from a previous pull (.git/MERGE_HEAD
+         exists). If found, the merge must be committed (or aborted) before
+         anything else can safely happen — this was the exact state
+         reported: 'error: You have not concluded your merge'.
+      2. git add . -> git commit -m <message>
+      3. git push -> on rejection (remote has commits we don't), git pull
+         -> retry push once.
+    Runs unconditionally when a repo is found — no per-step confirmation,
+    since 'push' is already the user's explicit instruction, not an
+    ambiguous checkpoint. Returns (ok: bool, log: str).
     """
     log_lines = []
     try:
+        git_dir_res = subprocess.run(
+            ["git", "rev-parse", "--git-dir"], capture_output=True, text=True, timeout=5
+        )
+        if git_dir_res.returncode == 0:
+            git_dir = git_dir_res.stdout.strip()
+            merge_head_path = os.path.join(git_dir, "MERGE_HEAD")
+            if os.path.exists(merge_head_path):
+                # A previous 'git pull' left an unresolved merge. Check
+                # whether there are still real conflict markers (unmerged
+                # paths) — if so, this can't be auto-resolved safely and
+                # must stop here. If not (the merge was actually resolved,
+                # just never committed — exactly the reported case), commit
+                # it now so the flow can proceed.
+                status_res = subprocess.run(
+                    ["git", "status", "--porcelain"], capture_output=True, text=True, timeout=10
+                )
+                has_conflict_markers = any(
+                    line.startswith(("UU ", "AA ", "DD ", "AU ", "UA ", "UD ", "DU "))
+                    for line in status_res.stdout.splitlines()
+                )
+                if has_conflict_markers:
+                    log_lines.append("Unresolved merge conflicts found (.git/MERGE_HEAD + conflicted files).")
+                    log_lines.append("pyslick will not auto-resolve conflicts — resolve them manually, then commit, then push.")
+                    return False, "\n".join(log_lines)
+                else:
+                    log_lines.append("Found a concluded-but-uncommitted merge from a previous pull — committing it now.")
+                    merge_commit_res = subprocess.run(
+                        ["git", "commit", "--no-edit"], capture_output=True, text=True, timeout=10
+                    )
+                    if merge_commit_res.returncode == 0:
+                        log_lines.append("git commit (merge) — succeeded")
+                    else:
+                        err = (merge_commit_res.stderr or merge_commit_res.stdout or "").strip()
+                        log_lines.append(f"git commit (merge) — FAILED: {err[:300]}")
+                        return False, "\n".join(log_lines)
+
         add_res = subprocess.run(["git", "add", "."], capture_output=True, text=True, timeout=10)
         log_lines.append("git add .")
 
@@ -563,10 +606,37 @@ def tool_pyslick_add_commit_push(message: str = None) -> tuple:
         if push_res.returncode == 0:
             log_lines.append("git push — succeeded")
             return True, "\n".join(log_lines)
-        else:
-            err = (push_res.stderr or push_res.stdout or "").strip()
-            log_lines.append(f"git push — FAILED: {err[:300]}")
-            return False, "\n".join(log_lines)
+
+        err = (push_res.stderr or push_res.stdout or "").strip()
+
+        # "fetch first" / non-fast-forward rejection: the remote has commits
+        # this clone doesn't. A plain retry can never succeed here — try a
+        # pull (merge) first, same as the hint git itself prints, then
+        # retry the push once. If the pull itself hits a conflict, stop and
+        # report it honestly rather than guessing how to resolve it.
+        if "fetch first" in err.lower() or "non-fast-forward" in err.lower() or "rejected" in err.lower():
+            log_lines.append(f"git push — REJECTED (remote has commits you don't have locally)")
+            log_lines.append("Attempting git pull to merge remote changes...")
+            pull_res = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=30)
+            pull_out = (pull_res.stdout or "") + (pull_res.stderr or "")
+            if pull_res.returncode != 0 or "CONFLICT" in pull_out:
+                log_lines.append("git pull — FAILED or produced conflicts:")
+                log_lines.append(pull_out.strip()[:500])
+                log_lines.append("Resolve the conflict manually, then push again — pyslick will not auto-resolve merge conflicts.")
+                return False, "\n".join(log_lines)
+            log_lines.append("git pull — merged successfully")
+
+            retry_res = subprocess.run(["git", "push"], capture_output=True, text=True, timeout=15)
+            if retry_res.returncode == 0:
+                log_lines.append("git push (retry) — succeeded")
+                return True, "\n".join(log_lines)
+            else:
+                retry_err = (retry_res.stderr or retry_res.stdout or "").strip()
+                log_lines.append(f"git push (retry) — FAILED: {retry_err[:300]}")
+                return False, "\n".join(log_lines)
+
+        log_lines.append(f"git push — FAILED: {err[:300]}")
+        return False, "\n".join(log_lines)
     except Exception as e:
         log_lines.append(f"ERROR: {e}")
         return False, "\n".join(log_lines)
