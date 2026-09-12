@@ -4585,17 +4585,6 @@ def run_agent(directive: str, root: str = ".") -> None:
 
     print(f"{BOLD}Agent: {directive}{RST}")
 
-    # ── Priority: relay → API → local LLM ─────────────────────────────────
-    if _relay_active():
-        print(f"{DIM}Relay active — sending context to browser extension{RST}")
-        try:
-            from .response_watcher import register
-            register()
-        except Exception:
-            pass
-        _run_relay_agent(directive)
-        return
-
     provider_name, provider = _get_provider()
     if not provider:
         print(f"{DIM}No API key — using local LLM{RST}")
