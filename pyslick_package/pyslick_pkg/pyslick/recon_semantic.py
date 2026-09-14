@@ -156,8 +156,30 @@ def _write_index(index: dict) -> None:
         json.dump(index, fh, indent=2)
 
 
+def _index_is_stale() -> bool:
+    try:
+        idx_mtime = os.path.getmtime(INDEX_PATH)
+    except OSError:
+        return True
+    for dirpath, dirnames, filenames in os.walk(os.getcwd()):
+        dirnames[:] = [d for d in dirnames
+                       if d not in {"node_modules", ".git", ".next", "dist",
+                                    "build", "__pycache__", ".venv", "venv",
+                                    ".pyslick", ".pyslick_context", ".pyslick_backups",
+                                    "graphify-out", "models", "miamico"}]
+        for fn in filenames:
+            if not fn.endswith(".py"):
+                continue
+            try:
+                if os.path.getmtime(os.path.join(dirpath, fn)) > idx_mtime:
+                    return True
+            except OSError:
+                continue
+    return False
+
+
 def load_or_build_index(root: str = ".", rebuild: bool = False) -> dict:
-    if not rebuild and os.path.isfile(INDEX_PATH):
+    if not rebuild and os.path.isfile(INDEX_PATH) and not _index_is_stale():
         try:
             with open(INDEX_PATH, "r", encoding="utf-8") as fh:
                 idx = json.load(fh)
