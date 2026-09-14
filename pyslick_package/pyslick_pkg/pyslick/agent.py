@@ -3407,9 +3407,9 @@ def _run_local_agent(directive: str) -> None:
                       f"(restore: pyslick snap-restore {snap['name']}){RST}")
             return
         if _r == "recon":
-            from recon_semantic import run_universal_recon
+            from recon_semantic import run_full_recon
             from recon_pack import write_pack
-            pack = run_universal_recon(active_directive)
+            pack = run_full_recon(active_directive)
             _rel = pack.get("relation") or {}
             _rel_answered = bool(_rel.get("is_relation_query") and _rel.get("paths"))
             _rel_failed = bool(_rel.get("is_relation_query") and not _rel.get("paths"))
@@ -3445,8 +3445,37 @@ def _run_local_agent(directive: str) -> None:
                 print(f"\n{DIM}  for broader context run: pyslick recon-pack '{active_directive}'{RST}")
                 return
 
+            _cent = pack.get("centrality") or []
+            if _cent:
+                print(f"\n{BOLD}CENTRALITY{RST}  {DIM}(most-connected symbols){RST}")
+                for _c in _cent[:10]:
+                    _cid = _c.get("label") or _c.get("name") or _c.get("id") or "?"
+                    _cl = str(_cid)
+                    if _cl.startswith("src_"):
+                        _cl = _cl[4:]
+                    _cl = _cl.replace("_", ".")
+                    _cf = _c.get("file") or _c.get("source_file") or ""
+                    _cs = _c.get("degree") or _c.get("score") or _c.get("centrality") or ""
+                    _cstr = f"  {DIM}deg={_cs}{RST}" if _cs != "" else ""
+                    _cfile = f"  {DIM}{_cf}{RST}" if _cf else ""
+                    print(f"  {CYAN}{_cl}{RST}{_cstr}{_cfile}")
+
             for _f in pack.get("files", []):
                 print(f"\n{BOLD}{_f.get('path')}{RST}  {DIM}({_f.get('mode')}, {_f.get('line_count')} lines){RST}")
+                for _cm in (_f.get("comments") or [])[:8]:
+                    _ct = (_cm.get("text") or _cm.get("body") or "").strip()
+                    _cl = _cm.get("line") or _cm.get("start_line") or ""
+                    if _ct:
+                        _ct1 = _ct.splitlines()[0][:200]
+                        print(f"  {DIM}#{RST} {CYAN}L{_cl}{RST} {_ct1}")
+                for _sym in (_f.get("symbols") or [])[:20]:
+                    _sn = _sym.get("name") or _sym.get("label") or "?"
+                    _sk = _sym.get("kind") or _sym.get("type") or ""
+                    _sr = _sym.get("range") or (
+                        f"L{_sym.get('start_line')}-{_sym.get('end_line')}"
+                        if _sym.get("start_line") else f"L{_sym.get('line')}"
+                    )
+                    print(f"  {CYAN}{_sn}{RST}  {DIM}{_sk}  {_sr}{RST}")
                 for _h in _f.get("hits", []):
                     print(f"  {CYAN}L{_h.get('line')}{RST} {_h.get('name') or _h.get('kind') or ''}  {DIM}{_h.get('kind')}{RST}")
                     _txt = (_h.get("text") or "").strip()
