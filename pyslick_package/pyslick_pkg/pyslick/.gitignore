@@ -8,3 +8,7 @@ graphify-out/
 *.gguf
 *.bin
 models/
+
+# pyslick runtime state (never commit)
+.pyslick_context/
+.pyslick/
