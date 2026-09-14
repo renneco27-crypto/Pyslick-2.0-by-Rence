@@ -393,12 +393,25 @@ straight to that file. Combine multiple: "compare /a.js and /b.js".
       Example:  pyslick agent "make the mic button 40% larger"
       Example:  pyslick agent "remove the extra padding at the bottom of flashcards"
 
+  <directive>            (no subcommand)
+      Rule-based router. Broad Q&A goes to universal recon: ranked files,
+      per-file snippets, and (if the directive names two entities) a
+      RELATION block showing the graph path between them.
+      Snippets auto-snap to the enclosing function's full extent â€” a
+      mid-body grep hit still shows the whole function, never a truncated
+      ±8-line window. Stopword-stripped, so "what does X do" doesn't
+      match every docstring containing the word "do".
+      Overview questions ("what does this codebase do", "app overview",
+      "describe the project", â€¦) route to the App Overview panel:
+      god-node files by in-degree + their opening comments.
+
   query <directive>
-      Fast, no-LLM smart lookup. Fuzzy graph match + AST call-graph walk
-      returns only the relevant functions/classes — not the whole file.
-      Read-only. Use this to orient before patching.
+      Same as the bare form above; "query" is just a token and is ignored
+      for routing. Kept for backwards compatibility.
       Options:  --root, --top-files, --top-symbols, --depth, --full
       Example:  pyslick query "what changes the mic button size"
+      Example:  pyslick "what does this codebase do?"   (overview)
+      Example:  pyslick "how does the router decide between recon and recon_full"
 
   recon <directive>
       Guided interactive pipeline: find → inspect → patch → checkpoint.
