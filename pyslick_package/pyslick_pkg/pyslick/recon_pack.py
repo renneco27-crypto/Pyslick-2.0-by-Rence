@@ -282,6 +282,7 @@ def gather_candidate_files(directive: str, expanded: str) -> list[str]:
                     if os.path.isfile(sf) and sf not in ranked_paths:
                         ranked_paths.append(sf)
 
+        seen_basenames = {os.path.basename(p) for p in ranked_paths}
         for match, score, index in raw_results:
             if score < MIN_GRAPH_MATCH_SCORE:
                 continue
@@ -289,11 +290,14 @@ def gather_candidate_files(directive: str, expanded: str) -> list[str]:
             if node["type"] in ("marker_block", "descriptive_block"):
                 path = node["_comment_node"].file
             else:
-                # node ids from graph nodes are expected to carry a file hint;
-                # fall back to skipping if we can't resolve one cleanly.
                 path = node.get("source_file") or node.get("file") or node.get("path")
-            if path and os.path.isfile(path) and path not in ranked_paths:
-                ranked_paths.append(path)
+            if not path or not os.path.isfile(path):
+                continue
+            bn = os.path.basename(path)
+            if bn in seen_basenames:
+                continue
+            seen_basenames.add(bn)
+            ranked_paths.append(path)
 
     # ── fallback: graph match found nothing (or too little) worth trusting ──
     if len(ranked_paths) < 2:
