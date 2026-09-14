@@ -394,7 +394,8 @@ def ensure_graph_or_expand(directive: str, existing_hits: list, root: str = ".")
     return _expand_from_graph(directive, existing_hits, index)
 
 
-def _hits_to_files(hits: list, budget: dict) -> list:
+def _hits_to_files(hits: list, budget: dict, functions: list = None) -> list:
+    functions = functions or []
     by_file = {}
     for h in hits:
         fpath = h.get("file", "")
@@ -438,6 +439,14 @@ def _hits_to_files(hits: list, budget: dict) -> list:
                 continue
             lo = max(0, ln - 1 - ctx)
             hi = min(line_count - 1, ln - 1 + ctx) if line_count else ln + ctx
+            # Snap the window to the enclosing function so a mid-body hit
+            # shows the whole function, not 8 lines each side. seed line
+            # is grep's job; extent is the AST's job.
+            snap_lo, snap_hi = snap_range_to_function(
+                lo + 1, hi + 1, fpath, functions
+            )
+            lo = max(0, snap_lo - 1)
+            hi = min(line_count - 1, snap_hi - 1) if line_count else snap_hi - 1
             term = h.get("name") or (h.get("text", "") or "")[:40] or "match"
             snippet_ranges.append((lo, hi, term))
 
@@ -560,7 +569,7 @@ def run_universal_recon(
             "note": "No matches found in index or graph.",
         }
 
-    files = _hits_to_files(hits, budget)
+    files = _hits_to_files(hits, budget, functions=index.get("functions", []))
 
     pack = {
         "directive": directive,
@@ -586,7 +595,7 @@ def run_universal_recon(
 def rank_candidate_files(directive: str, expanded: str = None) -> list:
     index = load_or_build_index(".")
     hits = _tier1(directive, expanded or directive, index)
-    files = _hits_to_files(hits, DEFAULT_BUDGET)
+    files = _hits_to_files(hits, DEFAULT_BUDGET, functions=index.get("functions", []))
     return [f.get("path") for f in files]
 
 
