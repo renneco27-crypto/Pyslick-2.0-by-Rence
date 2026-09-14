@@ -145,6 +145,20 @@ def _rule_route(directive: str) -> str:
     if re.search(r"\b(make|add|remove|delete|change|fix|update|edit|patch|rename)\b", d):
         return "agent"
 
+    # Comment-scan — checked BEFORE the generic query/lookup rule, because
+    # that rule matches bare "find"/"show" and would swallow "find TODOs".
+    # Only fire on explicit "scan comments" phrasing. Plain substring
+    # matching caught "comment_blocks scanner" — user means the file, not
+    # the scan-comments feature. Word boundaries on both terms fixes it:
+    # "comment_blocks" has no \b before "comment", and "scanner" has no
+    # \b after "scan", so neither token qualifies on its own.
+    if re.search(r"\bcomments?\b", d) and re.search(r"\bscan\b", d):
+        return "comment_scan"
+    if re.search(r"\b(?:find|list|show|locate)\b.*\b(?:todos?|fixmes?|markers?)\b", d):
+        return "comment_scan"
+    if re.search(r"\b(?:todos?|fixmes?)\b.*\b(?:find|list|show|locate)\b", d):
+        return "comment_scan"
+
     # Query / lookup â€” route to recon (never "query": agent has no handler for it)
     if re.search(r"\b(where|show|find|locate)\b", d):
         return "recon"
@@ -158,13 +172,6 @@ def _rule_route(directive: str) -> str:
         return "lines"
     if "grep" in d or "search for" in d:
         return "grep"
-    # Only fire on explicit "scan comments" phrasing. Plain substring
-    # matching caught "comment_blocks scanner" — user means the file, not
-    # the scan-comments feature. Word boundaries on both terms fixes it:
-    # "comment_blocks" has no \b before "comment", and "scanner" has no
-    # \b after "scan", so neither token qualifies on its own.
-    if re.search(r"\bcomments?\b", d) and re.search(r"\bscan\b", d):
-        return "comment_scan"
     if d in ("help", "?", "commands"):
         return "help"
 
