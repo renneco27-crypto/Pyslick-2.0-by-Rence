@@ -340,6 +340,11 @@ def _expand_from_graph(directive: str, existing_hits: list, index: dict) -> list
             "score": 30,
         })
 
+    # Cap graph-neighbor spillover. When a query seeds on a large file
+    # (e.g. agent.py), every node in it becomes a neighbor and the pack
+    # fills with low-signal "graph_neighbor" entries. 12 keeps a useful
+    # fan-out without drowning the real hits.
+    extra_hits = extra_hits[:12]
     return existing_hits + extra_hits
 
 
@@ -486,7 +491,17 @@ def run_universal_recon(
     hits = _tier1(directive, expanded, index)
     tier_used = 1
 
-    if len(hits) < TIER1_MIN_HITS or force_graph:
+    # Only expand via graph when the seed contains at least one real hit
+    # (a named function or a filename-stem match). If the only seeds are
+    # comment-kind or file-header-kind hits, expanding fans out into every
+    # neighbor of a weak file — e.g. "where is the mic handler" seeds on
+    # agent.py via its docstring, then spills into half the repo. A weak
+    # seed should stay weak.
+    _strong_seed = any(
+        h.get("kind") in ("function", "file")
+        for h in hits
+    )
+    if (len(hits) < TIER1_MIN_HITS and _strong_seed) or force_graph:
         hits = ensure_graph_or_expand(directive, hits, root=root)
         tier_used = 2
 
