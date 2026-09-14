@@ -3242,16 +3242,14 @@ def _run_local_agent(directive: str) -> None:
             from recon_semantic import run_universal_recon
             from recon_pack import write_pack
             pack = run_universal_recon(active_directive)
-            write_pack(pack)
-            print(f"{DIM}  routed -> recon  "
-                  f"(tier={pack.get('tier_used')}, "
-                  f"files={len(pack.get('files', []))}){RST}")
+            _pack_path = write_pack(pack)
+            print(f"{DIM}  pack -> {_pack_path}{RST}")
+            for _f in pack.get("files", []):
+                print(f"  - {_f.get('path')}  ({_f.get('mode')}, {_f.get('line_count')} lines)")
             return
     except Exception as _router_err:
         print(f"  [router block error: {type(_router_err).__name__}: {_router_err}]")
     # ── Fall through to the classifier below ──────────────────────────────
-
-    # LLM optional â€” classification still works without it (just skips Tier 3)
     try:
         from llm import is_available, maybe_expand_query
         _llm_ready = is_available()
