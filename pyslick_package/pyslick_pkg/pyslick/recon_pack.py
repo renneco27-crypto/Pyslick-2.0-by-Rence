@@ -266,6 +266,22 @@ def gather_candidate_files(directive: str, expanded: str) -> list[str]:
         labels = [n["label"] for n in all_nodes]
         raw_results = process.extract(expanded, labels, scorer=WRatio, limit=20)
 
+        # token-based filename match: any directive token that matches a
+        # source-file stem pulls that file in at top priority
+        directive_tokens = [t for t in re.split(r"[^a-zA-Z0-9_]+", directive.lower()) if len(t) > 2]
+        stems: dict[str, str] = {}
+        for n in all_nodes:
+            sf = n.get("source_file") or n.get("file") or n.get("path") or ""
+            if sf:
+                stem = os.path.splitext(os.path.basename(sf))[0].lower()
+                stems.setdefault(stem, sf)
+
+        for tok in directive_tokens:
+            for stem, sf in stems.items():
+                if tok == stem or tok == stem.replace("_", ""):
+                    if os.path.isfile(sf) and sf not in ranked_paths:
+                        ranked_paths.append(sf)
+
         for match, score, index in raw_results:
             if score < MIN_GRAPH_MATCH_SCORE:
                 continue
