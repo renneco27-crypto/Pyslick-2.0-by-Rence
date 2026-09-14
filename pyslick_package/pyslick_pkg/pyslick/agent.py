@@ -2034,6 +2034,60 @@ def _extract_folder_or_file_target(directive: str, all_files: list[str]) -> tupl
     return None, None
 
 
+def _extract_exact_path(directive: str, all_files: list[str]) -> str | None:
+    """If the directive contains a token that resolves to a real file on
+    disk (relative to cwd), return that path. Handles:
+      - src/app/api/publish/route.ts
+      - ./src/app/... and .\\src\\app\\...
+      - /src/app/... (leading slash, Windows-safe: strip it)
+      - bare filename if unique across the project
+    Returns None if nothing on disk matches. Deliberately conservative —
+    never guesses. If multiple paths are named, returns the first one."""
+    if not directive:
+        return None
+
+    # Normalise all known files to forward-slash relative form for comparison.
+    root = os.getcwd()
+    known: dict[str, str] = {}
+    for f in all_files:
+        rel = os.path.relpath(f, root).replace("\\", "/")
+        known[rel.lower()] = f
+        # also index by suffix so src/app/api/publish/route.ts matches
+        # when the user typed that exact tail
+        known.setdefault(rel.lower(), f)
+
+    # Pull every token that looks like a path or filename.
+    tokens = re.findall(r"[A-Za-z0-9_\-./\\]+", directive)
+    # Sort by descending length so the longest (most specific) token wins
+    # before shorter substrings.
+    tokens.sort(key=len, reverse=True)
+
+    for tok in tokens:
+        if not tok or not any(c in tok for c in "./\\"):
+            continue
+        norm = tok.replace("\\", "/").lstrip("./").lstrip("/")
+        if not norm:
+            continue
+        # exact relative match
+        if norm.lower() in known:
+            return known[norm.lower()]
+        # suffix match: user typed the tail of the path
+        for rel_lower, real in known.items():
+            if rel_lower.endswith("/" + norm.lower()) or rel_lower == norm.lower():
+                return real
+
+    # Bare-filename fallback: only if unique.
+    basenames: dict[str, list[str]] = {}
+    for f in all_files:
+        basenames.setdefault(os.path.basename(f).lower(), []).append(f)
+    for tok in tokens:
+        base = tok.lower()
+        if base in basenames and len(basenames[base]) == 1:
+            return basenames[base][0]
+
+    return None
+
+
 def _top_connected_files_in(folder: str, top_n: int = 3) -> list[str]:
     """
     Rank files within `folder` by connectivity. Prefers repomap's real
@@ -3289,6 +3343,21 @@ def _run_local_agent(directive: str) -> None:
     else:
         _skip_router = False
 
+    # ── Exact-path fast path ──────────────────────────────────────────────
+    # If the user named a real file on disk, go straight to file_info on
+    # that file. Bypasses fuzzy matching entirely, which was shredding
+    # paths down to their basename and returning siblings alphabetically.
+    _exact_path: str | None = None
+    if not _skip_router:
+        try:
+            _all_files_for_path = _collect_all_files()
+            _exact_path = _extract_exact_path(active_directive, _all_files_for_path)
+        except Exception:
+            _exact_path = None
+        if _exact_path:
+            intent = "file_info"
+            _skip_router = True
+
     # ── Rule/LLM router: broad Q&A → universal recon ──────────────────────
     try:
         from router import route as _route
@@ -4517,6 +4586,11 @@ def _run_local_agent(directive: str) -> None:
     # â”€â”€ FILE INFO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # â”€â”€ FILE INFO (Cat / Scan / Snippet / Purpose / Line Ranges) â”€â”€â”€â”€â”€â”€
     if intent == "file_info":
+        if _exact_path and os.path.exists(_exact_path):
+            dl_local = (active_directive or "").lower()
+            hdr("File Cat / Scan", _exact_path)
+            _print_file_cat_and_snippet(_exact_path, dl_local)
+            return
         all_files = _collect_all_files()
         matched   = _fuzzy_match_files(active_directive, all_files)
 
