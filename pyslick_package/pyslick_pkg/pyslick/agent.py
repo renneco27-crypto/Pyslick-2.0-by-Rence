@@ -3245,11 +3245,28 @@ def _run_local_agent(directive: str) -> None:
             _pack_path = write_pack(pack)
             print(f"{DIM}  pack -> {_pack_path}{RST}")
             _rel = pack.get("relation") or {}
-            if _rel.get("is_relation_query") and _rel.get("paths"):
+            _rel_answered = bool(_rel.get("is_relation_query") and _rel.get("paths"))
+            if _rel_answered:
                 print(f"\n{BOLD}RELATION{RST}  {_rel.get('entities')}")
                 print(f"{DIM}  confidence: {_rel.get('confidence')}  —  {_rel.get('note')}{RST}")
                 for _ev in _rel.get("evidence", []):
                     print(f"  {_ev['step']}. {_ev['from']} --{_ev['relation']}--> {_ev['to']}   {DIM}({_ev['file']} {_ev['loc']}){RST}")
+                _src_file = _rel.get("evidence", [{}])[0].get("file") if _rel.get("evidence") else None
+                if _src_file:
+                    print(f"\n{BOLD}SOURCE{RST}  {_src_file}")
+                    try:
+                        with open(_src_file, "r", encoding="utf-8", errors="replace") as _fh:
+                            _src_lines = _fh.readlines()
+                        _loc = _rel.get("evidence", [{}])[0].get("loc") or ""
+                        _ln = int("".join(ch for ch in _loc if ch.isdigit()) or "1")
+                        _lo = max(1, _ln - 6)
+                        _hi = min(len(_src_lines), _ln + 6)
+                        for _i in range(_lo, _hi + 1):
+                            print(f"  {_i:>4}: {_src_lines[_i-1].rstrip()}")
+                    except Exception as _e:
+                        print(f"  {DIM}(could not read source: {_e}){RST}")
+                print(f"\n{DIM}  for broader context run: pyslick recon-pack '{active_directive}'{RST}")
+                return
             elif _rel.get("is_relation_query"):
                 print(f"\n{BOLD}RELATION{RST}  {_rel.get('entities')}")
                 print(f"{DIM}  {_rel.get('note') or 'no path found'}{RST}")
