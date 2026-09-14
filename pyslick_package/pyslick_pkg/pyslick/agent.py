@@ -141,7 +141,9 @@ DIM   = "\033[2m"
 RST   = "\033[0m"
 
 def hdr(phase: str, title: str):
-    print(f"\n{BOLD}{CYAN}â”â”  {phase}  {RST}{BOLD}{title}{RST}")
+    print(f"\n{BOLD}{CYAN}â”â”  {phase}  {RST}{BOLD}{title}{RST}")
+    print(f"{DIM}{'â”€' * 60}{RST}")
+    print(f"{DIM}  cwd: {os.getcwd()}{RST}")
     print(f"{DIM}{'â”€' * 60}{RST}")
 
 def ok(msg):   print(f"{GREEN}  âœ” {msg}{RST}")
@@ -4588,8 +4590,17 @@ def _run_local_agent(directive: str) -> None:
     if intent == "file_info":
         if _exact_path and os.path.exists(_exact_path):
             dl_local = (active_directive or "").lower()
-            hdr("File Cat / Scan", _exact_path)
-            _print_file_cat_and_snippet(_exact_path, dl_local)
+            hdr("File", _exact_path)
+            # User named a real path — print it with line numbers. No summary,
+            # no "run pyslick lines yourself". One command, whole file.
+            try:
+                with open(_exact_path, "r", encoding="utf-8", errors="replace") as _fh:
+                    _lines = _fh.readlines()
+                for _i, _ln in enumerate(_lines, 1):
+                    print(f"  {_i:>4}: {_ln.rstrip()}")
+                print(f"\n  {DIM}{len(_lines)} lines{RST}")
+            except Exception as _e:
+                warn(f"Could not read {_exact_path}: {_e}")
             return
         all_files = _collect_all_files()
         matched   = _fuzzy_match_files(active_directive, all_files)
