@@ -829,11 +829,14 @@ def main():
 
             else:
                 # Default: bare pyslick "<query>" (e.g. pyslick "show me packagejson")
-                # is routed directly to the AI agent.
+                # is routed directly to the AI agent. Reassemble argv into a
+                # single directive string so flags like --full / --grep X
+                # survive as text instead of tripping agent's argparse.
                 directive_args = [command] + args
+                _joined = " ".join(directive_args)
                 try:
                     from .agent import main as agent_main
-                    sys.argv = ["agent"] + directive_args
+                    sys.argv = ["agent", _joined]
                     agent_main()
                 except Exception as e:
                     print(f"Error: {e}")
