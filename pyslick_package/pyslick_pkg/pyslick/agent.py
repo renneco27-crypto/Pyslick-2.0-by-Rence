@@ -3220,11 +3220,47 @@ def _run_local_agent(directive: str) -> None:
     cleaned_directive, was_frustrated, prev_intent = _detect_frustration_and_correction(directive)
     active_directive = cleaned_directive
 
+    # ── Repo-overview shortcut ────────────────────────────────────────────
+    # Overview questions ("what does this codebase do", "app overview", …)
+    # should reach the existing App Overview block (God Nodes + first
+    # comments) further down, not the universal-recon ranker. Skip the
+    # router for these so intent falls through to "run_info".
+    _OVERVIEW_HINTS = (
+        "what does this app", "what does this project", "what does this do",
+        "what does the app", "what does the project", "what does this repo",
+        "what does this program", "what does the program", "what does this codebase",
+        "what is this app", "what is this project", "what is this repo",
+        "what is this program", "what is this codebase",
+        "what is this for", "what does it do", "describe the app",
+        "describe the project", "describe this", "describe this program",
+        "overview of", "app overview", "project overview", "app summary",
+        "project summary", "summarize this project", "summarize this app",
+        "summarize this program", "purpose of this app", "purpose of this project",
+        "purpose of this program", "whats this", "what is this",
+        "whats this project", "whats this app", "whats this repo",
+        "whats this codebase", "whats this program",
+        "what's this", "what's this project", "what's this app",
+        "what's this program",
+    )
+    _dl = (active_directive or "").lower()
+    if any(_h in _dl for _h in _OVERVIEW_HINTS):
+        intent = "run_info"
+        # Jump straight to the run_info branch below; skip the recon router.
+        # (See the `if intent == "run_info":` handler further down.)
+        _skip_router = True
+    else:
+        _skip_router = False
+
     # ── Rule/LLM router: broad Q&A → universal recon ──────────────────────
     try:
         from router import route as _route
-        _r = _route(active_directive)
-        if _r == "recon_full":
+        if _skip_router:
+            _r = None
+        else:
+            _r = _route(active_directive)
+        if _r is None:
+            pass  # overview shortcut: fall through to the run_info branch below
+        elif _r == "recon_full":
             from recon_semantic import run_full_recon
             from recon_pack import write_pack
             pack = run_full_recon(active_directive)
@@ -3296,7 +3332,13 @@ def _run_local_agent(directive: str) -> None:
         _llm_ready = False
         def maybe_expand_query(d): return d  # no-op fallback
 
-    intent, confidence, top3 = _classify_intent_with_confidence(active_directive)
+    if _skip_router:
+        # Overview shortcut already decided the intent; don't let the
+        # classifier clobber it.
+        confidence = 100.0
+        top3 = [(intent, confidence)]
+    else:
+        intent, confidence, top3 = _classify_intent_with_confidence(active_directive)
     dl = active_directive.lower()
     print(f"{DIM}  intent â†’ {intent}  ({confidence:.0f}%){RST}")
 

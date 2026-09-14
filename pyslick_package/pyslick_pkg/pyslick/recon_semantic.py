@@ -20,6 +20,13 @@ import subprocess
 from collections import Counter
 from datetime import datetime
 
+# Minimum rapidfuzz partial_ratio score for a candidate to be kept.
+# partial_ratio finds the best matching *substring*, so a generic English
+# question ("what does this codebase do") scores >0 against nearly every
+# docstring in the repo. Without a floor, every unit ties and the top-K
+# is arbitrary. 60 keeps genuine partial matches, drops incidental ones.
+_MIN_FUZZ_SCORE = 60
+
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 if THIS_DIR not in sys.path:
     sys.path.insert(0, THIS_DIR)
@@ -210,18 +217,18 @@ def _rapidfuzz_rank(directive: str, candidates: list, top_k: int = 10) -> list:
         if not text:
             continue
         s = fuzz.partial_ratio(directive.lower(), text.lower())
-        if s > 0:
+        if s >= _MIN_FUZZ_SCORE:
             scored.append((s, c))
     scored.sort(key=lambda x: x[0], reverse=True)
-    return [c for _, c in scored[:top_k]]
+    return [(c, s) for s, c in scored[:top_k]]
 
 
 def _rank_units(directive: str, units: list, top_k: int = 10) -> list:
     ranked = _rapidfuzz_rank(directive, units, top_k=top_k)
     out = []
-    for u in ranked:
+    for u, s in ranked:
         h = dict(u)
-        h.setdefault("score", 50)
+        h["score"] = s
         out.append(h)
     return out
 
@@ -445,11 +452,6 @@ def _pack_md(pack: dict) -> str:
                 lines.append("```")
         lines.append("")
     return "\n".join(lines)
-
-
-# ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
-# Public: universal recon (read-only, no git)
-# ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 
 def run_universal_recon(
     directive: str,

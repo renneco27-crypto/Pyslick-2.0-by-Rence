@@ -208,6 +208,17 @@ FALLBACK_SKIP_EXTS = {
     ".pdf", ".ico", ".map", ".bak", ".woff", ".woff2", ".ttf",
 }
 
+_STOPWORDS = {
+    "what", "does", "do", "is", "are", "the", "a", "an", "this", "that",
+    "these", "those", "how", "why", "when", "where", "which", "who",
+    "code", "codebase", "program", "project", "repo", "repository",
+    "work", "works", "use", "used", "using", "make", "makes", "made",
+    "get", "gets", "got", "have", "has", "had", "can", "could", "would",
+    "should", "will", "be", "been", "being", "or", "and", "but", "if",
+    "then", "than", "so", "for", "to", "of", "in", "on", "at", "by",
+    "with", "from", "as", "it", "its", "my", "your", "our", "their",
+}
+
 
 def _grep_fallback_search(search_terms: list[str], already_found: list[str]) -> list[str]:
     """Direct file-content grep across the project, used when the AST graph
@@ -215,7 +226,7 @@ def _grep_fallback_search(search_terms: list[str], already_found: list[str]) -> 
     words like "system prompt formatting" that don't match any function or
     class name in graph.json). Scores files by how many distinct search
     terms appear in their content, favoring files with more hits."""
-    terms = [t.lower() for t in search_terms if len(t) > 3]
+    terms = [t.lower() for t in search_terms if len(t) > 3 and t.lower() not in _STOPWORDS]
     if not terms:
         return []
 
