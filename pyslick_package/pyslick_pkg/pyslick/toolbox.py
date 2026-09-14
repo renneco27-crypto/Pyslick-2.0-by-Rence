@@ -72,34 +72,90 @@ def _is_noise(fn: str) -> bool:
 
 
 def mode_ls(root: str = ".", names_only: bool = True):
-    count = 0
-    seen = set()
+    """List source files, grouped by directory.
+
+    Files at the root are printed flat at the top (no heading). Files
+    inside a subdirectory are printed under a `[dir] <name>/` heading,
+    indented two spaces, so it's obvious which files belong to which
+    directory instead of one flat mixed list. Files larger than 30 MB
+    are skipped — catches model weights (.gguf, .bin, .safetensors),
+    archives, and media without hardcoding extension lists that go stale.
+    """
+    _MAX_FILE_BYTES = 30 * 1024 * 1024
+
+    def _keep_dir(d: str) -> bool:
+        return (
+            d not in SKIP_DIRS
+            and not d.startswith(".")
+            and not any(d.startswith(p) for p in SKIP_DIR_PREFIXES)
+        )
+
+    def _keep_file(fn: str, dirpath: str) -> bool:
+        if fn.startswith("."):
+            return False
+        if any(fn.endswith(ext) for ext in SKIP_FILE_EXTS):
+            return False
+        if _is_noise(fn):
+            return False
+        try:
+            if os.path.getsize(os.path.join(dirpath, fn)) > _MAX_FILE_BYTES:
+                return False
+        except OSError:
+            return False
+        return True
+
+    root = os.path.normpath(root)
+    root_files: list[str] = []
+    subdir_files: dict[str, list[tuple[str, str]]] = {}
+    subdir_order: list[str] = []
+
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = sorted([
-            d for d in dirnames
-            if d not in SKIP_DIRS and not d.startswith(".") and not any(d.startswith(p) for p in SKIP_DIR_PREFIXES)
-        ])
-        # ── Print subdirectories first ──
-        for d in dirnames:
-            rel = os.path.normpath(os.path.join(dirpath, d))
-            label = d if names_only else rel
-            if label not in seen:
-                seen.add(label)
-                print(f"{DIM}[dir]  {label}{RST}")
-        # ── Then files ──
-        for fn in sorted(filenames):
-            if fn.startswith("."):
-                continue
-            if any(fn.endswith(ext) for ext in SKIP_FILE_EXTS):
-                continue
-            if _is_noise(fn):
-                continue
-            rel = os.path.normpath(os.path.join(dirpath, fn))
-            label = fn if names_only else rel
-            if label not in seen:
-                seen.add(label)
-                count += 1
-                print(label)
+        dirnames[:] = sorted([d for d in dirnames if _keep_dir(d)])
+
+        rel_dir = os.path.relpath(dirpath, root)
+        if rel_dir == ".":
+            rel_dir = ""
+
+        files_here = sorted(fn for fn in filenames if _keep_file(fn, dirpath))
+        if not files_here:
+            continue
+
+        if rel_dir == "":
+            for fn in files_here:
+                root_files.append(
+                    fn if names_only
+                    else os.path.normpath(os.path.join(dirpath, fn))
+                )
+        else:
+            if rel_dir not in subdir_files:
+                subdir_files[rel_dir] = []
+                subdir_order.append(rel_dir)
+            for fn in files_here:
+                subdir_files[rel_dir].append(
+                    (fn, os.path.normpath(os.path.join(dirpath, fn)))
+                )
+
+    count = 0
+
+    for fn in root_files:
+        print(fn)
+        count += 1
+
+    if root_files and subdir_order:
+        print()
+
+    for i, rel_dir in enumerate(subdir_order):
+        entries = subdir_files[rel_dir]
+        if not entries:
+            continue
+        print(f"{DIM}[dir]  {rel_dir}/{RST}")
+        for fn, full in entries:
+            label = fn if names_only else full
+            print(f"  {label}")
+            count += 1
+        if i < len(subdir_order) - 1:
+            print()
+
     if count == 0:
         print(f"{DIM}(no files found under '{root}'){RST}")
 
