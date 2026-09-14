@@ -275,7 +275,7 @@ def gather_candidate_files(directive: str, expanded: str) -> list[str]:
             else:
                 # node ids from graph nodes are expected to carry a file hint;
                 # fall back to skipping if we can't resolve one cleanly.
-                path = node.get("file") or node.get("path")
+                path = node.get("source_file") or node.get("file") or node.get("path")
             if path and os.path.isfile(path) and path not in ranked_paths:
                 ranked_paths.append(path)
 
