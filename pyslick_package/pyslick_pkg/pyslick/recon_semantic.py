@@ -767,19 +767,6 @@ def _centrality(root=".", top_k=15):
 def _llm_keywords(directive, max_terms=8):
     try:
         gen = getattr(local_llm, "generate", None)
-        expand = getattr(local_llm, "maybe_expand_query", None)
-        if not callable(gen) and not callable(expand):
-            return []
-        if callable(expand):
-            try:
-                raw = expand(directive)
-            except Exception:
-                raw = ""
-            if raw and raw != directive:
-                terms = [t.strip().strip(".,;:") for t in str(raw).replace("\n", " ").replace(",", " ").split()]
-                terms = [t for t in terms if 2 <= len(t) <= 40][:max_terms]
-                if terms:
-                    return terms
         if not callable(gen):
             return []
         prompt = (
