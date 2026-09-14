@@ -3306,6 +3306,16 @@ def _run_local_agent(directive: str) -> None:
             # further down and does the actual work.
             intent = "comments"
             _skip_router = True
+        elif _r == "find_symbol":
+            # "where is X defined" / "find X" / "definition of X".
+            # Set intent and skip classifier; handler is further down.
+            intent = "find_symbol"
+            _skip_router = True
+        elif _r == "find_symbol":
+            # "where is X defined" / "find X" / "definition of X".
+            # Set intent and skip classifier; handler is further down.
+            intent = "find_symbol"
+            _skip_router = True
         elif _r == "recon_full":
             from recon_semantic import run_full_recon
             from recon_pack import write_pack
@@ -3574,6 +3584,74 @@ def _run_local_agent(directive: str) -> None:
         return
 
     # â”€â”€ RUN INFO (how to run project, repo, directory, or file) â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    if intent == "find_symbol":
+        # Pure symbol search. No LLM, no graph, no fuzzy. Ripgrep-style
+        # regex sweep for declarations of the named symbol, print
+        # path:line hits. Answers "where is X defined" directly.
+        import re as _re
+
+        m = (
+            _re.search(r"\bwhere\s+is\s+([A-Za-z_][A-Za-z0-9_]*)\s+defined\b", active_directive, _re.IGNORECASE)
+            or _re.search(r"\b(?:definition|defined)\s+of\s+([A-Za-z_][A-Za-z0-9_]*)\b", active_directive, _re.IGNORECASE)
+            or _re.search(r"^\s*(?:find|locate)\s+([A-Za-z_][A-Za-z0-9_]{2,})\s*$", active_directive, _re.IGNORECASE)
+        )
+        if not m:
+            print(f"  {DIM}Could not extract a symbol name from: {active_directive}{RST}")
+            return
+        sym = m.group(1)
+
+        # Declaration patterns across common languages.
+        patterns = [
+            rf"(?:export\s+)?(?:async\s+)?function\s+{_re.escape(sym)}\b",
+            rf"(?:export\s+)?(?:const|let|var)\s+{_re.escape(sym)}\b",
+            rf"(?:export\s+)?class\s+{_re.escape(sym)}\b",
+            rf"(?:export\s+)?(?:interface|type|enum)\s+{_re.escape(sym)}\b",
+            rf"^\s*def\s+{_re.escape(sym)}\b",
+            rf"^\s*class\s+{_re.escape(sym)}\b",
+            rf"(?:export\s+)?(?:default\s+)?\s*{_re.escape(sym)}\s*[:=]",
+        ]
+
+        # Collect source files to scan (skip node_modules, .git, dist, etc).
+        SKIP_DIRS = {".git", "node_modules", "dist", "build", ".next", ".turbo",
+                     ".venv", "venv", "__pycache__", ".pyslick", ".pyslick_context",
+                     "graphify-out", "coverage", ".cache"}
+        exts = {".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".dart",
+                ".java", ".kt", ".go", ".rs", ".cs", ".rb", ".php", ".swift"}
+        root = os.getcwd()
+        files: list[str] = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [x for x in dirnames if x not in SKIP_DIRS and not x.startswith(".")]
+            for fn in filenames:
+                if os.path.splitext(fn)[1].lower() in exts:
+                    files.append(os.path.join(dirpath, fn))
+
+        compiled = [_re.compile(p) for p in patterns]
+        hits: list[tuple[str, int, str]] = []
+        for fp in files:
+            try:
+                with open(fp, "r", encoding="utf-8", errors="replace") as fh:
+                    for ln, line in enumerate(fh, 1):
+                        if sym not in line:
+                            continue
+                        for cp in compiled:
+                            if cp.search(line):
+                                hits.append((os.path.relpath(fp, root), ln, line.rstrip()))
+                                break
+            except Exception:
+                continue
+
+        hdr("Find Symbol", sym)
+        if not hits:
+            print(f"  {DIM}No declaration of '{sym}' found in source files.{RST}\n")
+            return
+        for fp, ln, line in hits[:40]:
+            print(f"  {BOLD}{fp}{RST}:{ln}")
+            print(f"    {DIM}{line.strip()[:200]}{RST}")
+        if len(hits) > 40:
+            print(f"  {DIM}... {len(hits) - 40} more hits omitted{RST}")
+        print()
+        return
+
     if intent == "run_info":
 
         # â”€â”€ APP SUMMARY (what does this app/project do?) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
