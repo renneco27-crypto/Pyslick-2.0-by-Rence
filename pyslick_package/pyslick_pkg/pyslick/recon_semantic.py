@@ -495,6 +495,7 @@ def run_universal_recon(
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "budget": budget,
         "files": files,
+        "relation": __import__("relations").resolve_relation(directive),
     }
 
     if pack_format == "md":

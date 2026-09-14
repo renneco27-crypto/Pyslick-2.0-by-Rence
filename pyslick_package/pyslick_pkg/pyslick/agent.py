@@ -3244,6 +3244,15 @@ def _run_local_agent(directive: str) -> None:
             pack = run_universal_recon(active_directive)
             _pack_path = write_pack(pack)
             print(f"{DIM}  pack -> {_pack_path}{RST}")
+            _rel = pack.get("relation") or {}
+            if _rel.get("is_relation_query") and _rel.get("paths"):
+                print(f"\n{BOLD}RELATION{RST}  {_rel.get('entities')}")
+                print(f"{DIM}  confidence: {_rel.get('confidence')}  —  {_rel.get('note')}{RST}")
+                for _ev in _rel.get("evidence", []):
+                    print(f"  {_ev['step']}. {_ev['from']} --{_ev['relation']}--> {_ev['to']}   {DIM}({_ev['file']} {_ev['loc']}){RST}")
+            elif _rel.get("is_relation_query"):
+                print(f"\n{BOLD}RELATION{RST}  {_rel.get('entities')}")
+                print(f"{DIM}  {_rel.get('note') or 'no path found'}{RST}")
             for _f in pack.get("files", []):
                 print(f"\n{BOLD}{_f.get('path')}{RST}  {DIM}({_f.get('mode')}, {_f.get('line_count')} lines){RST}")
                 for _h in _f.get("hits", []):
