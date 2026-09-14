@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal enabledelayedexpansion
 title PySlick Setup
 
@@ -28,7 +29,6 @@ echo [2/6] Installing core dependencies (this may take a while)...
 python -m pip install ^
     llama-cpp-python ^
     sentence-transformers ^
-    graphify ^
     pyperclip ^
     colorama ^
     libcst ^
@@ -44,6 +44,20 @@ if errorlevel 1 (
     exit /b 1
 )
 echo [OK] Core dependencies installed
+echo.
+REM ---------- 3b. Install graphify via pipx ----------
+echo [3b/6] Installing graphify CLI via pipx...
+where pipx >nul 2>nul
+if errorlevel 1 (
+    echo     pipx not found, installing pipx...
+    python -m pip install --user pipx --quiet
+    python -m pipx ensurepath --quiet
+)
+python -m pipx install graphifyy
+if errorlevel 1 (
+    echo [!] pipx install graphifyy failed - it may already be installed.
+    echo     Continuing; verify later with: graphify --help
+)
 echo.
 
 REM ---------- 4. Install pyslick editable ----------
@@ -66,7 +80,7 @@ echo.
 
 REM ---------- 5. Download GGUF model ----------
 echo [4/6] Downloading Qwen2.5-Coder-1.5B-Instruct GGUF...
-set MODEL_DIR=%USERPROFILE%\.cache\pyslick\models
+set MODEL_DIR=%USERPROFILE%\.pyslick\models 
 if not exist "%MODEL_DIR%" mkdir "%MODEL_DIR%"
 
 set GGUF_URL=https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
@@ -93,6 +107,12 @@ echo [5/6] Ensuring Python Scripts dir is on user PATH...
 set SCRIPTS_DIR=%LOCALAPPDATA%\Programs\Python\Python312\Scripts
 powershell -NoProfile -Command ^
     "$p=[Environment]::GetEnvironmentVariable('PATH','User'); if ($p -notlike '*%SCRIPTS_DIR%*') { [Environment]::SetEnvironmentVariable('PATH', $p + ';%SCRIPTS_DIR%', 'User'); Write-Host '     Added %SCRIPTS_DIR% to user PATH' } else { Write-Host '     Already on PATH' }"
+echo.
+
+REM ---------- 6b. Persistent env vars ----------
+echo [6b/6] Setting persistent user env vars...
+powershell -NoProfile -Command ^
+    "[Environment]::SetEnvironmentVariable('PYSLICK_SKIP_SEMANTIC','1','User'); [Environment]::SetEnvironmentVariable('PYTHONUTF8','1','User'); [Environment]::SetEnvironmentVariable('PYTHONIOENCODING','utf-8','User'); Write-Host '     PYSLICK_SKIP_SEMANTIC=1, PYTHONUTF8=1, PYTHONIOENCODING=utf-8 set'"
 echo.
 
 REM ---------- 7. Smoke test ----------

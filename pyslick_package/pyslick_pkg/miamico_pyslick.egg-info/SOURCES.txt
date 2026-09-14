@@ -9,6 +9,7 @@ miamico_pyslick.egg-info/top_level.txt
 pyslick/__init__.py
 pyslick/__main__.py
 pyslick/agent.py
+pyslick/ask.py
 pyslick/autoloop.py
 pyslick/clipboard.py
 pyslick/comment_blocks.py
@@ -18,6 +19,7 @@ pyslick/frustration_vocab.json
 pyslick/graphify.py
 pyslick/graphify_sitter.py
 pyslick/indentation.py
+pyslick/install_pyslick_deps.py
 pyslick/intent_vocab.json
 pyslick/jsx_tag_checker.py
 pyslick/learned_intents.json
@@ -27,6 +29,14 @@ pyslick/patchit_vocab.json
 pyslick/query.py
 pyslick/recon.py
 pyslick/recon_pack.py
+pyslick/recon_semantic.py
+pyslick/relations.py
+pyslick/relay_server.py
+pyslick/repomap.py
+pyslick/response_watcher.py
+pyslick/router.py
+pyslick/synonyms.py
 pyslick/toolbox.py
 pyslick/user_weights.json
+pyslick/watch.py
 pyslick/webdesign.py
