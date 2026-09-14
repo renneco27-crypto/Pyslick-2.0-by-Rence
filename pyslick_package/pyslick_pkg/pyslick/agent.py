@@ -3286,6 +3286,224 @@ def _ensure_graph(verbose: bool = False) -> bool:
         ok("Graph generated successfully in graphify-out/")
     return True
 
+def _god_recon(directive: str) -> bool:
+    """God-node-driven recon. Returns True if it printed output.
+
+    Pipeline:
+      1. Load graph.json from cwd (graphify-out/graph.json).
+      2. Score every node against the query (label + source_file).
+      3. Seed = top scored nodes, weighted by degree.
+      4. Expand one hop via edges (calls/imports/references/etc).
+      5. Rank neighbors by relation weight * degree * label similarity.
+      6. Print: FILES -> COMMENTS -> FUNCTIONS -> CONNECTIONS.
+
+    Returns False (no print) when the graph is missing/empty or nothing
+    scores above threshold, so the caller can fall back to the existing
+    per-file loop.
+    """
+    import os as _os
+    import json as _json
+    import re as _re
+
+    graph_path = _os.path.join(".", "graphify-out", "graph.json")
+    if not _os.path.exists(graph_path):
+        return False
+    try:
+        with open(graph_path, "r", encoding="utf-8", errors="replace") as _fh:
+            _g = _json.load(_fh)
+    except Exception:
+        return False
+
+    nodes = _g.get("nodes") or []
+    links = _g.get("links") or []
+    if not nodes:
+        return False
+
+    # --- degree map (undirected, for weighting) ---
+    from collections import defaultdict as _dd
+    _deg = _dd(int)
+    for _l in links:
+        _deg[_l.get("source")] += 1
+        _deg[_l.get("target")] += 1
+
+    # --- relation weights: how strongly an edge implies "related code" ---
+    _REL_W = {
+        "calls": 3.0,
+        "indirect_call": 2.5,
+        "imports": 2.0,
+        "imports_from": 2.0,
+        "defines": 1.8,
+        "contains": 1.0,
+        "method": 2.0,
+        "references": 1.5,
+        "inherits": 2.0,
+        "dynamic_import": 1.5,
+    }
+
+    # --- query tokens ---
+    _stop = {
+        "where", "is", "the", "a", "an", "of", "to", "for", "what", "does",
+        "how", "defined", "define", "definition", "find", "show", "me", "in",
+        "on", "at", "and", "or", "referenced", "used", "called", "use", "call",
+        "work", "works", "working", "code", "file", "files", "function",
+        "functions", "all", "does", "do",
+    }
+    _toks = [
+        t for t in _re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", (directive or "").lower())
+        if t not in _stop and len(t) > 2
+    ]
+    if not _toks:
+        return False
+
+    def _score(text: str) -> float:
+        """Substring/token overlap score of text vs query tokens."""
+        if not text:
+            return 0.0
+        t = text.lower()
+        s = 0.0
+        for tok in _toks:
+            if tok in t:
+                s += 2.0 if t.startswith(tok) else 1.0
+        return s
+
+    # --- score nodes ---
+    _node_by_id = {n.get("id"): n for n in nodes if n.get("id")}
+    _scored = []
+    for n in nodes:
+        lab = n.get("label") or n.get("norm_label") or ""
+        src = n.get("source_file") or ""
+        sc = _score(lab) * 3.0 + _score(src)
+        if sc <= 0:
+            continue
+        _scored.append((sc, _deg.get(n.get("id"), 0), n))
+    if not _scored:
+        return False
+
+    # seed: score * log(degree+1), so hubs matching the query float up
+    import math as _math
+    _scored.sort(key=lambda x: x[0] * (1.0 + _math.log1p(x[1])), reverse=True)
+    seeds = [n for _sc, _d, n in _scored[:8]]
+    seed_ids = {n.get("id") for n in seeds}
+
+    # --- one-hop expansion ---
+    neighbors = {}
+    conns = []  # (from_id, relation, to_id, source_file)
+    for _l in links:
+        s_id, t_id = _l.get("source"), _l.get("target")
+        rel = _l.get("relation") or ""
+        w = _REL_W.get(rel, 1.0)
+        if s_id in seed_ids:
+            n2 = _node_by_id.get(t_id)
+            if n2 is not None:
+                prev = neighbors.get(t_id)
+                sc2 = _score(n2.get("label") or "") * 3.0 + _score(n2.get("source_file") or "")
+                cur = w * (1.0 + _math.log1p(_deg.get(t_id, 0))) * (1.0 + sc2)
+                if prev is None or cur > prev[0]:
+                    neighbors[t_id] = (cur, n2)
+                conns.append((s_id, rel, t_id, _l.get("source_file") or ""))
+        if t_id in seed_ids:
+            n2 = _node_by_id.get(s_id)
+            if n2 is not None:
+                prev = neighbors.get(s_id)
+                sc2 = _score(n2.get("label") or "") * 3.0 + _score(n2.get("source_file") or "")
+                cur = w * (1.0 + _math.log1p(_deg.get(s_id, 0))) * (1.0 + sc2)
+                if prev is None or cur > prev[0]:
+                    neighbors[s_id] = (cur, n2)
+                conns.append((s_id, rel, t_id, _l.get("source_file") or ""))
+
+    ranked_nbrs = [n2 for _c, n2 in sorted(neighbors.values(), key=lambda x: x[0], reverse=True)[:15]]
+
+    # --- collect files ---
+    def _file_of(n):
+        return n.get("source_file") or n.get("file") or ""
+    files_seen = []
+    files_set = set()
+    for n in seeds + ranked_nbrs:
+        f = _file_of(n)
+        if f and f not in files_set:
+            files_set.add(f)
+            files_seen.append(f)
+    if not files_seen:
+        return False
+
+    # --- get comments for those files via recon index ---
+    comments_by_file = {}
+    try:
+        from recon_semantic import load_or_build_index, _comments_for_file
+        _idx = load_or_build_index(".")
+        for f in files_seen:
+            try:
+                comments_by_file[f] = _comments_for_file(f, _idx) or []
+            except Exception:
+                comments_by_file[f] = []
+    except Exception:
+        comments_by_file = {}
+
+    # ============ PRINT ============
+    def _fmt_node(n):
+        lab = n.get("label") or n.get("id") or "?"
+        src = n.get("source_file") or ""
+        loc = n.get("source_location") or ""
+        return lab, src, loc
+
+    print(f"\n{BOLD}=== GOD RECON ==={RST}  {DIM}{directive}{RST}")
+
+    # 1. FILES
+    print(f"\n{BOLD}FILES{RST}  {DIM}(ranked by relevance){RST}")
+    for f in files_seen[:20]:
+        print(f"  {CYAN}{f}{RST}")
+
+    # 2. COMMENTS
+    _any_comments = False
+    for f in files_seen[:12]:
+        cms = comments_by_file.get(f) or []
+        if not cms:
+            continue
+        if not _any_comments:
+            print(f"\n{BOLD}COMMENTS{RST}  {DIM}(from promising files){RST}")
+            _any_comments = True
+        print(f"  {DIM}{f}{RST}")
+        for _cm in cms[:6]:
+            _ct = (_cm.get("text") or "").strip().splitlines()
+            _ct = _ct[0][:160] if _ct else ""
+            _cl = _cm.get("line") or ""
+            if _ct:
+                print(f"    {CYAN}L{_cl}{RST} {_ct}")
+
+    # 3. FUNCTIONS
+    print(f"\n{BOLD}FUNCTIONS{RST}  {DIM}(seeds + one-hop neighbors){RST}")
+    for n in seeds:
+        lab, src, loc = _fmt_node(n)
+        print(f"  {CYAN}{lab}{RST}  {DIM}{src} {loc}  [seed]{RST}")
+    for n in ranked_nbrs:
+        lab, src, loc = _fmt_node(n)
+        print(f"  {lab}  {DIM}{src} {loc}{RST}")
+
+    # 4. CONNECTIONS
+    if conns:
+        print(f"\n{BOLD}CONNECTIONS{RST}  {DIM}(how these functions reach other files){RST}")
+        shown = set()
+        for s_id, rel, t_id, src_f in conns:
+            key = (s_id, rel, t_id)
+            if key in shown:
+                continue
+            shown.add(key)
+            sn = _node_by_id.get(s_id) or {}
+            tn = _node_by_id.get(t_id) or {}
+            sl = sn.get("label") or s_id or "?"
+            tl = tn.get("label") or t_id or "?"
+            sf = sn.get("source_file") or ""
+            tf = tn.get("source_file") or ""
+            if sf == tf and rel in ("contains", "method", "defines"):
+                continue  # intra-file structural noise
+            arrow = f"{DIM}--{rel}-->{RST}"
+            print(f"  {sl} {arrow} {tl}   {DIM}[{sf} -> {tf}]{RST}")
+            if len(shown) >= 25:
+                break
+
+    return True
+
+
 def _run_local_agent(directive: str) -> None:
     """
     Vocab-driven local agent for the 124M-param model.
@@ -3423,6 +3641,17 @@ def _run_local_agent(directive: str) -> None:
                 print(f"{DIM}  try: pyslick find <symbol>  |  pyslick grep <file> <term>{RST}")
                 return
             _pack_path = write_pack(pack)
+            # Try god-node-driven recon first. If the graph exists and the
+            # query matches nodes, it prints FILES/COMMENTS/FUNCTIONS/
+            # CONNECTIONS and replaces the per-file snippet loop. If it
+            # returns False (no graph, no matches, RELATION query), we fall
+            # through to the existing loop below.
+            if not _rel.get("is_relation_query"):
+                try:
+                    if _god_recon(active_directive):
+                        return
+                except Exception as _gre:
+                    print(f"{DIM}  [god_recon skipped: {type(_gre).__name__}: {_gre}]{RST}")
             if _rel_answered:
                 print(f"\n{BOLD}RELATION{RST}  {_rel.get('entities')}")
                 print(f"{DIM}  confidence: {_rel.get('confidence')}  —  {_rel.get('note')}{RST}")
