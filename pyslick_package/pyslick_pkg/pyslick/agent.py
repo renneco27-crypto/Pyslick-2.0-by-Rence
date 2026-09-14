@@ -3190,6 +3190,44 @@ def _run_relay_agent(directive: str) -> None:
 
     print(f"{YELL}  [relay] Timed out after {timeout}s â€” no response received.{RST}")
     print(f"{DIM}  Is the browser extension running and connected to claude.ai?{RST}")
+def _ensure_graph(verbose: bool = False) -> bool:
+    """Build graphify-out/graph.json via `graphify extract . --code-only` if missing.
+    Returns True if the graph exists afterwards, False otherwise."""
+    graph_json = os.path.join("graphify-out", "graph.json")
+    if os.path.exists(graph_json):
+        return True
+    if verbose:
+        print(f"  {CYAN}No graph found. Generating codebase graph via Graphify...{RST}")
+    try:
+        import graphify  # noqa: F401
+    except ImportError:
+        if verbose:
+            print(f"  {DIM}Graphify not installed. Installing via pip...{RST}")
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "graphify", "--user", "--quiet"],
+            capture_output=True,
+        )
+    if verbose:
+        print(f"  {DIM}Extracting code dependencies and building graph.json...{RST}")
+    for argv in (
+        [sys.executable, "-m", "graphify", "extract", ".", "--code-only"],
+        ["graphify", "extract", ".", "--code-only"],
+        [sys.executable, "-m", "graphify", "update", "."],
+        ["graphify", "update", "."],
+    ):
+        try:
+            subprocess.run(argv, capture_output=True, text=True)
+        except Exception:
+            pass
+        if os.path.exists(graph_json):
+            break
+    if not os.path.exists(graph_json):
+        if verbose:
+            warn("Could not generate graph. Ensure graphify is installed: pip install graphify")
+        return False
+    if verbose:
+        ok("Graph generated successfully in graphify-out/")
+    return True
 
 def _run_local_agent(directive: str) -> None:
     """
@@ -3648,7 +3686,15 @@ def _run_local_agent(directive: str) -> None:
                                 print(f"        {DIM}â†’ {fn['comment']}{RST}")
                     print()
             else:
-                print(f"  {DIM}No graphify-out/graph.json found â€” run graphify first for richer results.{RST}\n")
+                if _ensure_graph(verbose=True) and os.path.exists(os.path.join("graphify-out", "graph.json")):
+                    # re-run the overview branch by reloading the graph
+                    try:
+                        _gdata = json.loads(Path(os.path.join("graphify-out", "graph.json")).read_text(encoding="utf-8"))
+                        print(f"  {DIM}Graph built. Re-run the same directive to see the overview.{RST}\n")
+                    except Exception:
+                        print(f"  {DIM}No graphify-out/graph.json found â€” run graphify first for richer results.{RST}\n")
+                else:
+                    print(f"  {DIM}No graphify-out/graph.json found â€” run graphify first for richer results.{RST}\n")
 
             return
 
@@ -4157,39 +4203,8 @@ def _run_local_agent(directive: str) -> None:
             analysis_json = os.path.join("graphify-out", ".graphify_analysis.json")
 
             if not os.path.exists(graph_json):
-                print(f"  {CYAN}No graph found. Generating codebase graph via Graphify...{RST}")
-                # Check if graphify is available
-                try:
-                    import graphify  # noqa: F401
-                except ImportError:
-                    print(f"  {DIM}Graphify not installed. Downloading and installing graphify via pip...{RST}")
-                    subprocess.run(
-                        [sys.executable, "-m", "pip", "install", "graphify", "--user", "--quiet"],
-                        capture_output=True,
-                    )
-
-                # Run graph extraction
-                print(f"  {DIM}Extracting code dependencies and building graph.json...{RST}")
-                try:
-                    subprocess.run(
-                        [sys.executable, "-m", "graphify", "update", "."],
-                        capture_output=True,
-                        text=True,
-                    )
-                except Exception:
-                    pass
-
-                # Fallback check
-                if not os.path.exists(graph_json):
-                    try:
-                        subprocess.run(["graphify", "update", "."], capture_output=True)
-                    except Exception:
-                        pass
-
-                if not os.path.exists(graph_json):
-                    warn("Could not generate graph. Ensure graphify is installed: pip install graphify")
+                if not _ensure_graph(verbose=True):
                     return
-                ok("Graph generated successfully in graphify-out/")
 
             gdata = json.loads(Path(graph_json).read_text(encoding="utf-8"))
             analysis: dict = {}
