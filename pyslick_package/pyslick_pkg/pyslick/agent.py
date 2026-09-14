@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-agent.py — PySlick Agentic AI Session
+agent.py â€” PySlick Agentic AI Session
 =======================================
 
     pyslick agent "make the mic button 40% larger"
@@ -18,9 +18,9 @@ the agent is given a VOCABULARY of tool calls and uses Claude to:
 The agent never writes, commits, or modifies anything without your
 explicit "yes". One human gate. Everything before that is autonomous.
 
-─────────────────────────────────────────────────────────────────────────
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 TOOL VOCABULARY  (PowerShell-equivalent, all local, all read-only)
-─────────────────────────────────────────────────────────────────────────
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   get_file(path)
       Read a file's full content.
@@ -46,7 +46,7 @@ TOOL VOCABULARY  (PowerShell-equivalent, all local, all read-only)
   find_blocks(path)
       Scan for named comment blocks (pyslick:start/end markers) and
       descriptive comments that sit above a code block. Returns each
-      block's label, start/end lines, and a code preview — the AI uses
+      block's label, start/end lines, and a code preview â€” the AI uses
       these to locate CSS groups, JSX sections, config regions, etc.
 
   ast_query(path, question)
@@ -63,42 +63,42 @@ TOOL VOCABULARY  (PowerShell-equivalent, all local, all read-only)
       search terms for richer fuzzy matching. Falls back to the directive
       unchanged if no model is present.
 
-─────────────────────────────────────────────────────────────────────────
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 FLOW
-─────────────────────────────────────────────────────────────────────────
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   1. Send the directive + tool schema to Claude (Anthropic API)
   2. Claude returns a PLAN (which tools to call, why)
   3. Execute each tool call locally (no data leaves your machine)
   4. Feed results back to Claude for synthesis
   5. Claude proposes: file, find_str, replace_str, explanation
-  6. Show diff → ONE confirmation → patchit writes it
+  6. Show diff â†’ ONE confirmation â†’ patchit writes it
   7. git checkpoint
 
 The tool calls in steps 2-4 loop up to MAX_TOOL_ROUNDS times so the
 agent can react to what it finds (e.g. "that file had no className,
 let me check the CSS file instead").
 
-─────────────────────────────────────────────────────────────────────────
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 LOCAL LLM MODE (no API key)
-─────────────────────────────────────────────────────────────────────────
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 When no ANTHROPIC_API_KEY / NVIDIA_API_KEY / GROQ_API_KEY / OPENROUTER_API_KEY
 is set, the agent falls back
 to _run_local_agent(). That function uses intent_vocab.json to route the
-query to the right handler — no reasoning required from the 124M model.
+query to the right handler â€” no reasoning required from the 124M model.
 
 Intent routing order (first match wins):
-  help         → print pyslick command docs
-  git          → show git status / push
-  list_files   → walk directory, show files + their main symbols
-  comments     → show every comment in the matched file
-  nearest      → find_nearest_nodes around a line or symbol
-  scan_function→ print a named function end-to-end with comments
-  graph        → ast_query / graphify call graph
-  connect      → cross-file call-graph walk
-  file_info    → purpose + key functions + first 3 lines per function
-  patch        → fuzzy match → LLM find/replace → diff → confirm
+  help         â†’ print pyslick command docs
+  git          â†’ show git status / push
+  list_files   â†’ walk directory, show files + their main symbols
+  comments     â†’ show every comment in the matched file
+  nearest      â†’ find_nearest_nodes around a line or symbol
+  scan_functionâ†’ print a named function end-to-end with comments
+  graph        â†’ ast_query / graphify call graph
+  connect      â†’ cross-file call-graph walk
+  file_info    â†’ purpose + key functions + first 3 lines per function
+  patch        â†’ fuzzy match â†’ LLM find/replace â†’ diff â†’ confirm
 
 The vocab file lives next to this file: intent_vocab.json
 """
@@ -131,7 +131,7 @@ THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 if THIS_DIR not in sys.path:
     sys.path.insert(0, THIS_DIR)
 
-# ── colours ────────────────────────────────────────────────────────────────
+# â”€â”€ colours â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 BOLD  = "\033[1m"
 CYAN  = "\033[96m"
 GREEN = "\033[92m"
@@ -141,14 +141,14 @@ DIM   = "\033[2m"
 RST   = "\033[0m"
 
 def hdr(phase: str, title: str):
-    print(f"\n{BOLD}{CYAN}━━  {phase}  {RST}{BOLD}{title}{RST}")
-    print(f"{DIM}{'─' * 60}{RST}")
+    print(f"\n{BOLD}{CYAN}â”â”  {phase}  {RST}{BOLD}{title}{RST}")
+    print(f"{DIM}{'â”€' * 60}{RST}")
 
-def ok(msg):   print(f"{GREEN}  ✔ {msg}{RST}")
-def warn(msg): print(f"{YELL}  ⚠ {msg}{RST}")
-def err(msg):  print(f"{RED}  ✖ {msg}{RST}")
+def ok(msg):   print(f"{GREEN}  âœ” {msg}{RST}")
+def warn(msg): print(f"{YELL}  âš  {msg}{RST}")
+def err(msg):  print(f"{RED}  âœ– {msg}{RST}")
 
-# ── API providers ───────────────────────────────────────────────────────────
+# â”€â”€ API providers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 PROVIDERS = {
     "anthropic": {
         "api_url": "https://api.anthropic.com/v1/messages",
@@ -204,9 +204,9 @@ CODE_EXTS = {
 }
 
 
-# ═════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # LOCAL TOOL IMPLEMENTATIONS
-# ═════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def tool_get_file(path: str) -> str:
     """Read a file's full content."""
@@ -279,8 +279,8 @@ def _grep_via_ripgrep(path: str, patterns: list[str], context: int) -> list[tupl
     """Runs one `rg --json` invocation per pattern (rg's JSON stream doesn't
     say which -e matched, and tool_grep needs to tag each hit with its
     pattern, same as the pure-Python loop below). Returns a list of
-    (line_idx0, matched_pattern, {line_idx0: text, ...}) tuples — the dict
-    is the context window rg already computed for that match — or None if
+    (line_idx0, matched_pattern, {line_idx0: text, ...}) tuples â€” the dict
+    is the context window rg already computed for that match â€” or None if
     `rg` isn't installed or anything about the call goes wrong, in which
     case the caller falls back to the pure-Python scan unchanged."""
     binary = _ripgrep_binary()
@@ -321,7 +321,7 @@ def tool_grep(path: str, patterns: list[str], context: int = 2) -> str:
     Tries ripgrep first (fast, respects .gitignore-style conventions even
     though this is a single-file search) and falls back to the pure-Python
     regex scan below if `rg` isn't installed or the call fails for any
-    reason — this fallback path is unchanged from before ripgrep support
+    reason â€” this fallback path is unchanged from before ripgrep support
     was added, so tool_grep keeps working with zero extra dependencies."""
     p = Path(path)
     if not p.exists():
@@ -383,7 +383,7 @@ def tool_find_blocks(path: str) -> str:
                 f"label=\"{n.label[:70]}\"  id={n.id}"
             )
             if n.code_preview:
-                preview = n.code_preview[:120].replace("\n", " ↵ ")
+                preview = n.code_preview[:120].replace("\n", " â†µ ")
                 lines.append(f"    code: {preview}")
         return f"Comment blocks in {path}:\n" + "\n".join(lines)
     except ImportError:
@@ -413,9 +413,9 @@ def tool_ast_query(path: str, question: str) -> str:
             callees = sorted(sym.get("callees", set()))
             callers = sorted(sym.get("callers", set()))
             if callees:
-                out.append(f"    calls → {', '.join(callees)}")
+                out.append(f"    calls â†’ {', '.join(callees)}")
             if callers:
-                out.append(f"    called by ← {', '.join(callers)}")
+                out.append(f"    called by â† {', '.join(callers)}")
             # First 20 lines of source
             src_lines = sym.get("code", "").splitlines()[:20]
             if src_lines:
@@ -440,7 +440,7 @@ def tool_jsx_check(path: str) -> str:
         with contextlib.redirect_stdout(buf):
             check_jsx_tags(path)
         output = buf.getvalue().strip()
-        return output if output else "OK — no JSX tag mismatches found."
+        return output if output else "OK â€” no JSX tag mismatches found."
     except ImportError:
         return "(jsx_tag_checker not available)"
     except Exception as e:
@@ -452,7 +452,7 @@ def tool_llm_expand(directive: str) -> str:
     try:
         from llm import maybe_expand_query, is_available
         if not is_available():
-            return f"(LLM not available — using directive as-is: {directive})"
+            return f"(LLM not available â€” using directive as-is: {directive})"
         expanded = maybe_expand_query(directive)
         if expanded == directive:
             return f"(LLM returned no expansion: {directive})"
@@ -468,7 +468,7 @@ def tool_llm_patch(directive: str, code_context: str) -> str:
     try:
         from llm import maybe_extract_find_replace, is_available
         if not is_available():
-            return f"(LLM not available — cannot auto-extract patch)"
+            return f"(LLM not available â€” cannot auto-extract patch)"
         find_str, replace_str = maybe_extract_find_replace(directive, code_context)
         if find_str and replace_str:
             return json.dumps({"find": find_str, "replace": replace_str})
@@ -538,7 +538,7 @@ def _resolve_commit_reference(directive: str):
       - "commit 3" / "#3"    -> the 3rd entry in `git log --oneline`,
                                  1-indexed from HEAD (NOT the same target
                                  as "3 commits ago" whenever any commits
-                                 have been made since — one counts back
+                                 have been made since â€” one counts back
                                  from now, the other picks a fixed position
                                  in the visible log)
       - "the fix commit" / "initial commit" / etc.
@@ -550,7 +550,7 @@ def _resolve_commit_reference(directive: str):
       ("resolved", commit_hash, commit_msg, label)
       ("ambiguous", [(commit_hash, commit_msg), ...])   # top-scoring ties
       ("none", None)                                    # no confident match
-    Never guesses silently — an ambiguous or absent match is reported as
+    Never guesses silently â€” an ambiguous or absent match is reported as
     such so the caller can ask the user rather than picking for them.
     """
     dl = directive.lower()
@@ -630,12 +630,12 @@ def tool_pyslick_add_commit_push(message: str = None) -> tuple:
     Full auto flow for a plain 'push' request:
       1. Detect an unresolved merge from a previous pull (.git/MERGE_HEAD
          exists). If found, the merge must be committed (or aborted) before
-         anything else can safely happen — this was the exact state
+         anything else can safely happen â€” this was the exact state
          reported: 'error: You have not concluded your merge'.
       2. git add . -> git commit -m <message>
       3. git push -> on rejection (remote has commits we don't), git pull
          -> retry push once.
-    Runs unconditionally when a repo is found — no per-step confirmation,
+    Runs unconditionally when a repo is found â€” no per-step confirmation,
     since 'push' is already the user's explicit instruction, not an
     ambiguous checkpoint. Returns (ok: bool, log: str).
     """
@@ -650,9 +650,9 @@ def tool_pyslick_add_commit_push(message: str = None) -> tuple:
             if os.path.exists(merge_head_path):
                 # A previous 'git pull' left an unresolved merge. Check
                 # whether there are still real conflict markers (unmerged
-                # paths) — if so, this can't be auto-resolved safely and
+                # paths) â€” if so, this can't be auto-resolved safely and
                 # must stop here. If not (the merge was actually resolved,
-                # just never committed — exactly the reported case), commit
+                # just never committed â€” exactly the reported case), commit
                 # it now so the flow can proceed.
                 status_res = subprocess.run(
                     ["git", "status", "--porcelain"], capture_output=True, text=True, timeout=10
@@ -663,18 +663,18 @@ def tool_pyslick_add_commit_push(message: str = None) -> tuple:
                 )
                 if has_conflict_markers:
                     log_lines.append("Unresolved merge conflicts found (.git/MERGE_HEAD + conflicted files).")
-                    log_lines.append("pyslick will not auto-resolve conflicts — resolve them manually, then commit, then push.")
+                    log_lines.append("pyslick will not auto-resolve conflicts â€” resolve them manually, then commit, then push.")
                     return False, "\n".join(log_lines)
                 else:
-                    log_lines.append("Found a concluded-but-uncommitted merge from a previous pull — committing it now.")
+                    log_lines.append("Found a concluded-but-uncommitted merge from a previous pull â€” committing it now.")
                     merge_commit_res = subprocess.run(
                         ["git", "commit", "--no-edit"], capture_output=True, text=True, timeout=10
                     )
                     if merge_commit_res.returncode == 0:
-                        log_lines.append("git commit (merge) — succeeded")
+                        log_lines.append("git commit (merge) â€” succeeded")
                     else:
                         err = (merge_commit_res.stderr or merge_commit_res.stdout or "").strip()
-                        log_lines.append(f"git commit (merge) — FAILED: {err[:300]}")
+                        log_lines.append(f"git commit (merge) â€” FAILED: {err[:300]}")
                         return False, "\n".join(log_lines)
 
         add_res = subprocess.run(["git", "add", "."], capture_output=True, text=True, timeout=10)
@@ -693,46 +693,46 @@ def tool_pyslick_add_commit_push(message: str = None) -> tuple:
         if commit_res.returncode == 0:
             log_lines.append(f'git commit -m "{message}"')
         else:
-            # Nothing to commit is not a failure for a push request — the
+            # Nothing to commit is not a failure for a push request â€” the
             # existing ahead-by-N commit(s) may already be exactly what
             # needs pushing (this is precisely the case in the reported
             # terminal output: 1 commit ahead, nothing new staged).
-            log_lines.append("(nothing new to commit — pushing existing commits)")
+            log_lines.append("(nothing new to commit â€” pushing existing commits)")
 
         push_res = subprocess.run(["git", "push"], capture_output=True, text=True, timeout=15)
         if push_res.returncode == 0:
-            log_lines.append("git push — succeeded")
+            log_lines.append("git push â€” succeeded")
             return True, "\n".join(log_lines)
 
         err = (push_res.stderr or push_res.stdout or "").strip()
 
         # "fetch first" / non-fast-forward rejection: the remote has commits
-        # this clone doesn't. A plain retry can never succeed here — try a
+        # this clone doesn't. A plain retry can never succeed here â€” try a
         # pull (merge) first, same as the hint git itself prints, then
         # retry the push once. If the pull itself hits a conflict, stop and
         # report it honestly rather than guessing how to resolve it.
         if "fetch first" in err.lower() or "non-fast-forward" in err.lower() or "rejected" in err.lower():
-            log_lines.append(f"git push — REJECTED (remote has commits you don't have locally)")
+            log_lines.append(f"git push â€” REJECTED (remote has commits you don't have locally)")
             log_lines.append("Attempting git pull to merge remote changes...")
             pull_res = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=30)
             pull_out = (pull_res.stdout or "") + (pull_res.stderr or "")
             if pull_res.returncode != 0 or "CONFLICT" in pull_out:
-                log_lines.append("git pull — FAILED or produced conflicts:")
+                log_lines.append("git pull â€” FAILED or produced conflicts:")
                 log_lines.append(pull_out.strip()[:500])
-                log_lines.append("Resolve the conflict manually, then push again — pyslick will not auto-resolve merge conflicts.")
+                log_lines.append("Resolve the conflict manually, then push again â€” pyslick will not auto-resolve merge conflicts.")
                 return False, "\n".join(log_lines)
-            log_lines.append("git pull — merged successfully")
+            log_lines.append("git pull â€” merged successfully")
 
             retry_res = subprocess.run(["git", "push"], capture_output=True, text=True, timeout=15)
             if retry_res.returncode == 0:
-                log_lines.append("git push (retry) — succeeded")
+                log_lines.append("git push (retry) â€” succeeded")
                 return True, "\n".join(log_lines)
             else:
                 retry_err = (retry_res.stderr or retry_res.stdout or "").strip()
-                log_lines.append(f"git push (retry) — FAILED: {retry_err[:300]}")
+                log_lines.append(f"git push (retry) â€” FAILED: {retry_err[:300]}")
                 return False, "\n".join(log_lines)
 
-        log_lines.append(f"git push — FAILED: {err[:300]}")
+        log_lines.append(f"git push â€” FAILED: {err[:300]}")
         return False, "\n".join(log_lines)
     except Exception as e:
         log_lines.append(f"ERROR: {e}")
@@ -758,12 +758,12 @@ def tool_pyslick_diff() -> str:
     try:
         import subprocess
         res = subprocess.run(["git", "diff"], capture_output=True, text=True)
-        return res.stdout if res.stdout.strip() else "(working tree clean — no unstaged changes)"
+        return res.stdout if res.stdout.strip() else "(working tree clean â€” no unstaged changes)"
     except Exception as e:
         return f"ERROR: {e}"
 
 
-# ── dispatcher ─────────────────────────────────────────────────────────────
+# â”€â”€ dispatcher â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 TOOL_IMPLEMENTATIONS = {
     "get_file":       lambda args: tool_get_file(args["path"]),
@@ -797,15 +797,15 @@ def dispatch_tool(name: str, args: dict) -> str:
         result = impl(args)
         # Truncate very large outputs so they don't blow the context window
         if isinstance(result, str) and len(result) > 12_000:
-            result = result[:12_000] + f"\n… [truncated — {len(result)} chars total]"
+            result = result[:12_000] + f"\nâ€¦ [truncated â€” {len(result)} chars total]"
         return result
     except Exception as e:
         return f"ERROR executing {name}: {e}"
 
 
-# ═════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # ANTHROPIC API  (tool-use / function-calling)
-# ═════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 # Schema sent to the API so Claude knows what tools exist
 TOOL_SCHEMA = [
@@ -1020,7 +1020,7 @@ TOOL_SCHEMA = [
 SYSTEM_PROMPT = """\
 You are PySlick Agent, an autonomous coding assistant that locates and \
 proposes changes in a local codebase. You have a set of read-only tool \
-calls to explore the project. You NEVER write files directly — you always \
+calls to explore the project. You NEVER write files directly â€” you always \
 end by producing a JSON patch proposal that the human reviews.
 
 TOOL-USE RULES:
@@ -1043,7 +1043,7 @@ When you are confident about the change, output ONLY a JSON object (no \
 markdown fences, no extra text) with these exact keys:
 {
   "file": "<relative path to the file to patch>",
-  "find": "<exact substring currently in the file — must be unique enough to locate it>",
+  "find": "<exact substring currently in the file â€” must be unique enough to locate it>",
   "replace": "<the new text that replaces it>",
   "explanation": "<1-3 sentences explaining what you found and why this change achieves the directive>"
 }
@@ -1126,7 +1126,7 @@ def _call_api(messages: list[dict], use_tools: bool = True, provider_name: str =
             "Content-Type": "application/json",
             **provider["headers"],
         }
-        # OpenRouter asks OpenAI-compatible callers to identify their app —
+        # OpenRouter asks OpenAI-compatible callers to identify their app â€”
         # harmless no-op for Groq/NVIDIA, but keeps OpenRouter's dashboard useful.
         if provider_name == "openrouter":
             headers.setdefault("HTTP-Referer", "https://github.com/pyslick")
@@ -1200,15 +1200,15 @@ def _extract_tool_uses(content: list[dict]) -> list[dict]:
     return [b for b in content if b.get("type") == "tool_use"]
 
 
-# ═════════════════════════════════════════════════════════════════════════
-# INTENT VOCAB — loads intent_vocab.json once at import time
-# ═════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# INTENT VOCAB â€” loads intent_vocab.json once at import time
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def _load_vocab() -> dict:
     """Load intent_vocab.json from the same directory as this file."""
     vocab_path = Path(THIS_DIR) / "intent_vocab.json"
     if not vocab_path.exists():
-        # Graceful degradation — return minimal inline vocab
+        # Graceful degradation â€” return minimal inline vocab
         return {
             "intents": {
                 "help":          {"require_any": ["pyslick help", "pyslick commands", "pyslick usage"], "exclude_if": []},
@@ -1362,7 +1362,7 @@ def _detect_frustration_and_correction(directive: str) -> tuple[str, bool, str |
         # Frustration detected
         if last_intent and last_intent in INTENT_LABELS:
             new_w = _adjust_intent_weight(last_intent, -0.08)
-            warn(f"Feedback noted ('{matched_signal}') → Reduced '{last_intent}' weight to {new_w:.2f}.")
+            warn(f"Feedback noted ('{matched_signal}') â†’ Reduced '{last_intent}' weight to {new_w:.2f}.")
 
         # Extract correction portion
         clean = directive
@@ -1414,11 +1414,11 @@ def summarize_intent_keywords(directive: str, intent: str, target_file: str | No
         parts.append(os.path.basename(target_file))
     if line_range:
         parts.append(line_range)
-    return " • ".join(parts)
+    return " â€¢ ".join(parts)
 
 
 def _load_learned() -> dict:
-    """Load learned_intents.json — maps exact query strings to intent names."""
+    """Load learned_intents.json â€” maps exact query strings to intent names."""
     if not _LEARNED_PATH.exists():
         return {}
     try:
@@ -1429,7 +1429,7 @@ def _load_learned() -> dict:
 
 def _save_learned_intent(query: str, intent: str) -> None:
     """
-    Persist a user-confirmed query → intent mapping to learned_intents.json.
+    Persist a user-confirmed query â†’ intent mapping to learned_intents.json.
     Next time this exact query is seen it routes with 100% confidence.
     """
     learned = _load_learned()
@@ -1446,7 +1446,7 @@ def _save_learned_intent(query: str, intent: str) -> None:
 def _classify_intent(directive: str) -> str:
     """
     Confidence-scored intent routing using rapidfuzz + exact phrase matching.
-      - Exact multi-word substring match  → 100% confidence (fastest path)
+      - Exact multi-word substring match  â†’ 100% confidence (fastest path)
       - Single-word patterns scored word-by-word so a short word like 'patch'
         cannot outscore a typo of a longer phrase like 'how it connects'.
     """
@@ -1458,15 +1458,15 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     """
     Hybrid three-tier intent classification. Returns (intent, confidence, top3).
 
-    Tier 0 — learned_intents.json  (user-confirmed corrections, 100% confidence)
-    Tier 1 — Exact vocab substring  (intent_vocab.json, 100% confidence)
-    Tier 2 — Python fuzzy           (rapidfuzz word-level, 0-100%)
-    Tier 3 — LLM arbitration        (called only when Tier 2 gives 55-84%)
+    Tier 0 â€” learned_intents.json  (user-confirmed corrections, 100% confidence)
+    Tier 1 â€” Exact vocab substring  (intent_vocab.json, 100% confidence)
+    Tier 2 â€” Python fuzzy           (rapidfuzz word-level, 0-100%)
+    Tier 3 â€” LLM arbitration        (called only when Tier 2 gives 55-84%)
 
     Returns:
-        intent     : str    — winning intent name
-        confidence : float  — 0-100, 100 = exact match
-        top3       : list   — [(intent_name, score), ...] top candidates for did-you-mean
+        intent     : str    â€” winning intent name
+        confidence : float  â€” 0-100, 100 = exact match
+        top3       : list   â€” [(intent_name, score), ...] top candidates for did-you-mean
     """
     dl = directive.lower().strip()
     intents = _VOCAB.get("intents", {})
@@ -1478,29 +1478,29 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
         "patch",
     ]
 
-    # ── Tier 0: learned corrections — fastest possible win ───────────────
+    # â”€â”€ Tier 0: learned corrections â€” fastest possible win â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     learned = _load_learned()
     if dl in learned and learned[dl] in priority:
         return learned[dl], 100.0, [(learned[dl], 100.0)]
 
-    # ── Tier 0.1: explicit "/filename" or bare "filename.ext" reference ───
-    # If the directive names a file explicitly — either leading-slash
+    # â”€â”€ Tier 0.1: explicit "/filename" or bare "filename.ext" reference â”€â”€â”€
+    # If the directive names a file explicitly â€” either leading-slash
     # syntax, or just the bare filename as long as it actually exists in
-    # the project — and doesn't also contain a clear git/patch/comment/
+    # the project â€” and doesn't also contain a clear git/patch/comment/
     # graph keyword, the file reference itself is the strongest signal we
-    # have — route to file_info rather than falling through to whatever
+    # have â€” route to file_info rather than falling through to whatever
     # the classifier's default happens to be. (Previously: generic verbs
     # like "explain" had no keyword weight anywhere and could misroute to
     # an unrelated intent such as "git" at low confidence; separately, a
-    # directive that named a real file by its bare name — e.g. "why is
-    # patchit.py so huge" — got no special treatment at all and could
+    # directive that named a real file by its bare name â€” e.g. "why is
+    # patchit.py so huge" â€” got no special treatment at all and could
     # misroute just as easily as one with no file mentioned.)
     has_explicit_file_ref = bool(
         re.search(r"(?<!\S)/[a-zA-Z0-9_./\\\-]+\.[a-zA-Z0-9]+", directive)
     )
 
     # Bare filename check: only counts as a signal if the token actually
-    # names a real file in the project — otherwise words that merely
+    # names a real file in the project â€” otherwise words that merely
     # happen to contain a dot (version numbers, "e.g.", etc.) would
     # false-positive. Deliberately conservative: exact basename match only.
     has_bare_file_ref = False
@@ -1532,7 +1532,7 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if (has_explicit_file_ref or has_bare_file_ref) and not has_strong_override:
         return "file_info", 92.0, [("file_info", 92.0)]
 
-    # ── Tier 0.145: "rollback/revert/undo to <target>" → git, with a target ──
+    # â”€â”€ Tier 0.145: "rollback/revert/undo to <target>" â†’ git, with a target â”€â”€
     # Distinct from bare Tier 0.15 below: this variant names a specific
     # commit to land on ("rollback to commit 3", "revert to the fix commit",
     # "undo to before the merge"), which the git handler needs to route to
@@ -1541,12 +1541,12 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     # would otherwise catch these same directives first (same words) and
     # return before the "to <target>" wording is ever noticed. Confidence is
     # slightly higher than Tier 0.15 since the directive is more specific,
-    # but this only decides confidence/tier bucketing — the git handler
+    # but this only decides confidence/tier bucketing â€” the git handler
     # still requires an explicit "yes" before running anything destructive.
     if re.search(r"\b(?:rollback|revert|undo|go\s+back)\b.*(?:\bto\b|\bcommits?\s+ago\b|\bcommit\s*#?\d+\b)", dl):
         return "git", 96.0, [("git", 96.0)]
 
-    # ── Tier 0.15: "undo / revert / rollback / go back" → git, not patch ──
+    # â”€â”€ Tier 0.15: "undo / revert / rollback / go back" â†’ git, not patch â”€â”€
     # These words describe reversing a change that already happened, which
     # is git's job (checkout/reset/revert), not patch's (which proposes a
     # NEW forward-looking edit). Previously "undo my last change" matched
@@ -1554,18 +1554,18 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     # nothing in the vocab connected "undo" to git.
     #
     # "go back (to before...)" was a later-discovered gap in this same
-    # family — smoke-testing found it landing on "patch" at 100% confidence
+    # family â€” smoke-testing found it landing on "patch" at 100% confidence
     # (worse than the original bug: no did-you-mean gate at that score).
     # Added here rather than as a new tier since it's the same intent.
     if re.search(r"\b(?:undo|revert|rollback|roll\s+back|discard|go\s+back)\b", dl):
         return "git", 95.0, [("git", 95.0)]
 
-    # ── Tier 0.165: bare "commit/push/checkpoint [file]" → git ────────────
+    # â”€â”€ Tier 0.165: bare "commit/push/checkpoint [file]" â†’ git â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # The vocab's git require_any needs the exact phrase "git commit" etc.
     # A bare "commit patchit.py please" correctly gets BLOCKED from the
     # Tier 0.1 file_info shortcut (via _STRONG_OVERRIDE_KEYWORDS above,
     # which is real and working) but was never actually caught anywhere
-    # afterward — it fell through every tier and landed on "patch" at 0%
+    # afterward â€” it fell through every tier and landed on "patch" at 0%
     # confidence. This was previously assumed fixed in the log ("correctly
     # stays out of the file_info shortcut... should route to git via the
     # commit keyword") but that was never actually verified by running it;
@@ -1573,22 +1573,22 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if re.search(r"\b(?:commit|push|checkpoint)\b", dl) and not re.search(r"\bdid\s+i\b", dl):
         return "git", 88.0, [("git", 88.0)]
 
-    # ── Tier 0.166: bare "commits" / "show commits" / "commit history" → git ──
+    # â”€â”€ Tier 0.166: bare "commits" / "show commits" / "commit history" â†’ git â”€â”€
     # NOT already covered by Tier 0.165 above: that tier's regex is
     # `\bcommit\b`, and \b requires a word boundary immediately after
-    # "commit" — which never exists in "commits" (the "s" is still a word
+    # "commit" â€” which never exists in "commits" (the "s" is still a word
     # character, so there's no boundary between "commit" and "s"). Verified
     # directly: re.search(r"\bcommit\b", "show commits") does not match.
     # So "commits" / "show commits" / "commit history" fell through every
     # tier with no keyword path at all, landing wherever Tier 2's fuzzy
     # fallback happened to guess. This tier catches the plural/noun form
-    # explicitly. ("did i commit" etc. is excluded — that's Tier 0.17's
+    # explicitly. ("did i commit" etc. is excluded â€” that's Tier 0.17's
     # state-check phrasing, not a request to see the log.)
     if re.search(r"\b(?:commits?|commit\s+history)\b", dl) and not re.search(r"\bdid\s+i\b", dl):
         return "git", 90.0, [("git", 90.0)]
 
-    # ── Tier 0.17: "did I already [X]" → state-check → git status ─────────
-    # "did I save", "did I already run this") — informational, never an
+    # â”€â”€ Tier 0.17: "did I already [X]" â†’ state-check â†’ git status â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # "did I save", "did I already run this") â€” informational, never an
     # edit. Smoke-testing found ALL of these landing on "patch" at 0%
     # confidence (a random no-match guess), the worst kind of miss since
     # it's silent and gives no useful signal to the did-you-mean gate.
@@ -1597,21 +1597,21 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if re.search(r"\bdid\s+i\s+(?:already\s+)?(?:commit|save|push|checkpoint)\b", dl):
         return "git", 90.0, [("git", 90.0)]
 
-    # ── Tier 0.18: "what happens when I [X]" → behavioral question ────────
+    # â”€â”€ Tier 0.18: "what happens when I [X]" â†’ behavioral question â”€â”€â”€â”€â”€â”€â”€â”€
     # Smoke-testing found these landing on "patch" at 0% confidence two out
-    # of three times — a generic-phrasing gap, same root cause as the
+    # of three times â€” a generic-phrasing gap, same root cause as the
     # original #3 log case (no keyword path recognizes this phrasing at
     # all). This does not solve true behavioral-semantics matching (that's
-    # the same fragile-semantic-search ceiling documented elsewhere) — it
+    # the same fragile-semantic-search ceiling documented elsewhere) â€” it
     # only makes sure the question routes to run_info's app-summary/file
     # lookup instead of a silent 0%-confidence "patch" guess, which is a
     # strictly more honest failure mode even when it can't fully answer.
     if re.search(r"\bwhat\s+happens\s+(?:when|if)\s+i\b", dl) and not (has_bare_file_ref or has_explicit_file_ref):
         return "run_info", 70.0, [("run_info", 70.0)]
 
-    # ── Tier 0.19: "what's the deal with [X]" → nearest / concept lookup ──
+    # â”€â”€ Tier 0.19: "what's the deal with [X]" â†’ nearest / concept lookup â”€â”€
     # Previously this phrase only reached "nearest" by accident (vocab
-    # overlap with "closest"/"nearest" words in some cases) — smoke-testing
+    # overlap with "closest"/"nearest" words in some cases) â€” smoke-testing
     # showed "what's the deal with watch mode" falling to "patch" at 0%
     # instead. Route the phrase itself to "nearest" explicitly so the
     # concept-summary fallback (folder/file comment scan) always gets a
@@ -1619,7 +1619,7 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if re.search(r"what'?s?\s+the\s+deal\s+with\b", dl):
         return "nearest", 80.0, [("nearest", 80.0)]
 
-    # ── Tier 0.20: "why is [this file/it] so big/huge" with NO filename ──
+    # â”€â”€ Tier 0.20: "why is [this file/it] so big/huge" with NO filename â”€â”€
     # Tier 0.1 already routes "why is patchit.py so huge" to file_info when
     # a real filename is present. This covers the no-filename case ("why
     # is this file so big") which previously fell through everything and
@@ -1628,9 +1628,9 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if re.search(r"\bwhy\b.*\b(?:so\s+)?(?:big|huge|large|long)\b", dl) and not (has_bare_file_ref or has_explicit_file_ref):
         return "file_info", 75.0, [("file_info", 75.0)]
 
-    # ── Tier 0.16: "broken / errors / bugs" → syntax_check ────────────────
+    # â”€â”€ Tier 0.16: "broken / errors / bugs" â†’ syntax_check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # syntax_check actually runs ast.parse() (or jsx_tag_checker for
-    # JS/HTML) and reports real line-numbered errors — a genuinely correct
+    # JS/HTML) and reports real line-numbered errors â€” a genuinely correct
     # answer to "is there anything broken in X". Previously this had no
     # explicit keyword weight and lost to scan_function's looser fuzzy
     # match, which then searched for a function literally named "is there
@@ -1639,7 +1639,7 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     #
     # NOTE: "broken"/"errors"/etc. are ALSO in _STRONG_OVERRIDE_KEYWORDS
     # above, specifically so Tier 0.1's bare-filename shortcut doesn't
-    # claim these directives first — that ordering bug was caught by
+    # claim these directives first â€” that ordering bug was caught by
     # simulation before shipping (a directive like "is there anything
     # broken in query.py" has a bare file ref AND the word "broken"; if
     # "broken" weren't an override keyword, Tier 0.1 would return
@@ -1648,7 +1648,7 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
         if re.search(r"\b(?:broken|errors?|bugs?|syntax\s*error|crash(?:ing|es)?|fail(?:ing|s)?)\b", dl):
             return "syntax_check", 90.0, [("syntax_check", 90.0)]
 
-    # ── Tier 0.5: Rule — "show me / list / all <filetype/lang> files" always looks for filetype first ─
+    # â”€â”€ Tier 0.5: Rule â€” "show me / list / all <filetype/lang> files" always looks for filetype first â”€
     import re as _re_t1
     _FT_KEYWORDS = {
         "js", "javascript", "script", "scripts",
@@ -1700,7 +1700,7 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if (has_ft_prefix and has_ft_word and not is_line_or_func) or (dynamic_files_match and not is_line_or_func) or (dot_ext_match and not is_line_or_func):
         return "list_files", 100.0, [("list_files", 100.0)]
 
-    # ── Tier 0.53: Web / UI / Visual Design Early Route ──────────────────
+    # â”€â”€ Tier 0.53: Web / UI / Visual Design Early Route â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     _DESIGN_EARLY_TRIGGERS = {
         "ui components", "ui component", "visual design", "digital layout",
         "appearance", "user interface", "web design", "website design",
@@ -1711,7 +1711,7 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if any(t in dl for t in _DESIGN_EARLY_TRIGGERS):
         return "graph", 100.0, [("graph", 100.0)]
 
-    # ── Tier 0.54: General Recon / Multi-Target Early Route ──────────────
+    # â”€â”€ Tier 0.54: General Recon / Multi-Target Early Route â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     _RECON_EARLY_TRIGGERS = {
         "find functions and files", "functions and files", "files and functions",
         "nearest file names", "nearest functions", "find nearest file names",
@@ -1721,7 +1721,7 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if any(t in dl for t in _RECON_EARLY_TRIGGERS):
         return "nearest", 100.0, [("nearest", 100.0)]
 
-    # ── Tier 0.55: App-Summary Early Exit — wins before file_info "what does" can steal it ─
+    # â”€â”€ Tier 0.55: App-Summary Early Exit â€” wins before file_info "what does" can steal it â”€
     _APP_SUMMARY_EARLY = {
         "what does this app", "what does this project", "what does this repo",
         "what does this program", "what does this codebase", "what does this do",
@@ -1743,7 +1743,7 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     if any(t in dl for t in _APP_SUMMARY_EARLY):
         return "run_info", 100.0, [("run_info", 100.0)]
 
-    # ── Tier 0.6: File-First Rule — "show me / where is / find <filename>" matches project files first ─
+    # â”€â”€ Tier 0.6: File-First Rule â€” "show me / where is / find <filename>" matches project files first â”€
     _SHOW_FILE_PREFIXES = (
         "show me", "show", "cat", "scan", "open", "read", "view", "display",
         "what is in", "contents of",
@@ -1799,12 +1799,12 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
                     (len(clean_target) >= 4 and clean_target == bname_clean)):
                     return "file_info", 100.0, [("file_info", 100.0)]
 
-    # ── Tier 1: exact vocab match — word-boundary check for patterns ─
+    # â”€â”€ Tier 1: exact vocab match â€” word-boundary check for patterns â”€
     for intent_name in priority:
         cfg = intents.get(intent_name, {})
         patterns = cfg.get("require_any", [])
         excludes = cfg.get("exclude_if", [])
-        # Check excludes first (still plain substring — exclusions are always multi-word)
+        # Check excludes first (still plain substring â€” exclusions are always multi-word)
         if any(ex in dl for ex in excludes):
             continue
         for p in patterns:
@@ -1813,7 +1813,7 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
             if matched:
                 return intent_name, 100.0, [(intent_name, 100.0)]
 
-    # ── Tier 2: Python fuzzy — word overlap & token scoring × intent weight ─
+    # â”€â”€ Tier 2: Python fuzzy â€” word overlap & token scoring Ã— intent weight â”€
     all_scores: list[tuple[str, float]] = []
     try:
         from rapidfuzz import fuzz
@@ -1860,16 +1860,16 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
         top3 = all_scores[:3]
         best_intent, best_score = all_scores[0]
 
-        # High confidence — trust Python, no LLM needed
+        # High confidence â€” trust Python, no LLM needed
         if best_score >= 85.0:
             return best_intent, best_score, top3
 
-        # ── Tier 3: LLM arbitration — only in the uncertain 55-84% zone ──────
+        # â”€â”€ Tier 3: LLM arbitration â€” only in the uncertain 55-84% zone â”€â”€â”€â”€â”€â”€
         if 55.0 <= best_score < 85.0:
             try:
                 from llm import maybe_classify_intent
                 # Send top-3 intent candidates + their vocab examples to the LLM
-                # (not all 11 — keep the prompt small for the 124M model)
+                # (not all 11 â€” keep the prompt small for the 124M model)
                 top_names = [name for name, _ in top3]
                 intent_examples = {
                     name: intents.get(name, {}).get("require_any", [])[:4]
@@ -1942,18 +1942,18 @@ def _first_comment_lines(filepath: str, max_lines: int = 5) -> list[str]:
     for ln in raw[:120]:
         s = ln.strip()
 
-        # Shebang lines ("#!/usr/bin/env python3") are never a description —
+        # Shebang lines ("#!/usr/bin/env python3") are never a description â€”
         # skip entirely rather than cleaning them into "usr/bin/env python3".
         # This was the actual bug: '/' was in the strip-charset, so the
         # leading '/' of '/usr/bin/env' got stripped along with '#!', and
         # the cleaned shebang text got kept as if it were the file's
-        # opening comment — before the real docstring below it was ever read.
+        # opening comment â€” before the real docstring below it was ever read.
         if s.startswith("#!"):
             continue
 
         if in_docstring:
             if docstring_quote in s:
-                # Closing line — take any text before the closing quote
+                # Closing line â€” take any text before the closing quote
                 before = s.split(docstring_quote)[0].strip()
                 if before and len(before) >= 5:
                     out.append(before)
@@ -1961,7 +1961,7 @@ def _first_comment_lines(filepath: str, max_lines: int = 5) -> list[str]:
                 if len(out) >= max_lines:
                     break
                 continue
-            if len(s) >= 5 and not all(c in "-=_/*~#│─" for c in s):
+            if len(s) >= 5 and not all(c in "-=_/*~#â”‚â”€" for c in s):
                 out.append(s)
                 if len(out) >= max_lines:
                     break
@@ -1995,13 +1995,13 @@ def _first_comment_lines(filepath: str, max_lines: int = 5) -> list[str]:
             cleaned = s.lstrip("/*#<>-= ").strip()
             if len(cleaned) < 5:
                 continue
-            if all(c in "-=_/*~#│─" for c in cleaned):
+            if all(c in "-=_/*~#â”‚â”€" for c in cleaned):
                 continue
             out.append(cleaned)
             if len(out) >= max_lines:
                 break
         elif out:
-            break  # first non-comment line after comments → stop
+            break  # first non-comment line after comments â†’ stop
     return out
 
 
@@ -2009,7 +2009,7 @@ def _extract_folder_or_file_target(directive: str, all_files: list[str]) -> tupl
     """
     Best-effort: does the directive name a real folder or a real file that
     exists in the project? Returns (folder_path_or_None, file_path_or_None).
-    Deliberately conservative — only returns a hit when something on disk
+    Deliberately conservative â€” only returns a hit when something on disk
     actually matches, never a guess.
     """
     tokens = re.findall(r"[a-zA-Z0-9_\-./\\]+", directive)
@@ -2070,7 +2070,7 @@ def _print_concept_summary_for_folder(folder: str, all_files: list[str]) -> None
         comments = _first_comment_lines(f, max_lines=10)
         if comments:
             for c in comments:
-                print(f"    {DIM}→ {c}{RST}")
+                print(f"    {DIM}â†’ {c}{RST}")
         else:
             print(f"    {DIM}(no opening comments){RST}")
         print()
@@ -2082,7 +2082,7 @@ def _print_concept_summary_for_file(filepath: str) -> None:
     comments = _first_comment_lines(filepath, max_lines=5)
     if comments:
         for c in comments:
-            print(f"    {DIM}→ {c}{RST}")
+            print(f"    {DIM}â†’ {c}{RST}")
     else:
         print(f"    {DIM}(no opening comments){RST}")
 
@@ -2092,7 +2092,7 @@ def _graph_functions_with_comments(filepath: str) -> list[dict]:
     Stdlib-only (ast module) function/class inventory for a .py file, each
     with its size and the comment (docstring, or a leading '#' comment
     directly above it) that explains it. No external deps (graphify /
-    rapidfuzz not required) — this is the whole point: answer "why is this
+    rapidfuzz not required) â€” this is the whole point: answer "why is this
     file so big" by showing its structure and comments, not its full body.
     Non-Python files return an empty list; caller falls back to
     _first_comment_lines for those.
@@ -2141,10 +2141,10 @@ def _rank_functions_by_connectivity(filepath: str, top_n: int = 3) -> list[dict]
     Stdlib-only (ast module) in-file call-graph ranking: how many times each
     function/method defined in this file is called by other code in the
     SAME file. This is a real count of ast.Call nodes whose callee name
-    matches a def in this file — not a size proxy, not a guess. Cross-file
+    matches a def in this file â€” not a size proxy, not a guess. Cross-file
     calls aren't tracked (that needs project-wide symbol resolution, which
     is exactly the graphify/rapidfuzz territory that isn't available in
-    every environment) — this is deliberately scoped to what stdlib ast
+    every environment) â€” this is deliberately scoped to what stdlib ast
     can answer honestly on its own.
     """
     if not filepath.endswith(".py"):
@@ -2203,7 +2203,7 @@ def _rank_functions_by_connectivity(filepath: str, top_n: int = 3) -> list[dict]
 def _print_file_size_graph(filepath: str) -> None:
     """
     Answer "why is X so big": function/class breakdown by size, largest
-    first, with each one's comment/docstring — not a full-file dump.
+    first, with each one's comment/docstring â€” not a full-file dump.
     """
     total_lines = 0
     try:
@@ -2220,15 +2220,15 @@ def _print_file_size_graph(filepath: str) -> None:
             print(f"  {BOLD}{n['kind']:5s}{RST} {n['name']:<30s} "
                   f"{DIM}L{n['start']}-{n['end']} ({n['size']} lines){RST}")
             if n["comment"]:
-                print(f"        {DIM}→ {n['comment']}{RST}")
+                print(f"        {DIM}â†’ {n['comment']}{RST}")
         if len(nodes) > 15:
             print(f"\n  {DIM}...and {len(nodes) - 15} more.{RST}")
     else:
-        # Non-Python file, or nothing parsed — fall back to opening comments
-        print(f"  {DIM}(no Python function/class structure to graph — showing opening comments){RST}\n")
+        # Non-Python file, or nothing parsed â€” fall back to opening comments
+        print(f"  {DIM}(no Python function/class structure to graph â€” showing opening comments){RST}\n")
         comments = _first_comment_lines(filepath, max_lines=10)
         for c in comments:
-            print(f"    {DIM}→ {c}{RST}")
+            print(f"    {DIM}â†’ {c}{RST}")
 
 
 def _load_graphify_semantic_index() -> dict:
@@ -2251,20 +2251,20 @@ def _load_graphify_semantic_index() -> dict:
             content = Path(graphify_md).read_text(encoding="utf-8", errors="replace")
             curr_comm = ""
             for line in content.splitlines():
-                # Community header: ### Community 0 — `package.json`  *(cohesion 0.15)*
-                comm_m = re.search(r"###\s+(Community\s+\w+)\s+—\s+`([^`]+)`(?:\s+\*\(cohesion\s+([\d.]+)\)\*)?", line)
+                # Community header: ### Community 0 â€” `package.json`  *(cohesion 0.15)*
+                comm_m = re.search(r"###\s+(Community\s+\w+)\s+â€”\s+`([^`]+)`(?:\s+\*\(cohesion\s+([\d.]+)\)\*)?", line)
                 if comm_m:
                     c_id = comm_m.group(1)
                     c_file = comm_m.group(2)
                     c_coh = comm_m.group(3) or ""
-                    tag = f"{c_id} ({c_file})" + (f" · cohesion {c_coh}" if c_coh else "")
+                    tag = f"{c_id} ({c_file})" + (f" Â· cohesion {c_coh}" if c_coh else "")
                     curr_comm = tag
                     base_f = os.path.basename(c_file).lower()
                     index["file_communities"].setdefault(base_f, []).append(curr_comm)
                     continue
 
-                # Member node: - **setContentProtection()** (3 refs) · `electron-main.js` L11
-                node_m = re.search(r"^-\s+\*\*([^*]+)\*\*(?:\s+\((\d+)\s+refs\))?(?:\s+·\s+`([^`]+)`(?:\s+L(\d+))?)?", line)
+                # Member node: - **setContentProtection()** (3 refs) Â· `electron-main.js` L11
+                node_m = re.search(r"^-\s+\*\*([^*]+)\*\*(?:\s+\((\d+)\s+refs\))?(?:\s+Â·\s+`([^`]+)`(?:\s+L(\d+))?)?", line)
                 if node_m:
                     label = node_m.group(1).strip()
                     refs = int(node_m.group(2) or "1")
@@ -2634,7 +2634,7 @@ def _print_encapsulated_node_view(
     ])
 
     display_scope = s_name if s_name.startswith((s_type, "def ", "class ", "function ", "fun ", "func ", "struct ")) else f"{s_type} {s_name}"
-    print(f"\n  {BOLD}[{score:5.1f}%]{RST} {CYAN}{label}{RST} {DIM}→ {BOLD}{display_scope}{RST} {DIM}({fp} L{s_line}-L{e_line}){RST}")
+    print(f"\n  {BOLD}[{score:5.1f}%]{RST} {CYAN}{label}{RST} {DIM}â†’ {BOLD}{display_scope}{RST} {DIM}({fp} L{s_line}-L{e_line}){RST}")
 
     if not fp or not os.path.exists(fp):
         return
@@ -2655,9 +2655,9 @@ def _print_encapsulated_node_view(
             line = raw[ln_idx]
             stripped = line.strip()
             if stripped.startswith("#") or stripped.startswith("//"):
-                print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
+                print(f"  {DIM}{ln:4d}â”‚{RST} {CYAN}{line}{RST}")
             else:
-                print(f"  {DIM}{ln:4d}│{RST} {line}")
+                print(f"  {DIM}{ln:4d}â”‚{RST} {line}")
     else:
         # Compact mode for > 20 lines
         for ln_idx in range(max(0, s_line - 1), min(s_line + 4, actual_end)):
@@ -2665,18 +2665,18 @@ def _print_encapsulated_node_view(
             line = raw[ln_idx]
             stripped = line.strip()
             if stripped.startswith("#") or stripped.startswith("//"):
-                print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
+                print(f"  {DIM}{ln:4d}â”‚{RST} {CYAN}{line}{RST}")
             else:
-                print(f"  {DIM}{ln:4d}│{RST} {line}")
+                print(f"  {DIM}{ln:4d}â”‚{RST} {line}")
 
         hidden_count = max(0, total_lines_in_scope - 7)
-        print(f"  {DIM}      │ ... [{hidden_count} lines omitted — run with 'end to end' to view all] ...{RST}")
+        print(f"  {DIM}      â”‚ ... [{hidden_count} lines omitted â€” run with 'end to end' to view all] ...{RST}")
 
         # Show last 2 lines
         for ln_idx in range(max(s_line + 4, actual_end - 2), actual_end):
             ln = ln_idx + 1
             line = raw[ln_idx]
-            print(f"  {DIM}{ln:4d}│{RST} {line}")
+            print(f"  {DIM}{ln:4d}â”‚{RST} {line}")
 
     # Display callers end-to-end with line numbers
     callers = _find_symbol_callers(s_name or label, fp, all_files)
@@ -2688,7 +2688,7 @@ def _print_encapsulated_node_view(
             c_line = c["call_line"]
             c_start = c["start_line"]
             c_end = c["end_line"]
-            print(f"    ← {CYAN}{c_name}{RST} in {BOLD}{c_file}{RST} {DIM}(called at L{c_line}, function scope L{c_start}-L{c_end}){RST}")
+            print(f"    â† {CYAN}{c_name}{RST} in {BOLD}{c_file}{RST} {DIM}(called at L{c_line}, function scope L{c_start}-L{c_end}){RST}")
 
 
 
@@ -2705,7 +2705,7 @@ def _fuzzy_match_files(directive: str, all_files: list[str]) -> list[str]:
     if not all_files:
         return []
 
-    # Tier 0 — explicit "/filename" or "/relative/path" token. This is an
+    # Tier 0 â€” explicit "/filename" or "/relative/path" token. This is an
     # unambiguous "I mean this exact file" signal from the user, so it
     # skips fuzzy scoring entirely: resolve by exact path/basename match
     # first, then substring-in-path as a fallback, and return immediately
@@ -2758,7 +2758,7 @@ def _fuzzy_match_files(directive: str, all_files: list[str]) -> list[str]:
     min_score   = cfg.get("min_fuzzy_score", 58)
     max_results = cfg.get("max_results", 4)
 
-    # 1. Prepositional extraction — matches 'of llmpy', 'in package.json', 'file agent.py'
+    # 1. Prepositional extraction â€” matches 'of llmpy', 'in package.json', 'file agent.py'
     prep_matches = re.findall(
         r"(?:of|in|file|from|for|cat|scan|show|open|into|inside|inspect|read|view|with|between|and)\s+([a-zA-Z0-9_.\-\\/]+)",
         directive,
@@ -2795,7 +2795,7 @@ def _fuzzy_match_files(directive: str, all_files: list[str]) -> list[str]:
                 if full_path not in file_scores or total > file_scores[full_path]:
                     file_scores[full_path] = total
 
-    # 3. Semantic Graphify Lookup — if graphify.md exists, match query concepts to nodes
+    # 3. Semantic Graphify Lookup â€” if graphify.md exists, match query concepts to nodes
     sem_index = _load_graphify_semantic_index()
     for lbl, sf, refs, line_num, comm in sem_index.get("symbols", []):
         lbl_clean = lbl.strip("()").strip("{}").strip().lower()
@@ -2848,7 +2848,7 @@ def _print_file_cat_and_snippet(
         skip = s - 1
         ps_cmd = f"Get-Content '{filepath}' | Select-Object -Skip {skip} -First {count}"
 
-        print(f"  {DIM}Lines: {total_lines}  │  Showing: L{s}-L{e}{RST}")
+        print(f"  {DIM}Lines: {total_lines}  â”‚  Showing: L{s}-L{e}{RST}")
         print(f"  {CYAN}PowerShell:{RST} {BOLD}{ps_cmd}{RST}\n")
 
         for idx in range(s - 1, e):
@@ -2856,9 +2856,9 @@ def _print_file_cat_and_snippet(
             line = raw_lines[idx]
             stripped = line.strip()
             if stripped.startswith("#") or stripped.startswith("//"):
-                print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
+                print(f"  {DIM}{ln:4d}â”‚{RST} {CYAN}{line}{RST}")
             else:
-                print(f"  {DIM}{ln:4d}│{RST} {line}")
+                print(f"  {DIM}{ln:4d}â”‚{RST} {line}")
         return
 
     # 2. General file cat scan
@@ -2876,9 +2876,9 @@ def _print_file_cat_and_snippet(
             line = raw_lines[idx]
             stripped = line.strip()
             if stripped.startswith("#") or stripped.startswith("//"):
-                print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
+                print(f"  {DIM}{ln:4d}â”‚{RST} {CYAN}{line}{RST}")
             else:
-                print(f"  {DIM}{ln:4d}│{RST} {line}")
+                print(f"  {DIM}{ln:4d}â”‚{RST} {line}")
 
         if total_lines > max_show:
             print(f"\n  {DIM}... ({total_lines - max_show} more lines. Run: Get-Content '{filepath}' or pyslick lines '{filepath}'){RST}")
@@ -2891,9 +2891,9 @@ def _print_file_cat_and_snippet(
 def _print_file_summary(filepath: str, directive_lower: str = "") -> None:
     """
     Print a structured summary of one file:
-      • total lines
-      • key functions/classes with first 3 lines of body + inline comments
-      • relevant comment blocks (filtered by directive words)
+      â€¢ total lines
+      â€¢ key functions/classes with first 3 lines of body + inline comments
+      â€¢ relevant comment blocks (filtered by directive words)
     """
     content = tool_get_file(filepath)
     if content.startswith("ERROR"):
@@ -2904,17 +2904,17 @@ def _print_file_summary(filepath: str, directive_lower: str = "") -> None:
     print(f"  {DIM}Lines: {len(raw_lines)}{RST}")
     print(f"  {CYAN}PowerShell:{RST} {BOLD}Get-Content '{filepath}'{RST}")
 
-    # ── Semantic community info from graphify.md ────────────────────────
+    # â”€â”€ Semantic community info from graphify.md â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     sem_idx = _load_graphify_semantic_index()
     base_f = os.path.basename(filepath).lower()
     comms = sem_idx.get("file_communities", {}).get(base_f, [])
     god_deg = sem_idx.get("god_nodes", {}).get(base_f, 0)
     if comms or god_deg:
         comm_tag = f"{CYAN}{comms[0]}{RST}" if comms else ""
-        god_tag = f"  {BOLD}★ God Node ({god_deg} refs){RST}" if god_deg else ""
+        god_tag = f"  {BOLD}â˜… God Node ({god_deg} refs){RST}" if god_deg else ""
         print(f"  {DIM}Graph Topology:{RST} {comm_tag}{god_tag}")
 
-    # ── functions and classes ──────────────────────────────────────────
+    # â”€â”€ functions and classes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     funcs: list[dict] = []
     if filepath.endswith(".py"):
         try:
@@ -2963,7 +2963,7 @@ def _print_file_summary(filepath: str, directive_lower: str = "") -> None:
 
             if fn["docstring"]:
                 doc_preview = fn["docstring"].splitlines()[0][:80]
-                print(f"      {DIM}» {doc_preview}{RST}")
+                print(f"      {DIM}Â» {doc_preview}{RST}")
 
             body_start = lnum
             body_lines = raw_lines[body_start : body_start + 3]
@@ -2975,7 +2975,7 @@ def _print_file_summary(filepath: str, directive_lower: str = "") -> None:
         # If no functions/classes found, show the first 30 lines
         print(f"\n  {BOLD}Preview:{RST}")
         for idx in range(min(30, len(raw_lines))):
-            print(f"  {DIM}{idx+1:4d}│{RST} {raw_lines[idx]}")
+            print(f"  {DIM}{idx+1:4d}â”‚{RST} {raw_lines[idx]}")
 
 
 def _print_all_comments(
@@ -2984,12 +2984,12 @@ def _print_all_comments(
     end_line: "int | None" = None,
 ) -> None:
     """
-    Print every comment line in a file — inline (#//) and block (''' / /* */).
+    Print every comment line in a file â€” inline (#//) and block (''' / /* */).
     Also prints the first 3 lines of any function immediately following
     a comment block.
 
     When start_line/end_line are provided, prints ALL lines in that slice but
-    highlights comment lines in cyan (focused scan — not a pure comment filter).
+    highlights comment lines in cyan (focused scan â€” not a pure comment filter).
     """
     content = tool_get_file(filepath)
     if content.startswith("ERROR"):
@@ -3000,12 +3000,12 @@ def _print_all_comments(
     total = len(raw_lines)
 
     if start_line is not None and end_line is not None:
-        # ── Focused slice mode ─────────────────────────────────────────
+        # â”€â”€ Focused slice mode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         s = max(1, start_line)
         e = min(total, end_line)
         print(
             f"\n{BOLD}Comments in {filepath}{RST}  "
-            f"{DIM}({total} lines total  │  Showing L{s}-L{e}){RST}\n"
+            f"{DIM}({total} lines total  â”‚  Showing L{s}-L{e}){RST}\n"
         )
         print(
             f"  {DIM}PowerShell: Get-Content '{filepath}' | "
@@ -3028,7 +3028,7 @@ def _print_all_comments(
                 print(f"  {DIM}L{i}:{RST}  {raw}")
         return
 
-    # ── Full-file mode ─────────────────────────────────────────────────
+    # â”€â”€ Full-file mode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     print(f"\n{BOLD}Comments in {filepath}{RST}  {DIM}({total} lines total){RST}\n")
 
     in_block = False
@@ -3095,7 +3095,7 @@ def _print_all_comments(
             for j in range(i, min(i + 3, len(raw_lines))):
                 next_line = raw_lines[j].strip()
                 if re.match(r"(async\s+)?def\s+|class\s+|function\s+", next_line):
-                    print(f"    {DIM}→ {next_line[:90]}{RST}")
+                    print(f"    {DIM}â†’ {next_line[:90]}{RST}")
                     for k in range(j + 1, min(j + 4, len(raw_lines))):
                         body = raw_lines[k].strip()
                         if body:
@@ -3111,37 +3111,37 @@ def _ask_did_you_mean(directive: str, intent: str, confidence: float, top3: list
     Returns the confirmed intent name.
     """
     label = INTENT_LABELS.get(intent, intent)
-    print(f"\n{YELL}  ⚡ Did you mean: {BOLD}{label}{RST}{YELL}? ({intent}, {confidence:.0f}% confident){RST}")
+    print(f"\n{YELL}  âš¡ Did you mean: {BOLD}{label}{RST}{YELL}? ({intent}, {confidence:.0f}% confident){RST}")
     answer = input(f"  {DIM}(y/n): {RST}").strip().lower()
 
     if answer in ("y", "yes", ""):
         _save_learned_intent(directive, intent)
         return intent
 
-    # User said no — show numbered top-3
+    # User said no â€” show numbered top-3
     print(f"\n{CYAN}  Pick what you meant:{RST}")
     choices = top3[:3]
     for i, (name, score) in enumerate(choices, 1):
         lbl = INTENT_LABELS.get(name, name)
         print(f"  {BOLD}[{i}]{RST} {lbl}  {DIM}({score:.0f}%){RST}")
-    print(f"  {BOLD}[0]{RST} None of these — skip")
+    print(f"  {BOLD}[0]{RST} None of these â€” skip")
 
     while True:
         pick = input(f"  {DIM}Enter number: {RST}").strip()
         if pick == "0":
-            print(f"  {DIM}Skipping — try rephrasing your query.{RST}")
+            print(f"  {DIM}Skipping â€” try rephrasing your query.{RST}")
             return intent
         if pick.isdigit() and 1 <= int(pick) <= len(choices):
             chosen = choices[int(pick) - 1][0]
             _save_learned_intent(directive, chosen)
-            ok(f"Got it — saved '{directive}' → {chosen} for next time.")
+            ok(f"Got it â€” saved '{directive}' â†’ {chosen} for next time.")
             return chosen
         print(f"  {YELL}Enter a number between 0 and {len(choices)}.{RST}")
 
 
-# ═════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # LOCAL LLM AGENT (no API key required)
-# ═════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def _run_relay_agent(directive: str) -> None:
     """
@@ -3168,13 +3168,13 @@ def _run_relay_agent(directive: str) -> None:
 
     payload = {"directive": directive, "files": blocks}
     RELAY_FILE.write_text(_json.dumps(payload, indent=2), encoding="utf-8")
-    print(f"{DIM}  [relay] Context written â†' waiting for extension to POST response…{RST}")
+    print(f"{DIM}  [relay] Context written Ã¢â€ ' waiting for extension to POST responseâ€¦{RST}")
 
     # Clear any stale response
     if RESPONSE_FILE.exists():
         RESPONSE_FILE.unlink()
 
-    # Poll for response (extension POSTs to /claude-response â†' relay_server saves it)
+    # Poll for response (extension POSTs to /claude-response Ã¢â€ ' relay_server saves it)
     timeout, interval = 120, 1
     for _ in range(timeout):
         _time.sleep(interval)
@@ -3188,7 +3188,7 @@ def _run_relay_agent(directive: str) -> None:
                 print(f"{YELL}  [relay] Could not parse response: {exc}{RST}")
             return
 
-    print(f"{YELL}  [relay] Timed out after {timeout}s — no response received.{RST}")
+    print(f"{YELL}  [relay] Timed out after {timeout}s â€” no response received.{RST}")
     print(f"{DIM}  Is the browser extension running and connected to claude.ai?{RST}")
 
 def _run_local_agent(directive: str) -> None:
@@ -3196,31 +3196,62 @@ def _run_local_agent(directive: str) -> None:
     Vocab-driven local agent for the 124M-param model.
 
     Intent routing is a three-tier hybrid pipeline in _classify_intent_with_confidence():
-      Tier 0 — learned_intents.json  (user-corrected queries, 100% confidence)
-      Tier 1 — Exact vocab substring  (intent_vocab.json, 100% confidence)
-      Tier 2 — Python rapidfuzz fuzzy (word-level scoring, 0-100%)
-      Tier 3 — LLM arbitration        (only in 55-84% uncertain zone)
+      Tier 0 â€” learned_intents.json  (user-corrected queries, 100% confidence)
+      Tier 1 â€” Exact vocab substring  (intent_vocab.json, 100% confidence)
+      Tier 2 â€” Python rapidfuzz fuzzy (word-level scoring, 0-100%)
+      Tier 3 â€” LLM arbitration        (only in 55-84% uncertain zone)
 
     When confidence is 55-84%, the agent asks 'Did you mean X?' before running.
     If the user corrects it, the choice is saved to learned_intents.json.
 
-      help          → pyslick command docs
-      git           → git status + optional push prompt
-      run_info      → how to run / start / launch project
-      list_files    → directory walk + main symbols per file
-      comments      → all comments in matched file
-      nearest       → find_nearest_nodes around a symbol/line
-      scan_function → full function body printed with comments
-      graph         → ast_query call graph
-      connect       → cross-file call-graph walk
-      file_info     → purpose + key functions + first 3 lines
-      patch         → fuzzy match → LLM find/replace → diff → confirm
+      help          â†’ pyslick command docs
+      git           â†’ git status + optional push prompt
+      run_info      â†’ how to run / start / launch project
+      list_files    â†’ directory walk + main symbols per file
+      comments      â†’ all comments in matched file
+      nearest       â†’ find_nearest_nodes around a symbol/line
+      scan_function â†’ full function body printed with comments
+      graph         â†’ ast_query call graph
+      connect       â†’ cross-file call-graph walk
+      file_info     â†’ purpose + key functions + first 3 lines
+      patch         â†’ fuzzy match â†’ LLM find/replace â†’ diff â†’ confirm
     """
     # Detect frustration / correction from user
     cleaned_directive, was_frustrated, prev_intent = _detect_frustration_and_correction(directive)
     active_directive = cleaned_directive
 
-    # LLM optional — classification still works without it (just skips Tier 3)
+    # ── Rule/LLM router: broad Q&A → universal recon ──────────────────────
+    try:
+        from router import route as _route
+        _r = _route(active_directive)
+        if _r == "recon_full":
+            from recon_semantic import run_full_recon
+            from recon_pack import write_pack
+            pack = run_full_recon(active_directive)
+            write_pack(pack)
+            print(f"{DIM}  routed -> recon_full  "
+                  f"(files={len(pack.get('files', []))}, "
+                  f"centrality={len(pack.get('centrality', []))}, "
+                  f"git_log={len(pack.get('git_log', []))}){RST}")
+            snap = pack.get("snap") or {}
+            if snap.get("name"):
+                print(f"{DIM}  snap: {snap['name']}  "
+                      f"(restore: pyslick snap-restore {snap['name']}){RST}")
+            return
+        if _r == "recon":
+            from recon_semantic import run_universal_recon
+            from recon_pack import write_pack
+            pack = run_universal_recon(active_directive)
+            write_pack(pack)
+            print(f"{DIM}  routed -> recon  "
+                  f"(tier={pack.get('tier_used')}, "
+                  f"files={len(pack.get('files', []))}){RST}")
+            return
+    except Exception as _router_err:
+        print(f"  [router block error: {type(_router_err).__name__}: {_router_err}]")
+    # ── Fall through to the classifier below ──────────────────────────────
+
+    # LLM optional â€” classification still works without it (just skips Tier 3)
     try:
         from llm import is_available, maybe_expand_query
         _llm_ready = is_available()
@@ -3230,16 +3261,16 @@ def _run_local_agent(directive: str) -> None:
 
     intent, confidence, top3 = _classify_intent_with_confidence(active_directive)
     dl = active_directive.lower()
-    print(f"{DIM}  intent → {intent}  ({confidence:.0f}%){RST}")
+    print(f"{DIM}  intent â†’ {intent}  ({confidence:.0f}%){RST}")
 
     if was_frustrated:
         _adjust_intent_weight(intent, +0.08)
         _save_learned_intent(directive, intent)
         _save_learned_intent(active_directive, intent)
-        ok(f"Learned correction: '{active_directive}' → {intent}")
+        ok(f"Learned correction: '{active_directive}' â†’ {intent}")
 
     # Show 'did you mean?' when confidence is in the uncertain zone (55-84%)
-    # Skip if user already gave an explicit line number — context is unambiguous
+    # Skip if user already gave an explicit line number â€” context is unambiguous
     has_line_range = bool(re.search(r'(?:line|lines|l)\s*\d+', active_directive, re.IGNORECASE))
     if 55.0 <= confidence < 85.0 and not was_frustrated and not has_line_range:
         intent = _ask_did_you_mean(active_directive, intent, confidence, top3)
@@ -3248,16 +3279,16 @@ def _run_local_agent(directive: str) -> None:
     # Save session for context tracking
     _save_session(directive, intent)
 
-    # ── HELP ──────────────────────────────────────────────────────────
+    # â”€â”€ HELP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if intent == "help":
         result = tool_pyslick_help()
         print(result)
         return
 
-    # ── GIT ───────────────────────────────────────────────────────────
+    # â”€â”€ GIT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if intent == "git":
         # Rollback/revert/undo must be checked FIRST, before the log and
-        # push/commit/checkpoint branches below — a directive like
+        # push/commit/checkpoint branches below â€” a directive like
         # "rollback to commit 3" or "undo 3 commits ago" contains the
         # substrings "commit"/"commits", which would otherwise get
         # swallowed by those branches (plain `in dl` substring checks)
@@ -3265,7 +3296,7 @@ def _run_local_agent(directive: str) -> None:
         if re.search(r"\b(?:undo|revert|rollback|roll\s+back|discard|go\s+back)\b", dl):
             repo_name = _get_repo_name()
             if not repo_name:
-                warn("Not inside a git repository — nothing to roll back.")
+                warn("Not inside a git repository â€” nothing to roll back.")
                 return
 
             has_target = bool(re.search(r"\b(?:rollback|revert|undo|go\s+back)\b.*(?:\bto\b|\bcommits?\s+ago\b|\bcommit\s*#?\d+\b)", dl))
@@ -3275,7 +3306,7 @@ def _run_local_agent(directive: str) -> None:
                 # with no indication anything related to the rollback
                 # request had even been noticed. Show recent commits and
                 # ask for an explicit target instead of guessing one.
-                hdr("Git", "Rollback — target needed")
+                hdr("Git", "Rollback â€” target needed")
                 warn("Rollback needs a target. Recent commits:")
                 print(tool_pyslick_log())
                 print("\n  Try: \"rollback to commit 2\", \"rollback 2 commits ago\", or \"rollback to <message keywords>\".")
@@ -3285,14 +3316,14 @@ def _run_local_agent(directive: str) -> None:
             status = result[0]
 
             if status == "none":
-                hdr("Git", "Rollback — no match")
+                hdr("Git", "Rollback â€” no match")
                 warn("Couldn't confidently resolve that commit reference. Recent commits:")
                 print(tool_pyslick_log())
                 return
 
             if status == "ambiguous":
-                hdr("Git", "Rollback — ambiguous target")
-                warn("More than one commit matches that description — be more specific:")
+                hdr("Git", "Rollback â€” ambiguous target")
+                warn("More than one commit matches that description â€” be more specific:")
                 for h, m in result[1]:
                     print(f"    {h}  {m}")
                 return
@@ -3327,7 +3358,7 @@ def _run_local_agent(directive: str) -> None:
                 print(f"\n  Files that would change:\n{diff_res.stdout}")
 
             confirm = input(
-                f"\n{BOLD}  ⏸  Rollback to {commit_hash[:10]} \"{commit_msg[:60]}\"? "
+                f"\n{BOLD}  â¸  Rollback to {commit_hash[:10]} \"{commit_msg[:60]}\"? "
                 f"This discards {len(lost_lines)} commit(s) above it. (yes/no): {RST}"
             ).strip().lower()
             if confirm not in ("y", "yes"):
@@ -3336,7 +3367,7 @@ def _run_local_agent(directive: str) -> None:
 
             # Safety net: tag current HEAD with a recoverable backup branch
             # before doing anything destructive. `git reset --hard` is the
-            # only thing that actually delivers "rollback to X" as asked —
+            # only thing that actually delivers "rollback to X" as asked â€”
             # --soft/--mixed leave the discarded commits' changes sitting in
             # the working tree, which isn't a rollback, it's an undo-staging.
             # A backup branch makes --hard fully recoverable without
@@ -3346,7 +3377,7 @@ def _run_local_agent(directive: str) -> None:
             backup_branch = f"backup/pre-rollback-{short_head}-{int(time.time())}"
             branch_res = subprocess.run(["git", "branch", backup_branch], capture_output=True, text=True, timeout=5)
             if branch_res.returncode != 0:
-                warn(f"Could not create backup branch ({(branch_res.stderr or '').strip()[:200]}) — aborting rollback for safety.")
+                warn(f"Could not create backup branch ({(branch_res.stderr or '').strip()[:200]}) â€” aborting rollback for safety.")
                 return
             ok(f"Backup created: {backup_branch} (points at current HEAD, for recovery)")
 
@@ -3373,14 +3404,14 @@ def _run_local_agent(directive: str) -> None:
             # confirmation ("push" is already an explicit instruction, not
             # an ambiguous checkpoint request). Previously "push" was
             # bucketed with "commit"/"checkpoint" and always stopped at a
-            # "Create checkpoint?" prompt, never actually reaching a push —
+            # "Create checkpoint?" prompt, never actually reaching a push â€”
             # confirmed by reproducing the exact reported terminal output.
             repo_name = _get_repo_name()
             if not repo_name:
-                warn("Not inside a git repository — nothing to push.")
+                warn("Not inside a git repository â€” nothing to push.")
                 return
             print(f"  Repo: {YELL}{repo_name}{RST}")
-            hdr("Git", "Auto Add → Commit → Push")
+            hdr("Git", "Auto Add â†’ Commit â†’ Push")
             msg_match = re.search(r'(?:message|msg|with)[:\s]+["\']?(.+?)["\']?\s*$', dl)
             commit_msg = msg_match.group(1).strip() if msg_match else None
             success, log = tool_pyslick_add_commit_push(commit_msg)
@@ -3388,7 +3419,7 @@ def _run_local_agent(directive: str) -> None:
             if success:
                 ok(f"Pushed to {repo_name}")
             else:
-                warn(f"Push to {repo_name} did not complete — see log above.")
+                warn(f"Push to {repo_name} did not complete â€” see log above.")
             return
 
         if any(kw in dl for kw in ["push", "commit", "checkpoint"]):
@@ -3405,7 +3436,7 @@ def _run_local_agent(directive: str) -> None:
                 except Exception:
                     commit_msg = directive
             confirm = input(
-                f"\n{BOLD}  ⏸  Create checkpoint '{commit_msg[:70]}'? (yes/no): {RST}"
+                f"\n{BOLD}  â¸  Create checkpoint '{commit_msg[:70]}'? (yes/no): {RST}"
             ).strip().lower()
             if confirm in ("y", "yes"):
                 result = tool_pyslick_checkpoint(commit_msg)
@@ -3417,10 +3448,10 @@ def _run_local_agent(directive: str) -> None:
         print(status)
         return
 
-    # ── RUN INFO (how to run project, repo, directory, or file) ─────────
+    # â”€â”€ RUN INFO (how to run project, repo, directory, or file) â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if intent == "run_info":
 
-        # ── APP SUMMARY (what does this app/project do?) ───────────────
+        # â”€â”€ APP SUMMARY (what does this app/project do?) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         _APP_SUMMARY_TRIGGERS = {
             "what does this app", "what does this project", "what does this do",
             "what does the app", "what does the project", "what does this repo",
@@ -3448,7 +3479,7 @@ def _run_local_agent(directive: str) -> None:
             if os.path.exists(graph_path):
                 try:
                     gdata = json.loads(Path(graph_path).read_text(encoding="utf-8"))
-                    # Build id→source_file map (only file-type nodes)
+                    # Build idâ†’source_file map (only file-type nodes)
                     id_to_file: dict[str, str] = {}
                     for node in gdata.get("nodes", []):
                         sf = node.get("source_file", "")
@@ -3512,11 +3543,11 @@ def _run_local_agent(directive: str) -> None:
                     comments = _first_comment_lines(sf, max_lines=3)
                     if comments:
                         for c in comments:
-                            print(f"    {DIM}→ {c}{RST}")
+                            print(f"    {DIM}â†’ {c}{RST}")
                     else:
                         print(f"    {DIM}(no opening comments){RST}")
 
-                    # Most-connected function blocks within this file —
+                    # Most-connected function blocks within this file â€”
                     # in-file call count via stdlib ast, 2-3 per file, not
                     # a full function dump.
                     top_fns = _rank_functions_by_connectivity(sf, top_n=3)
@@ -3527,10 +3558,10 @@ def _run_local_agent(directive: str) -> None:
                                   f"{DIM}L{fn['start']}-{fn['end']} "
                                   f"({fn['callers_in_file']} calls in file){RST}")
                             if fn["comment"]:
-                                print(f"        {DIM}→ {fn['comment']}{RST}")
+                                print(f"        {DIM}â†’ {fn['comment']}{RST}")
                     print()
             else:
-                print(f"  {DIM}No graphify-out/graph.json found — run graphify first for richer results.{RST}\n")
+                print(f"  {DIM}No graphify-out/graph.json found â€” run graphify first for richer results.{RST}\n")
 
             return
 
@@ -3554,16 +3585,16 @@ def _run_local_agent(directive: str) -> None:
             ext = Path(target_f).suffix.lower()
             print(f"  {BOLD}How to run {target_f}:{RST}")
             if ext == ".py":
-                print(f"    • Direct: {BOLD}python {target_f}{RST}")
-                print(f"    • Module: {BOLD}python -m {Path(target_f).stem}{RST}")
+                print(f"    â€¢ Direct: {BOLD}python {target_f}{RST}")
+                print(f"    â€¢ Module: {BOLD}python -m {Path(target_f).stem}{RST}")
             elif ext in (".js", ".mjs", ".cjs"):
                 if "electron" in target_f.lower() or os.path.exists("electron-main.js"):
-                    print(f"    • Electron: {BOLD}npx electron {target_f}{RST} (or {BOLD}{pm} start{RST})")
-                print(f"    • Node:     {BOLD}node {target_f}{RST}")
+                    print(f"    â€¢ Electron: {BOLD}npx electron {target_f}{RST} (or {BOLD}{pm} start{RST})")
+                print(f"    â€¢ Node:     {BOLD}node {target_f}{RST}")
             elif ext in (".ts", ".tsx"):
-                print(f"    • TypeScript: {BOLD}npx ts-node {target_f}{RST}")
+                print(f"    â€¢ TypeScript: {BOLD}npx ts-node {target_f}{RST}")
             elif ext == ".html":
-                print(f"    • Open in browser or local server: {BOLD}npx serve .{RST}")
+                print(f"    â€¢ Open in browser or local server: {BOLD}npx serve .{RST}")
             print()
             found_info = True
 
@@ -3583,7 +3614,7 @@ def _run_local_agent(directive: str) -> None:
                         run_prefix = f"{pm} {s_name}" if pm != "npm" else f"npm run {s_name}"
                         if s_name in ("start", "test"):
                             run_prefix = f"{pm} {s_name}"
-                        print(f"    • {BOLD}{run_prefix}{RST} → {DIM}{s_cmd}{RST}")
+                        print(f"    â€¢ {BOLD}{run_prefix}{RST} â†’ {DIM}{s_cmd}{RST}")
                     found_info = True
             except Exception:
                 pass
@@ -3593,15 +3624,15 @@ def _run_local_agent(directive: str) -> None:
         if os.path.exists("pyproject.toml") or os.path.exists("setup.py") or os.path.exists("requirements.txt") or py_files:
             print(f"\n  {BOLD}Python Environment:{RST}")
             if os.path.exists("requirements.txt"):
-                print(f"    • Install deps: {BOLD}pip install -r requirements.txt{RST}")
+                print(f"    â€¢ Install deps: {BOLD}pip install -r requirements.txt{RST}")
             if os.path.exists("setup_and_install.py"):
-                print(f"    • One-shot setup: {BOLD}python setup_and_install.py{RST}")
+                print(f"    â€¢ One-shot setup: {BOLD}python setup_and_install.py{RST}")
             for main_cand in ["main.py", "app.py", "cli.py", "server.py", "index.py", "electron-main.js"]:
                 if os.path.exists(main_cand):
                     cmd = f"python {main_cand}" if main_cand.endswith(".py") else f"node {main_cand}"
-                    print(f"    • Run entry point: {BOLD}{cmd}{RST}")
+                    print(f"    â€¢ Run entry point: {BOLD}{cmd}{RST}")
             if os.path.exists("pytest.ini") or os.path.exists("tests"):
-                print(f"    • Run tests: {BOLD}pytest{RST}")
+                print(f"    â€¢ Run tests: {BOLD}pytest{RST}")
             found_info = True
 
         # Check README.md for Run / Getting Started / Usage sections
@@ -3626,9 +3657,9 @@ def _run_local_agent(directive: str) -> None:
             print(f"  {DIM}Try: pyslick agent \"how to run <filename>\"{RST}")
         return
 
-    # ── LIST FILES ────────────────────────────────────────────────────
+    # â”€â”€ LIST FILES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if intent == "list_files":
-        # Determine root — check if user mentioned a specific directory
+        # Determine root â€” check if user mentioned a specific directory
         root_match = re.search(
             r'(?:in|into|inside|under|directory|dir|folder)[:\s]+["\']?([./\w\-]+)["\']?',
             dl,
@@ -3756,7 +3787,7 @@ def _run_local_agent(directive: str) -> None:
             except Exception:
                 line_info = ""
 
-            print(f"  {BOLD}• {fp}{RST}  {line_info}")
+            print(f"  {BOLD}â€¢ {fp}{RST}  {line_info}")
 
             if wants_symbols:
                 content = tool_get_file(fp)
@@ -3777,7 +3808,7 @@ def _run_local_agent(directive: str) -> None:
                         print(f"    {DIM}symbols: {', '.join(syms[:6])}{RST}")
         return
 
-    # ── COMMENTS ──────────────────────────────────────────────────────
+    # â”€â”€ COMMENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if intent == "comments":
         all_files  = _collect_all_files()
         matched    = _fuzzy_match_files(directive, all_files)
@@ -3794,12 +3825,12 @@ def _run_local_agent(directive: str) -> None:
         start_ln = int(range_match.group(1)) if range_match else None
         end_ln   = int(range_match.group(2)) if range_match else None
 
-        # When a line range is given, use the top match directly — no picker
+        # When a line range is given, use the top match directly â€” no picker
         target = matched[0]
         targets = [target]
 
         # If the directive itself explicitly names multiple files, skip
-        # the interactive picker entirely and show all of them — the user
+        # the interactive picker entirely and show all of them â€” the user
         # already told us what they want, no need to ask again.
         explicit_file_refs = re.findall(
             r"(?<!\S)/[a-zA-Z0-9_./\\\-]+\.[a-zA-Z0-9]+", active_directive
@@ -3832,12 +3863,12 @@ def _run_local_agent(directive: str) -> None:
 
         for i, t in enumerate(targets):
             if i > 0:
-                print(f"\n{DIM}{'─' * 60}{RST}")
+                print(f"\n{DIM}{'â”€' * 60}{RST}")
             _print_all_comments(t, start_line=start_ln, end_line=end_ln)
 
         # "comments" is read-only. If the directive's own wording implies
         # an actual EDIT (clean up, remove, delete, strip out...), say so
-        # explicitly rather than silently under-delivering — previously
+        # explicitly rather than silently under-delivering â€” previously
         # "clean up the old commented-out code in X" would just print the
         # comments and stop, with nothing telling the user this view can't
         # act on what they asked for.
@@ -3853,7 +3884,7 @@ def _run_local_agent(directive: str) -> None:
             )
         return
 
-    # ── NEAREST NODE / FUNCTION / METHOD / OBJECT / GENERAL RECON ──────
+    # â”€â”€ NEAREST NODE / FUNCTION / METHOD / OBJECT / GENERAL RECON â”€â”€â”€â”€â”€â”€
     if intent == "nearest":
         # Extract a line number if present
         line_match = re.search(r"(?:line|l)\s*(\d+)", dl)
@@ -3882,10 +3913,10 @@ def _run_local_agent(directive: str) -> None:
         if matched_files:
             print(f"\n  {CYAN}Nearest File Names:{RST}")
             for fp in matched_files[:6]:
-                print(f"    • {BOLD}{fp}{RST}")
+                print(f"    â€¢ {BOLD}{fp}{RST}")
 
-        # ── Concept-lookup fallback ──────────────────────────────────────
-        # Nothing matched by graph symbol OR filename — e.g. "what's the
+        # â”€â”€ Concept-lookup fallback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # Nothing matched by graph symbol OR filename â€” e.g. "what's the
         # deal with the intent classifier" where no file/symbol literally
         # contains those words. Rather than leave the user with nothing,
         # fall back to a comment-based summary: if the directive names a
@@ -3897,21 +3928,21 @@ def _run_local_agent(directive: str) -> None:
         if not enriched_nodes and not matched_files:
             folder_hit, file_hit = _extract_folder_or_file_target(active_directive, all_files)
             if folder_hit:
-                print(f"\n  {DIM}No exact match — summarizing top files in '{folder_hit}' instead:{RST}\n")
+                print(f"\n  {DIM}No exact match â€” summarizing top files in '{folder_hit}' instead:{RST}\n")
                 _print_concept_summary_for_folder(folder_hit, all_files)
             elif file_hit:
-                print(f"\n  {DIM}No exact match — summarizing '{file_hit}' instead:{RST}\n")
+                print(f"\n  {DIM}No exact match â€” summarizing '{file_hit}' instead:{RST}\n")
                 _print_concept_summary_for_file(file_hit)
         return
 
-    # ── SCAN FUNCTION (print function end-to-end with comments) ────────
+    # â”€â”€ SCAN FUNCTION (print function end-to-end with comments) â”€â”€â”€â”€â”€â”€â”€â”€
     if intent == "scan_function":
         all_files = _collect_all_files()
         matched   = _fuzzy_match_files(active_directive, all_files)
         target    = matched[0] if matched else None
 
         # If the directive explicitly names multiple files, search across
-        # all of them rather than collapsing to just the first match —
+        # all of them rather than collapsing to just the first match â€”
         # same "multi-file when multi-file is asked for" rule as file_info.
         explicit_file_refs = re.findall(
             r"(?<!\S)/[a-zA-Z0-9_./\\\-]+\.[a-zA-Z0-9]+", active_directive
@@ -3990,9 +4021,9 @@ def _run_local_agent(directive: str) -> None:
                 line = raw_lines[ln_idx]
                 stripped = line.strip()
                 if stripped.startswith("#") or stripped.startswith("//"):
-                    print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
+                    print(f"  {DIM}{ln:4d}â”‚{RST} {CYAN}{line}{RST}")
                 else:
-                    print(f"  {DIM}{ln:4d}│{RST} {line}")
+                    print(f"  {DIM}{ln:4d}â”‚{RST} {line}")
             return
 
         # Fallback to Broad Recon Mode when single function match fails
@@ -4007,16 +4038,16 @@ def _run_local_agent(directive: str) -> None:
         if matched_files:
             print(f"\n  {CYAN}Nearest Matched Files:{RST}")
             for fp in matched_files[:5]:
-                print(f"    • {BOLD}{fp}{RST}")
+                print(f"    â€¢ {BOLD}{fp}{RST}")
 
         if not enriched_nodes and not matched_files:
             warn(f"Could not locate function or files matching '{query_term}'. Try specifying the function name or file.")
         return
 
-    # ── CALL GRAPH ────────────────────────────────────────────────────
+    # â”€â”€ CALL GRAPH â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if intent == "graph":
 
-        # ── GRAPHIFY.MD EXPORT (create graphify.md for Claude Web paste) ──
+        # â”€â”€ GRAPHIFY.MD EXPORT (create graphify.md for Claude Web paste) â”€â”€
         _EXPORT_TRIGGERS = {
             "graphify md", "graphify.md", "graphify markdown", "create graphify",
             "create graph", "export graphify", "export graph", "graphify report",
@@ -4076,7 +4107,7 @@ def _run_local_agent(directive: str) -> None:
                 except Exception:
                     pass
 
-            # Build node id → node map
+            # Build node id â†’ node map
             node_map: dict[str, dict] = {n["id"]: n for n in gdata.get("nodes", [])}
 
             # Build in-degree per node for community member ranking
@@ -4100,28 +4131,28 @@ def _run_local_agent(directive: str) -> None:
             lines: list[str] = []
             lines.append("# Codebase Graph Map")
             lines.append(f"\n> Generated by pyslick from `graphify-out/graph.json`  ")
-            lines.append(f"> {len(node_map)} nodes · {len(gdata.get('links', []))} links · {len(communities)} communities\n")
+            lines.append(f"> {len(node_map)} nodes Â· {len(gdata.get('links', []))} links Â· {len(communities)} communities\n")
 
-            # ── Communities ──────────────────────────────────────────────
+            # â”€â”€ Communities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if communities:
                 lines.append("## Communities\n")
                 for cid, members in sorted(communities.items(), key=lambda x: int(x[0]) if x[0].isdigit() else str(x[0])):
                     cname = _community_name(members)
                     coh_val = cohesion.get(cid, cohesion.get(str(cid), None))
                     coh_str = f"  *(cohesion {coh_val:.2f})*" if coh_val is not None else ""
-                    lines.append(f"### Community {cid} — `{cname}`{coh_str}\n")
+                    lines.append(f"### Community {cid} â€” `{cname}`{coh_str}\n")
                     for nid in sorted(members, key=lambda x: -in_deg.get(x, 0)):
                         n = node_map.get(nid, {})
                         label = n.get("label") or nid
                         sf = n.get("source_file", "")
                         loc = n.get("source_location", "")
-                        sf_str = f" · `{sf}` {loc}" if sf else ""
+                        sf_str = f" Â· `{sf}` {loc}" if sf else ""
                         deg = in_deg.get(nid, 0)
                         deg_str = f" ({deg} refs)" if deg else ""
                         lines.append(f"- **{label}**{deg_str}{sf_str}")
                     lines.append("")
 
-            # ── God Nodes ────────────────────────────────────────────────
+            # â”€â”€ God Nodes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if gods:
                 lines.append("## God Nodes (highest degree)\n")
                 lines.append("| Node | Label | Refs | File |")
@@ -4132,13 +4163,13 @@ def _run_local_agent(directive: str) -> None:
                     lines.append(f"| `{g['id']}` | {g['label']} | {g['degree']} | `{sf}` |")
                 lines.append("")
 
-            # ── Surprises (bridge edges) ─────────────────────────────────
+            # â”€â”€ Surprises (bridge edges) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if surprises:
                 lines.append("## Surprising Connections\n")
                 for s in surprises:
                     src = s.get("source", "?")
                     tgt = s.get("target", "?")
-                    rel = s.get("relation", "→")
+                    rel = s.get("relation", "â†’")
                     note = s.get("note", "")
                     sfs = ", ".join(f"`{f}`" for f in s.get("source_files", []))
                     lines.append(f"- **{src}** {rel} **{tgt}**  ")
@@ -4148,7 +4179,7 @@ def _run_local_agent(directive: str) -> None:
                         lines.append(f"  Files: {sfs}")
                 lines.append("")
 
-            # ── Bridge Questions ─────────────────────────────────────────
+            # â”€â”€ Bridge Questions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if questions:
                 lines.append("## Questions for Claude\n")
                 for q in questions:
@@ -4162,13 +4193,13 @@ def _run_local_agent(directive: str) -> None:
             out_path = "graphify.md"
             Path(out_path).write_text("\n".join(lines), encoding="utf-8")
             size_kb = Path(out_path).stat().st_size // 1024
-            ok(f"Written: {out_path}  ({size_kb or '<1'} KB)  —  ready for AI webapp / Claude")
-            print(f"  {DIM}Communities: {len(communities)}  │  God nodes: {len(gods)}  │  Bridge questions: {len(questions)}{RST}\n")
-            print(f"  {CYAN}💡 Semantic Search Tip:{RST} Parse {BOLD}graphify.md{RST} with an AI (Claude / ChatGPT).")
+            ok(f"Written: {out_path}  ({size_kb or '<1'} KB)  â€”  ready for AI webapp / Claude")
+            print(f"  {DIM}Communities: {len(communities)}  â”‚  God nodes: {len(gods)}  â”‚  Bridge questions: {len(questions)}{RST}\n")
+            print(f"  {CYAN}ðŸ’¡ Semantic Search Tip:{RST} Parse {BOLD}graphify.md{RST} with an AI (Claude / ChatGPT).")
             print(f"     pyslick uses this extracted graph topology and community semantics for smarter searching!\n")
             return
 
-        # ── Web Design / UI Architecture & Cross-File Communities ──────
+        # â”€â”€ Web Design / UI Architecture & Cross-File Communities â”€â”€â”€â”€â”€â”€
         is_design_query = any(w in dl for w in [
             "design", "webpage", "website", "ui", "component", "components",
             "layout", "appearance", "interface", "style", "styles", "styling",
@@ -4193,14 +4224,14 @@ def _run_local_agent(directive: str) -> None:
                         js_members   = [m for m in members if m.startswith("js:")]
 
                         label = html_members[0].split(":")[-1] if html_members else (css_members[0].split(":")[-1] if css_members else members[0])
-                        print(f"\n  {BOLD}Community {idx} — {CYAN}{label}{RST}")
+                        print(f"\n  {BOLD}Community {idx} â€” {CYAN}{label}{RST}")
 
                         for m in members[:8]:
                             node = all_nodes.get(m)
                             if node:
                                 ntype = node.type.upper()
                                 nfile = os.path.basename(node.file)
-                                print(f"    • {DIM}[{ntype}]{RST} {BOLD}{node.name}{RST} {DIM}({nfile} L{node.line}){RST}")
+                                print(f"    â€¢ {DIM}[{ntype}]{RST} {BOLD}{node.name}{RST} {DIM}({nfile} L{node.line}){RST}")
                     ran_webdesign = True
             except Exception:
                 pass
@@ -4208,7 +4239,7 @@ def _run_local_agent(directive: str) -> None:
             if ran_webdesign and is_design_query:
                 return
 
-        # ── Graphify AST Node Encapsulation Query ───────────────────────
+        # â”€â”€ Graphify AST Node Encapsulation Query â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         enriched_nodes = _find_nearest_nodes_with_encapsulation(active_directive, all_files, top_k=3)
         if enriched_nodes:
             hdr("Code & Design Architecture (Graphify)", active_directive)
@@ -4216,7 +4247,7 @@ def _run_local_agent(directive: str) -> None:
                 _print_encapsulated_node_view(item, all_files, dl, max_compact_lines=20)
             return
 
-        # ── Python AST call-graph fallback ─────────────────────────────
+        # â”€â”€ Python AST call-graph fallback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         matched   = _fuzzy_match_files(directive, all_files)
         py_files  = [f for f in (matched or all_files) if f.endswith(".py")]
 
@@ -4230,7 +4261,7 @@ def _run_local_agent(directive: str) -> None:
         warn("No graph nodes or design components matched.")
         return
 
-    # ── CONNECT (cross-file call-graph & node encapsulation) ──────────
+    # â”€â”€ CONNECT (cross-file call-graph & node encapsulation) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if intent == "connect":
         try:
             from query import graphify_query
@@ -4241,16 +4272,16 @@ def _run_local_agent(directive: str) -> None:
         all_files = _collect_all_files()
         matched   = _fuzzy_match_files(directive, all_files)
 
-        # 1. Node-First Resolution — find closest symbols/nodes and their encapsulating functions/classes
+        # 1. Node-First Resolution â€” find closest symbols/nodes and their encapsulating functions/classes
         enriched_nodes = _find_nearest_nodes_with_encapsulation(active_directive, all_files, top_k=3)
 
         if enriched_nodes:
-            hdr("Connections • Node & Scope Encapsulation", active_directive)
+            hdr("Connections â€¢ Node & Scope Encapsulation", active_directive)
             for item in enriched_nodes:
                 _print_encapsulated_node_view(item, all_files, dl, max_compact_lines=20)
 
         elif matched:
-            hdr("Connections", " ↔ ".join(os.path.basename(f) for f in matched[:3]))
+            hdr("Connections", " â†” ".join(os.path.basename(f) for f in matched[:3]))
             for fp in matched[:4]:
                 print(f"\n{BOLD}{fp}{RST}")
                 _print_file_summary(fp, dl)
@@ -4272,7 +4303,7 @@ def _run_local_agent(directive: str) -> None:
                     if not f1.endswith(".py"):
                         continue
                     try:
-                        print(f"\n  {BOLD}{os.path.basename(f1)} ↔ {os.path.basename(f2)}{RST}")
+                        print(f"\n  {BOLD}{os.path.basename(f1)} â†” {os.path.basename(f2)}{RST}")
                         results = graphify_query(
                             f1,
                             f"functions that call or are called by {f2}",
@@ -4287,26 +4318,26 @@ def _run_local_agent(directive: str) -> None:
                                 if sym.get("docstring"):
                                     print(f"      {DIM}{sym['docstring'][:80]}{RST}")
                                 if callees:
-                                    print(f"      calls → {', '.join(callees[:4])}")
+                                    print(f"      calls â†’ {', '.join(callees[:4])}")
                                 if callers:
-                                    print(f"      called by ← {', '.join(callers[:4])}")
+                                    print(f"      called by â† {', '.join(callers[:4])}")
                         else:
                             print(f"    {DIM}(no direct connections found){RST}")
                     except Exception:
                         pass
         return
 
-    # ── FILE INFO ─────────────────────────────────────────────────────
-    # ── FILE INFO (Cat / Scan / Snippet / Purpose / Line Ranges) ──────
+    # â”€â”€ FILE INFO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # â”€â”€ FILE INFO (Cat / Scan / Snippet / Purpose / Line Ranges) â”€â”€â”€â”€â”€â”€
     if intent == "file_info":
         all_files = _collect_all_files()
         matched   = _fuzzy_match_files(active_directive, all_files)
 
-        # ── "why is X so big/huge/large" → function/comment size graph ────
+        # â”€â”€ "why is X so big/huge/large" â†’ function/comment size graph â”€â”€â”€â”€
         # Answers with structure (functions+classes by size, with their
         # comments), never a full-file dump. Handles both "why is
         # patchit.py so huge" (filename given) and "why is this file so
-        # big" (no filename — falls back to the single most-connected file
+        # big" (no filename â€” falls back to the single most-connected file
         # project-wide, same god-node ranking used for folder summaries).
         is_size_question = bool(re.search(r"\b(?:so\s+)?(?:big|huge|large|long)\b", dl)) and \
             bool(re.search(r"\bwhy\b", dl))
@@ -4318,7 +4349,7 @@ def _run_local_agent(directive: str) -> None:
             else:
                 top = _top_connected_files_in(".", top_n=1)
                 if top:
-                    print(f"  {DIM}No filename given — using the most-connected file in the project:{RST}\n")
+                    print(f"  {DIM}No filename given â€” using the most-connected file in the project:{RST}\n")
                     hdr("File Size Graph", top[0])
                     _print_file_size_graph(top[0])
                 else:
@@ -4352,12 +4383,12 @@ def _run_local_agent(directive: str) -> None:
 
         # Multi-file intent: the user gets ALL matched files shown, without
         # needing a follow-up "show all", whenever the original directive
-        # itself makes multi-file intent explicit — either by naming ≥2
+        # itself makes multi-file intent explicit â€” either by naming â‰¥2
         # files directly (e.g. "compare /a.js and /b.js", "/a.js /b.js
         # /c.js all three pls") or by using an explicit "show all"/"all
         # files"/"both files" phrase. A single named file (even with other
         # fuzzy-matched candidates lurking behind it) still shows just the
-        # primary match — we only expand when the user's own wording asked
+        # primary match â€” we only expand when the user's own wording asked
         # for more than one.
         explicit_file_refs = re.findall(
             r"(?<!\S)/[a-zA-Z0-9_./\\\-]+\.[a-zA-Z0-9]+", active_directive
@@ -4370,7 +4401,7 @@ def _run_local_agent(directive: str) -> None:
         files_to_show = matched if wants_multi else [target_file]
         for i, fp in enumerate(files_to_show):
             if i > 0:
-                print(f"\n{DIM}{'─' * 60}{RST}")
+                print(f"\n{DIM}{'â”€' * 60}{RST}")
             hdr("File Cat / Scan", fp)
             _print_file_cat_and_snippet(fp, dl, start_line=start_line, end_line=end_line)
 
@@ -4381,7 +4412,7 @@ def _run_local_agent(directive: str) -> None:
             print(f"\n  {DIM}Other matches: {', '.join(other_files)} (use 'show all' to scan all){RST}")
         return
 
-    # ── STRAY SYMBOLS ─────────────────────────────────────────────────────
+    # â”€â”€ STRAY SYMBOLS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if intent == "stray_symbols":
         from find_stray_symbols import find_stray_symbols
         all_files = _collect_all_files()
@@ -4396,15 +4427,15 @@ def _run_local_agent(directive: str) -> None:
             for iss in issues:
                 line_no = iss.get("line", "?")
                 sym = iss.get("symbol", iss.get("message", str(iss)))
-                print(f"  {YELLOW}⚠{RST}  {os.path.basename(fp)}:{BOLD}{line_no}{RST}  {sym}")
+                print(f"  {YELLOW}âš {RST}  {os.path.basename(fp)}:{BOLD}{line_no}{RST}  {sym}")
                 total_issues += 1
         if total_issues == 0:
-            print(f"  {GREEN}✔{RST}  No stray symbols found.")
+            print(f"  {GREEN}âœ”{RST}  No stray symbols found.")
         else:
             print(f"\n  {YELLOW}{total_issues} issue(s) found.{RST}")
         return
 
-    # ── SYNTAX CHECK ──────────────────────────────────────────────────────
+    # â”€â”€ SYNTAX CHECK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if intent == "syntax_check":
         import ast as _ast
         all_files = _collect_all_files()
@@ -4422,7 +4453,7 @@ def _run_local_agent(directive: str) -> None:
                 for err in errors:
                     line_no = err.get("line", "?")
                     msg = err.get("message", str(err))
-                    print(f"  {RED}✖{RST}  {os.path.basename(fp)}:{BOLD}{line_no}{RST}  {msg}")
+                    print(f"  {RED}âœ–{RST}  {os.path.basename(fp)}:{BOLD}{line_no}{RST}  {msg}")
                     total_errors += 1
             elif ext == ".py":
                 try:
@@ -4430,17 +4461,17 @@ def _run_local_agent(directive: str) -> None:
                         src = _f.read()
                     _ast.parse(src, filename=fp)
                 except SyntaxError as se:
-                    print(f"  {RED}✖{RST}  {os.path.basename(fp)}:{BOLD}{se.lineno}{RST}  {se.msg}")
+                    print(f"  {RED}âœ–{RST}  {os.path.basename(fp)}:{BOLD}{se.lineno}{RST}  {se.msg}")
                     total_errors += 1
                 except Exception:
                     pass
         if total_errors == 0:
-            print(f"  {GREEN}✔{RST}  No syntax errors found.")
+            print(f"  {GREEN}âœ”{RST}  No syntax errors found.")
         else:
             print(f"\n  {RED}{total_errors} error(s) found.{RST}")
         return
 
-    # ── INDENTATION CHECK ─────────────────────────────────────────────────
+    # â”€â”€ INDENTATION CHECK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if intent == "indentation":
         from indentation import analyze_indentation_scopes
         all_files = _collect_all_files()
@@ -4458,15 +4489,15 @@ def _run_local_agent(directive: str) -> None:
             for iss in issues:
                 line_no = iss.get("line", iss.get("lineno", "?"))
                 msg = iss.get("message", iss.get("issue", str(iss)))
-                print(f"  {YELLOW}⚠{RST}  {os.path.basename(fp)}:{BOLD}{line_no}{RST}  {msg}")
+                print(f"  {YELLOW}âš {RST}  {os.path.basename(fp)}:{BOLD}{line_no}{RST}  {msg}")
                 total_issues += 1
         if total_issues == 0:
-            print(f"  {GREEN}✔{RST}  No indentation issues found.")
+            print(f"  {GREEN}âœ”{RST}  No indentation issues found.")
         else:
             print(f"\n  {YELLOW}{total_issues} issue(s) found.{RST}")
         return
 
-    # ── SMOKETEST ─────────────────────────────────────────────────────────
+    # â”€â”€ SMOKETEST â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if intent == "smoketest":
         hdr("Smoketest", os.getcwd())
         # Try autoloop smoketest runner first
@@ -4508,8 +4539,8 @@ def _run_local_agent(directive: str) -> None:
             warn("No test runner detected. Add pytest.ini or a 'test' script in package.json.")
         return
 
-    # ── PATCH (default) ───────────────────────────────────────────────
-    # Uses rapidfuzz graph match → LLM extract → diff → confirm
+    # â”€â”€ PATCH (default) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # Uses rapidfuzz graph match â†’ LLM extract â†’ diff â†’ confirm
     try:
         from find_nearest_nodes import load_graph_nodes
         from comment_blocks import scan_project_for_comment_blocks, comment_nodes_as_graph_nodes
@@ -4519,7 +4550,7 @@ def _run_local_agent(directive: str) -> None:
         warn(f"Missing dependency: {ie}. Run: pip install pyslick[local]")
         return
 
-    print(f"{DIM}Scanning project…{RST}")
+    print(f"{DIM}Scanning projectâ€¦{RST}")
     nodes = load_graph_nodes() or []
 
     if not nodes:
@@ -4544,7 +4575,7 @@ def _run_local_agent(directive: str) -> None:
         node = nodes[index]
         if node["type"] in ("marker_block", "descriptive_block"):
             cn = node["_comment_node"]
-            print(f"  [{score:5.1f}%] {node['label'][:40]} → {cn.file}")
+            print(f"  [{score:5.1f}%] {node['label'][:40]} â†’ {cn.file}")
         else:
             print(f"  [{score:5.1f}%] {node['label'][:40]}")
 
@@ -4612,7 +4643,7 @@ def _run_local_agent(directive: str) -> None:
         replace_str = input(f"Replace: ").strip()
 
     if not find_str or not replace_str:
-        warn("Missing find/replace — no changes made.")
+        warn("Missing find/replace â€” no changes made.")
         return
 
     patch = {
@@ -4624,18 +4655,18 @@ def _run_local_agent(directive: str) -> None:
     _present_and_apply_patch(patch, directive)
 
 
-# ═════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # AGENTIC LOOP  (Anthropic / NVIDIA API path)
-# ═════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def run_agent(directive: str, root: str = ".") -> None:
     os.chdir(root) if root != "." else None
 
     print(f"{BOLD}Agent: {directive}{RST}")
 
-    # ── Priority: relay → API → local LLM ─────────────────────────────────
+    # â”€â”€ Priority: relay â†’ API â†’ local LLM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if _relay_active():
-        print(f"{DIM}Relay active — sending context to browser extension{RST}")
+        print(f"{DIM}Relay active â€” sending context to browser extension{RST}")
         try:
             from .response_watcher import register
             register()
@@ -4646,7 +4677,7 @@ def run_agent(directive: str, root: str = ".") -> None:
 
     provider_name, provider = _get_provider()
     if not provider:
-        print(f"{DIM}No API key — using local LLM{RST}")
+        print(f"{DIM}No API key â€” using local LLM{RST}")
         _run_local_agent(directive)
         return
 
@@ -4664,9 +4695,9 @@ def run_agent(directive: str, root: str = ".") -> None:
         }
     ]
 
-    # ── Agentic tool loop ──────────────────────────────────────────────
+    # â”€â”€ Agentic tool loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     for round_num in range(1, MAX_TOOL_ROUNDS + 1):
-        hdr(f"Round {round_num}/{MAX_TOOL_ROUNDS}", "Thinking…")
+        hdr(f"Round {round_num}/{MAX_TOOL_ROUNDS}", "Thinkingâ€¦")
 
         try:
             response = _call_api(messages, use_tools=True)
@@ -4685,7 +4716,7 @@ def run_agent(directive: str, root: str = ".") -> None:
         if text_out:
             print(f"\n{DIM}  Claude:{RST} {text_out[:600]}")
 
-        # ── No more tool calls → extract patch proposal ────────────────
+        # â”€â”€ No more tool calls â†’ extract patch proposal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if stop_reason == "end_turn" or not tool_uses:
             patch = _parse_patch(text_out or _extract_text(content))
             if patch:
@@ -4695,7 +4726,7 @@ def run_agent(directive: str, root: str = ".") -> None:
                 print(f"\n  {DIM}Full response:{RST}\n  {text_out}")
             return
 
-        # ── Execute tool calls ─────────────────────────────────────────
+        # â”€â”€ Execute tool calls â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         messages.append({"role": "assistant", "content": content})
 
         tool_results = []
@@ -4704,7 +4735,7 @@ def run_agent(directive: str, root: str = ".") -> None:
             tool_args = tu.get("input", {})
             tool_id   = tu.get("id", "")
 
-            print(f"\n  {CYAN}→ {tool_name}{RST}({_fmt_args(tool_args)})")
+            print(f"\n  {CYAN}â†’ {tool_name}{RST}({_fmt_args(tool_args)})")
             result  = dispatch_tool(tool_name, tool_args)
             preview = result.replace("\n", " ")[:200]
             print(f"    {DIM}{preview}{RST}")
@@ -4717,8 +4748,8 @@ def run_agent(directive: str, root: str = ".") -> None:
 
         messages.append({"role": "user", "content": tool_results})
 
-    # ── Max rounds reached → ask for final answer without tools ────────
-    warn(f"Reached {MAX_TOOL_ROUNDS} tool rounds. Asking for final proposal…")
+    # â”€â”€ Max rounds reached â†’ ask for final answer without tools â”€â”€â”€â”€â”€â”€â”€â”€
+    warn(f"Reached {MAX_TOOL_ROUNDS} tool rounds. Asking for final proposalâ€¦")
     messages.append({
         "role": "user",
         "content": (
@@ -4744,7 +4775,7 @@ def _fmt_args(args: dict) -> str:
     for k, v in args.items():
         val = repr(v) if isinstance(v, str) else str(v)
         if len(val) > 50:
-            val = val[:47] + "…'"
+            val = val[:47] + "â€¦'"
         parts.append(f"{k}={val}")
     return ", ".join(parts)
 
@@ -4817,7 +4848,7 @@ def _present_and_apply_patch(patch: dict, directive: str) -> None:
         n=3,
     ))
 
-    print(f"{DIM}{'─'*60}{RST}")
+    print(f"{DIM}{'â”€'*60}{RST}")
     for line in diff:
         if line.startswith("+") and not line.startswith("+++"):
             print(f"{GREEN}{line.rstrip()}{RST}")
@@ -4825,14 +4856,14 @@ def _present_and_apply_patch(patch: dict, directive: str) -> None:
             print(f"{RED}{line.rstrip()}{RST}")
         else:
             print(f"{DIM}{line.rstrip()}{RST}")
-    print(f"{DIM}{'─'*60}{RST}")
+    print(f"{DIM}{'â”€'*60}{RST}")
 
     confirm = input(
-        f"\n{BOLD}  ⏸  Apply this patch? (yes/no): {RST}"
+        f"\n{BOLD}  â¸  Apply this patch? (yes/no): {RST}"
     ).strip().lower()
 
     if confirm not in ("yes", "y"):
-        warn("Patch aborted by user — no files changed.")
+        warn("Patch aborted by user â€” no files changed.")
         return
 
     write_ok = write_with_safety(file_path, modified)
@@ -4844,14 +4875,14 @@ def _present_and_apply_patch(patch: dict, directive: str) -> None:
         err("Write blocked (possible syntax error). File unchanged.")
 
 
-# ═════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # ENTRY POINT
-# ═════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def main():
     parser = argparse.ArgumentParser(
         prog="pyslick agent",
-        description="Agentic AI coding assistant — finds and proposes patches autonomously.",
+        description="Agentic AI coding assistant â€” finds and proposes patches autonomously.",
     )
     parser.add_argument(
         "directive", nargs="+",
