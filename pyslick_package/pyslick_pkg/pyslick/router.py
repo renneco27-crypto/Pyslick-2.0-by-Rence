@@ -158,7 +158,12 @@ def _rule_route(directive: str) -> str:
         return "lines"
     if "grep" in d or "search for" in d:
         return "grep"
-    if "comment" in d and "scan" in d:
+    # Only fire on explicit "scan comments" phrasing. Plain substring
+    # matching caught "comment_blocks scanner" — user means the file, not
+    # the scan-comments feature. Word boundaries on both terms fixes it:
+    # "comment_blocks" has no \b before "comment", and "scanner" has no
+    # \b after "scan", so neither token qualifies on its own.
+    if re.search(r"\bcomments?\b", d) and re.search(r"\bscan\b", d):
         return "comment_scan"
     if d in ("help", "?", "commands"):
         return "help"
