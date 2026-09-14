@@ -167,6 +167,12 @@ def _rule_route(directive: str) -> str:
         return "comments"
 
     # Query / lookup â€” route to recon (never "query": agent has no handler for it)
+    if re.search(r"\bwhat\s+(?:columns?|fields?|keys?)\s+(?:does|do|has)\b", d):
+        return "what_columns"
+    if re.search(r"\bwhat\s+columns?\s+(?:are\s+)?in\b", d):
+        return "what_columns"
+    if re.search(r"\bcolumns?\s+(?:of|for)\s+\S", d):
+        return "what_columns"
     if re.search(r"\bwhere\s+is\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:referenced|used|called)\b", d):
         return "find_references"
     if re.search(r"\bwhere\s+is\s+([A-Za-z_][A-Za-z0-9_]*)\s+defined\b", d):

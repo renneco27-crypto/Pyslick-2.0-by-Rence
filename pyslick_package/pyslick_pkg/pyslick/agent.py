@@ -3387,6 +3387,10 @@ def _run_local_agent(directive: str) -> None:
             # "where is X referenced/used/called". Handler is further down.
             intent = "find_references"
             _skip_router = True
+        elif _r == "what_columns":
+            # "what columns does T have". Handler is further down.
+            intent = "what_columns"
+            _skip_router = True
 
         elif _r == "recon_full":
             from recon_semantic import run_full_recon
@@ -3662,7 +3666,127 @@ def _run_local_agent(directive: str) -> None:
         print(status)
         return
 
-    if intent == "find_references":
+    if intent == "what_columns":
+        import re as _re
+        m = (
+            _re.search(r"\bcolumns?\s+(?:does|do|has)\s+(?:the\s+)?([A-Za-z_][A-Za-z0-9_]*)\b", active_directive, _re.IGNORECASE)
+            or _re.search(r"\bcolumns?\s+(?:of|for|in)\s+(?:the\s+)?([A-Za-z_][A-Za-z0-9_]*)\b", active_directive, _re.IGNORECASE)
+            or _re.search(r"\bwhat\s+columns?\s+(?:are\s+)?in\s+(?:the\s+)?([A-Za-z_][A-Za-z0-9_]*)\b", active_directive, _re.IGNORECASE)
+        )
+        if not m:
+            print(f"  {DIM}Could not extract a table/collection name from: {active_directive}{RST}")
+            return
+        table = m.group(1)
+
+        SKIP_DIRS = {".git", "node_modules", "dist", "build", ".next", ".turbo",
+                     ".venv", "venv", "__pycache__", ".pyslick", ".pyslick_context",
+                     "graphify-out", "coverage", ".cache"}
+        exts = {".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".sql"}
+        root = os.getcwd()
+        files: list[str] = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [x for x in dirnames if x not in SKIP_DIRS and not x.startswith(".")]
+            for fn in filenames:
+                if os.path.splitext(fn)[1].lower() in exts:
+                    files.append(os.path.join(dirpath, fn))
+
+        from_rx = _re.compile(
+            r"\.from\(\s*['\"]" + _re.escape(table) + r"['\"]\s*\)",
+            _re.IGNORECASE
+        )
+        sql_from_rx = _re.compile(
+            r"\b(?:FROM|INTO|UPDATE)\s+['\"`]?" + _re.escape(table) + r"\b",
+            _re.IGNORECASE
+        )
+        select_rx = _re.compile(r"\.select\(\s*['\"](.+?)['\"]\s*[,)]", _re.DOTALL)
+        obj_keys_rx = _re.compile(r"\.(?:insert|update|upsert)\(\s*\{([^}]+)\}", _re.DOTALL)
+
+        # Scope every .select/.insert/.update to the .from('table') call
+        # that precedes it — not the whole file. Otherwise a file that
+        # queries two tables bleeds columns across them.
+        from_call_rx = _re.compile(
+            r"\.from\(\s*['\"]" + _re.escape(table) + r"['\"]\s*\)",
+        )
+        method_rx = _re.compile(
+            r"\.(select|insert|update|upsert|eq|is|in|order|limit|maybeSingle|single)\s*\(",
+        )
+        select_local = _re.compile(r"\.select\(\s*['\"](.+?)['\"]\s*[,)]", _re.DOTALL)
+        obj_local = _re.compile(r"\.(?:insert|update|upsert)\(\s*\{([^}]+)\}", _re.DOTALL)
+
+        cols_by_file: dict[str, set[str]] = {}
+        for fp in files:
+            try:
+                with open(fp, "r", encoding="utf-8", errors="replace") as fh:
+                    text = fh.read()
+            except Exception:
+                continue
+            found: set[str] = set()
+            # For each .from('decks'), grab the rest of the statement: read
+            # forward until we hit a line-ending semicolon or another
+            # .from( call. Take .select(...) and .insert/update({...}) out
+            # of that slice only.
+            for mo in from_call_rx.finditer(text):
+                start = mo.end()
+                # find the next .from( or end of file
+                next_from = from_call_rx.search(text, start)
+                chunk = text[start: next_from.start() if next_from else len(text)]
+                # cut the chunk at a hard statement boundary: double
+                # newline that isn't followed by a continuation
+                for line in chunk.splitlines():
+                    stripped = line.strip()
+                    if stripped.endswith(";") and not stripped.endswith(";\n"):
+                        # line-based, keep going — supabase chains rarely
+                        # end in ; mid-chain. Not perfect but tighter.
+                        pass
+                for sm in select_local.finditer(chunk):
+                    raw = sm.group(1)
+                    for piece in raw.split(","):
+                        name = piece.strip().split(":")[0].strip().strip("'\"")
+                        name = name.split(".")[-1]
+                        if name and name != "*":
+                            found.add(name)
+                for om in obj_local.finditer(chunk):
+                    for line in om.group(1).splitlines():
+                        line = line.strip()
+                        if not line or ":" not in line:
+                            continue
+                        key = line.split(":")[0].strip().strip("'\"")
+                        if key and key != "...":
+                            found.add(key)
+            # SQL fallback for .sql files
+            if sql_from_rx.search(text):
+                sql_col_rx = _re.compile(
+                    r"\b" + _re.escape(table) + r"\b\s*\(([^)]+)\)",
+                    _re.IGNORECASE | _re.DOTALL
+                )
+                for sm in sql_col_rx.finditer(text):
+                    for line in sm.group(1).split(","):
+                        name = line.strip().split()[0].strip("'\"`")
+                        if name and name.lower() not in ("primary", "foreign", "unique", "check"):
+                            found.add(name)
+            if found:
+                cols_by_file.setdefault(os.path.relpath(fp, root), set()).update(found)
+        hdr("What Columns", table)
+        print(f"  {DIM}NOTE: columns are aggregated per file. If a file queries multiple tables,")
+        print(f"  a column belonging to a sibling table may appear. Cross-check with the file.{RST}\n")
+        if not cols_by_file:
+            print(f"  {DIM}No references to table/collection '{table}' found.{RST}\n")
+            return
+
+        all_cols: set[str] = set()
+        for cols in cols_by_file.values():
+            all_cols.update(cols)
+
+        print(f"  {BOLD}{len(all_cols)} distinct column(s) referenced across {len(cols_by_file)} file(s):{RST}\n")
+        for c in sorted(all_cols):
+            print(f"    {CYAN}{c}{RST}")
+        print(f"\n  {DIM}by file:{RST}")
+        for fp, cols in sorted(cols_by_file.items()):
+            print(f"    {BOLD}{fp}{RST}  {DIM}({len(cols)}){RST}")
+            print(f"      {DIM}{', '.join(sorted(cols))}{RST}")
+        print()
+        return
+
         import re as _re
         m = (
             _re.search(r"\bwhere\s+is\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:referenced|used|called)\b", active_directive, _re.IGNORECASE)
