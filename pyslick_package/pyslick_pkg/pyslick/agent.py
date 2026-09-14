@@ -3260,6 +3260,14 @@ def _run_local_agent(directive: str) -> None:
             _r = _route(active_directive)
         if _r is None:
             pass  # overview shortcut: fall through to the run_info branch below
+        elif _r == "comments":
+            # Router decided this is a "show comments in <file>" query.
+            # Set the intent and skip the classifier so the existing
+            # `if intent == "comments":` handler below fires with the
+            # directive intact. We do NOT return here — the handler is
+            # further down and does the actual work.
+            intent = "comments"
+            _skip_router = True
         elif _r == "recon_full":
             from recon_semantic import run_full_recon
             from recon_pack import write_pack
@@ -3890,7 +3898,12 @@ def _run_local_agent(directive: str) -> None:
     # â”€â”€ COMMENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if intent == "comments":
         all_files  = _collect_all_files()
-        matched    = _fuzzy_match_files(directive, all_files)
+        # "comment(s) on|in|of <file>" — match on the file token alone,
+        # not the whole directive. Otherwise the word "comment" itself
+        # pulls comment_blocks.py to the top regardless of the target.
+        _cm = re.search(r"\bcomments?\s+(?:on|in|of)\s+(.+)$", dl)
+        _match_target = _cm.group(1).strip() if _cm else directive
+        matched    = _fuzzy_match_files(_match_target, all_files)
 
         if not matched:
             warn("No file matched. Try naming a file explicitly.")

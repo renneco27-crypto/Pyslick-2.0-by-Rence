@@ -159,6 +159,13 @@ def _rule_route(directive: str) -> str:
     if re.search(r"\b(?:todos?|fixmes?)\b.*\b(?:find|list|show|locate)\b", d):
         return "comment_scan"
 
+    # "comment on <file>" / "comments in <file>" / "comments of <file>" —
+    # show that file's comments. Distinct from comment_scan (which scans
+    # the whole project). Must come before the generic query rule below,
+    # which matches bare "show"/"find".
+    if re.search(r"\bcomments?\s+(?:on|in|of)\s+\S", d):
+        return "comments"
+
     # Query / lookup â€” route to recon (never "query": agent has no handler for it)
     if re.search(r"\b(where|show|find|locate)\b", d):
         return "recon"
