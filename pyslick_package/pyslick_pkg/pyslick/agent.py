@@ -3665,6 +3665,79 @@ def _run_local_agent(directive: str) -> None:
         status = tool_pyslick_status()
         print(status)
         return
+    if intent == "find_references":
+        import re as _re
+        m = (
+            _re.search(r"\bwhere\s+is\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:referenced|used|called)\b", active_directive, _re.IGNORECASE)
+            or _re.search(r"\b(?:references?|usages?|call\s*sites?)\s+(?:of|to|for)\s+([A-Za-z_][A-Za-z0-9_]*)\b", active_directive, _re.IGNORECASE)
+        )
+        if not m:
+            print(f"  {DIM}Could not extract a symbol name from: {active_directive}{RST}")
+            return
+        sym = m.group(1)
+
+        SKIP_DIRS = {".git", "node_modules", "dist", "build", ".next", ".turbo",
+                     ".venv", "venv", "__pycache__", ".pyslick", ".pyslick_context",
+                     "graphify-out", "coverage", ".cache"}
+        exts = {".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".dart",
+                ".java", ".kt", ".go", ".rs", ".cs", ".rb", ".php", ".swift"}
+        root = os.getcwd()
+        files: list[str] = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [x for x in dirnames if x not in SKIP_DIRS and not x.startswith(".")]
+            for fn in filenames:
+                if os.path.splitext(fn)[1].lower() in exts:
+                    files.append(os.path.join(dirpath, fn))
+
+        use_pat = _re.compile(
+            r"(?<![A-Za-z0-9_])" + _re.escape(sym) +
+            r"(?=\s*[\(\[\.]|\s*[,\)\]]|\s*:\s*|\s*$)"
+        )
+        import_pat = _re.compile(
+            r"^\s*(?:import|from)\b.*\b" + _re.escape(sym) + r"\b"
+        )
+        decl_pat = _re.compile(
+            r"^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?"
+            r"(?:function|class|const|let|var|def|interface|type|enum)\s+" + _re.escape(sym) + r"\b"
+        )
+
+        hits: list[tuple[str, int, str, bool]] = []
+        for fp in files:
+            try:
+                with open(fp, "r", encoding="utf-8", errors="replace") as fh:
+                    for ln, line in enumerate(fh, 1):
+                        if sym not in line:
+                            continue
+                        if decl_pat.match(line):
+                            continue
+                        is_imp = bool(import_pat.match(line))
+                        if use_pat.search(line) or is_imp:
+                            hits.append((os.path.relpath(fp, root), ln, line.rstrip(), is_imp))
+            except Exception:
+                continue
+
+        hdr("Find References", sym)
+        if not hits:
+            print(f"  {DIM}No references to '{sym}' found.{RST}\n")
+            return
+
+        from collections import OrderedDict
+        by_file: "OrderedDict[str, list[tuple[int, str, bool]]]" = OrderedDict()
+        for fp, ln, line, is_imp in hits:
+            by_file.setdefault(fp, []).append((ln, line, is_imp))
+
+        for fp, entries in by_file.items():
+            print(f"\n  {BOLD}{fp}{RST}  {DIM}({len(entries)}){RST}")
+            for ln, line, is_imp in entries[:12]:
+                tag = f"{DIM}[import]{RST} " if is_imp else ""
+                trim = line.strip()
+                if len(trim) > 140:
+                    trim = trim[:137] + "..."
+                print(f"    {CYAN}L{ln:<4}{RST} {tag}{trim}")
+            if len(entries) > 12:
+                print(f"    {DIM}... +{len(entries)-12} more in this file{RST}")
+        print(f"\n  {DIM}{len(hits)} reference(s) across {len(by_file)} file(s){RST}\n")
+        return
 
     if intent == "what_columns":
         import re as _re
