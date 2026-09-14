@@ -143,7 +143,8 @@ RST   = "\033[0m"
 def hdr(phase: str, title: str):
     print(f"\n{BOLD}{CYAN}â”â”  {phase}  {RST}{BOLD}{title}{RST}")
     print(f"{DIM}{'â”€' * 60}{RST}")
-    print(f"{DIM}  cwd: {os.getcwd()}{RST}")
+    if "--show-cwd" in (title or "") or os.environ.get("PYSLICK_SHOW_CWD") == "1":
+        print(f"{DIM}  cwd: {os.getcwd()}{RST}")
     print(f"{DIM}{'â”€' * 60}{RST}")
 
 def ok(msg):   print(f"{GREEN}  âœ” {msg}{RST}")
@@ -3382,6 +3383,11 @@ def _run_local_agent(directive: str) -> None:
             # Set intent and skip classifier; handler is further down.
             intent = "find_symbol"
             _skip_router = True
+        elif _r == "find_references":
+            # "where is X referenced/used/called". Handler is further down.
+            intent = "find_references"
+            _skip_router = True
+
         elif _r == "recon_full":
             from recon_semantic import run_full_recon
             from recon_pack import write_pack
@@ -3654,6 +3660,85 @@ def _run_local_agent(directive: str) -> None:
         hdr("Git", "Status")
         status = tool_pyslick_status()
         print(status)
+        return
+
+    if intent == "find_references":
+        import re as _re
+        m = (
+            _re.search(r"\bwhere\s+is\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:referenced|used|called)\b", active_directive, _re.IGNORECASE)
+            or _re.search(r"\b(?:references?|usages?|call\s*sites?)\s+(?:of|to|for)\s+([A-Za-z_][A-Za-z0-9_]*)\b", active_directive, _re.IGNORECASE)
+        )
+        if not m:
+            print(f"  {DIM}Could not extract a symbol name from: {active_directive}{RST}")
+            return
+        sym = m.group(1)
+
+        SKIP_DIRS = {".git", "node_modules", "dist", "build", ".next", ".turbo",
+                     ".venv", "venv", "__pycache__", ".pyslick", ".pyslick_context",
+                     "graphify-out", "coverage", ".cache"}
+        exts = {".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".dart",
+                ".java", ".kt", ".go", ".rs", ".cs", ".rb", ".php", ".swift"}
+        root = os.getcwd()
+        files: list[str] = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [x for x in dirnames if x not in SKIP_DIRS and not x.startswith(".")]
+            for fn in filenames:
+                if os.path.splitext(fn)[1].lower() in exts:
+                    files.append(os.path.join(dirpath, fn))
+
+        # Match use sites: sym( ...   sym.  sym[   -> sym  :sym  import sym
+        # Case-sensitive — symbol names are case-sensitive.
+        use_pat = _re.compile(
+            r"(?<![A-Za-z0-9_])" + _re.escape(sym) +
+            r"(?=\s*[\(\[\.]|\s*[,\)\]]|\s*:\s*|\s*$)"
+        )
+        # also flag imports referencing the symbol
+        import_pat = _re.compile(
+            r"^\s*(?:import|from)\b.*\b" + _re.escape(sym) + r"\b"
+        )
+        # skip the line where the symbol is declared
+        decl_pat = _re.compile(
+            r"^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?"
+            r"(?:function|class|const|let|var|def|interface|type|enum)\s+" + _re.escape(sym) + r"\b"
+        )
+
+        hits: list[tuple[str, int, str, bool]] = []
+        for fp in files:
+            try:
+                with open(fp, "r", encoding="utf-8", errors="replace") as fh:
+                    for ln, line in enumerate(fh, 1):
+                        if sym not in line:
+                            continue
+                        if decl_pat.match(line):
+                            continue
+                        is_imp = bool(import_pat.match(line))
+                        if use_pat.search(line) or is_imp:
+                            hits.append((os.path.relpath(fp, root), ln, line.rstrip(), is_imp))
+            except Exception:
+                continue
+
+        hdr("Find References", sym)
+        if not hits:
+            print(f"  {DIM}No references to '{sym}' found.{RST}\n")
+            return
+
+        # group by file
+        from collections import OrderedDict
+        by_file: "OrderedDict[str, list[tuple[int, str, bool]]]" = OrderedDict()
+        for fp, ln, line, is_imp in hits:
+            by_file.setdefault(fp, []).append((ln, line, is_imp))
+
+        for fp, entries in by_file.items():
+            print(f"\n  {BOLD}{fp}{RST}  {DIM}({len(entries)}){RST}")
+            for ln, line, is_imp in entries[:12]:
+                tag = f"{DIM}[import]{RST} " if is_imp else ""
+                trim = line.strip()
+                if len(trim) > 140:
+                    trim = trim[:137] + "..."
+                print(f"    {CYAN}L{ln:<4}{RST} {tag}{trim}")
+            if len(entries) > 12:
+                print(f"    {DIM}... +{len(entries)-12} more in this file{RST}")
+        print(f"\n  {DIM}{len(hits)} reference(s) across {len(by_file)} file(s){RST}\n")
         return
 
     # â”€â”€ RUN INFO (how to run project, repo, directory, or file) â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -4590,17 +4675,75 @@ def _run_local_agent(directive: str) -> None:
     if intent == "file_info":
         if _exact_path and os.path.exists(_exact_path):
             dl_local = (active_directive or "").lower()
-            hdr("File", _exact_path)
-            # User named a real path — print it with line numbers. No summary,
-            # no "run pyslick lines yourself". One command, whole file.
+            _want_full = "--full" in dl_local or os.environ.get("PYSLICK_FULL") == "1"
+            # --grep <pat>: print only matching lines with 2 ctx.
+            _grep_m = re.search(r"--grep\s+(\S+)", active_directive or "")
             try:
                 with open(_exact_path, "r", encoding="utf-8", errors="replace") as _fh:
                     _lines = _fh.readlines()
+            except Exception as _e:
+                hdr("File", _exact_path)
+                warn(f"Could not read {_exact_path}: {_e}")
+                return
+
+            if _grep_m:
+                # grep mode: narrow output to matching lines only
+                _pat = _grep_m.group(1)
+                hdr("Grep", f"{_exact_path}  /{_pat}/")
+                try:
+                    _rx = re.compile(_pat)
+                except re.error:
+                    _rx = re.compile(re.escape(_pat))
+                _hit_ln = [i for i, ln in enumerate(_lines, 1) if _rx.search(ln)]
+                if not _hit_ln:
+                    print(f"  {DIM}no matches{RST}")
+                    return
+                for i in _hit_ln:
+                    lo = max(1, i - 2)
+                    hi = min(len(_lines), i + 2)
+                    for j in range(lo, hi + 1):
+                        mark = ">" if j == i else " "
+                        print(f"  {mark} {j:>4}: {_lines[j-1].rstrip()}")
+                    print(f"  {DIM}---{RST}")
+                print(f"\n  {DIM}{len(_hit_ln)} match(es) in {len(_lines)} lines{RST}")
+                return
+
+            if _want_full:
+                hdr("File", _exact_path)
                 for _i, _ln in enumerate(_lines, 1):
                     print(f"  {_i:>4}: {_ln.rstrip()}")
                 print(f"\n  {DIM}{len(_lines)} lines{RST}")
-            except Exception as _e:
-                warn(f"Could not read {_exact_path}: {_e}")
+                return
+
+            # Default: signatures only. ~90% fewer tokens than a full dump.
+            # Match function/class/interface/type at any indent (nesting ok),
+            # but const/let/var/def only at column 0 (module top-level), so we
+            # don't list every `const x = ...` inside a function body.
+            _decl_rx_top = re.compile(
+                r"^(?:export\s+)?(?:default\s+)?(?:async\s+)?"
+                r"(?:const|let|var|def)\s+([A-Za-z_][A-Za-z0-9_]*)\b"
+            )
+            _decl_rx_any = re.compile(
+                r"^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?"
+                r"(?:function|class|interface|type|enum)\s+([A-Za-z_][A-Za-z0-9_]*)\b"
+            )
+            _decls: list[tuple[int, str]] = []
+            for _i, _ln in enumerate(_lines, 1):
+                if _decl_rx_top.match(_ln) or _decl_rx_any.match(_ln):
+                    _decls.append((_i, _ln.strip()))
+
+            print(f"\n{BOLD}{_exact_path}{RST}  {DIM}{len(_lines)} lines{RST}")
+            if not _decls:
+                print(f"  {DIM}(no top-level declarations detected){RST}")
+            else:
+                for _i, _sig in _decls[:30]:
+                    _trim = _sig if len(_sig) <= 100 else _sig[:97] + "..."
+                    print(f"  {CYAN}L{_i:<4}{RST} {_trim}")
+                if len(_decls) > 30:
+                    print(f"  {DIM}... +{len(_decls) - 30} more{RST}")
+            print(f"\n  {DIM}full body:  pyslick lines \"{_exact_path}\"{RST}")
+            print(f"  {DIM}one symbol: pyslick \"{_exact_path}\" --grep <pattern>{RST}")
+            print()
             return
         all_files = _collect_all_files()
         matched   = _fuzzy_match_files(active_directive, all_files)

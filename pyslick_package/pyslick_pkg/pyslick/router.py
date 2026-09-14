@@ -167,6 +167,8 @@ def _rule_route(directive: str) -> str:
         return "comments"
 
     # Query / lookup â€” route to recon (never "query": agent has no handler for it)
+    if re.search(r"\bwhere\s+is\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:referenced|used|called)\b", d):
+        return "find_references"
     if re.search(r"\bwhere\s+is\s+([A-Za-z_][A-Za-z0-9_]*)\s+defined\b", d):
         return "find_symbol"
     if re.search(r"\b(definition|defined)\s+of\s+([A-Za-z_][A-Za-z0-9_]*)\b", d):
