@@ -143,6 +143,46 @@ def _index_functions() -> list:
     return units
 
 
+def snap_range_to_function(
+    lo: int, hi: int, filepath: str, functions: list
+) -> tuple[int, int]:
+    """Given a 1-based line range (lo, hi) inside filepath, expand it to
+    the enclosing function's full extent if the range falls inside (or
+    overlaps) one. This is what stops a mid-function grep hit from
+    showing the AI a truncated body — the seed line is grep's job, the
+    extent is the AST's job.
+
+    `functions` is index["functions"]: dicts with keys name, file,
+    line (start), end. Matching is on basename to tolerate relative-vs-
+    absolute path drift. Returns (lo, hi) unchanged if no function
+    contains the range.
+    """
+    if not functions:
+        return (lo, hi)
+
+    base = os.path.basename(filepath)
+    best = None
+    for f in functions:
+        ff = f.get("file") or ""
+        if os.path.basename(ff) != base:
+            continue
+        f_start = f.get("line") or 0
+        f_end = f.get("end") or 0
+        if f_start <= 0 or f_end < f_start:
+            continue
+        # overlap test: does the snippet range intersect the function span?
+        if hi < f_start or lo > f_end:
+            continue
+        # prefer the tightest enclosing function (smallest span)
+        span = f_end - f_start
+        if best is None or span < best[2]:
+            best = (f_start, f_end, span)
+
+    if best is None:
+        return (lo, hi)
+    return (min(lo, best[0]), max(hi, best[1]))
+
+
 def build_index(root: str = ".") -> dict:
     comments, rollups = _index_comments_and_files()
     functions = _index_functions()
