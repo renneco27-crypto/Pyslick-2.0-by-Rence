@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-router.py — LLM-based directive router for pyslick.
+router.py â€” LLM-based directive router for pyslick.
 
 Loads a local Qwen GGUF via llama_cpp and returns one of the valid
 pyslick intents. Falls back to rule-based routing if the model is
@@ -115,7 +115,7 @@ def _rule_route(directive: str) -> str:
     if not d:
         return "recon"
 
-    # Full recon keywords (checked first — most specific)
+    # Full recon keywords (checked first â€” most specific)
     if any(k in d for k in (
         "comprehensive recon", "full recon", "describe the codebase",
         "overview of everything", "list all files and describe",
@@ -145,9 +145,9 @@ def _rule_route(directive: str) -> str:
     if re.search(r"\b(make|add|remove|delete|change|fix|update|edit|patch|rename)\b", d):
         return "agent"
 
-    # Query / lookup
+    # Query / lookup â€” route to recon (never "query": agent has no handler for it)
     if re.search(r"\b(where|show|find|locate)\b", d):
-        return "query"
+        return "recon"
     if re.search(r"\b(what|why|how|explain|understand|describe)\b", d):
         return "recon"
 
@@ -194,47 +194,11 @@ def route(directive: str) -> str:
     """
     Return the best pyslick intent for a directive.
 
-    Always returns a valid intent string. Never raises.
+    Rule-based only. Always returns a valid intent. Never raises.
+    (The previous LLM call was removed: the 1.5B model was slower than
+    the rules and frequently returned off-format chat text.)
     """
-    if not directive or not directive.strip():
-        return "recon"
-
-    _full_d = (directive or "").lower()
-    if any(k in _full_d for k in (
-        "comprehensive recon", "full recon", "describe the codebase",
-        "overview of everything", "list all files and describe",
-        "scan everything", "recon everything",
-    )):
-        return "recon_full"
-
-    model = _load_model()
-    if model is None:
-        return _apply_guards(directive, _rule_route(directive))
-
-    prompt = (f"<|im_start|>system\n{_SYSTEM_PROMPT}<|im_end|>\n"
-              f"<|im_start|>user\nDirective: {directive}<|im_end|>\n"
-              f"<|im_start|>assistant\n")
-
-    try:
-        result = model(
-            prompt,
-            max_tokens=8,
-            temperature=0.0,
-            stop=["\n", "<|im_end|>"],
-        )
-        text = result["choices"][0]["text"].strip().lower()
-
-        for intent in VALID_INTENTS:
-            if intent in text:
-                return _apply_guards(directive, intent)
-
-        first_word = text.split()[0] if text.split() else ""
-        if first_word in VALID_INTENTS:
-            return _apply_guards(directive, first_word)
-    except Exception:
-        pass
-
-    return _apply_guards(directive, _rule_route(directive))
+    return _apply_guards(directive or "", _rule_route(directive or ""))
 
 
 def main():
