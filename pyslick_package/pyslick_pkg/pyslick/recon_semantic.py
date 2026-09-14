@@ -229,7 +229,13 @@ def _tier1(directive: str, expanded: str, index: dict) -> list:
     ]
     hits += _rank_units(expanded or directive, cm_units, top_k=15)
 
-    for f in index.get("files", []):
+    for _f in index.get("files", []):
+        f = _f.get("file") or _f.get("path") or _f.get("name") if isinstance(_f, dict) else _f
+        if not f:
+            continue
+        if any(tok and tok.lower() in f.lower()
+               for tok in (expanded or directive).split()):
+            hits.append({"file": f, "line": 1, "text": f, "kind": "file", "score": 40})
         if any(tok and tok.lower() in f.lower()
                for tok in (expanded or directive).split()):
             hits.append({"file": f, "line": 1, "text": f, "kind": "file", "score": 40})
