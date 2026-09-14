@@ -12,6 +12,7 @@ auto-created stash snap (checkpoint) if the tree is dirty.
 """
 
 import os
+import re
 import sys
 import json
 import time
@@ -229,17 +230,16 @@ def _tier1(directive: str, expanded: str, index: dict) -> list:
     ]
     hits += _rank_units(expanded or directive, cm_units, top_k=15)
 
+    toks = [t for t in re.split(r"[^a-zA-Z0-9_]+", (expanded or directive).lower()) if len(t) > 2]
     for _f in index.get("files", []):
         f = _f.get("file") or _f.get("path") or _f.get("name") if isinstance(_f, dict) else _f
         if not f:
             continue
-        if any(tok and tok.lower() in f.lower()
-               for tok in (expanded or directive).split()):
-            hits.append({"file": f, "line": 1, "text": f, "kind": "file", "score": 40})
-        if any(tok and tok.lower() in f.lower()
-               for tok in (expanded or directive).split()):
-            hits.append({"file": f, "line": 1, "text": f, "kind": "file", "score": 40})
-
+        stem = os.path.splitext(os.path.basename(f))[0].lower()
+        for tok in toks:
+            if tok == stem or tok == stem.replace("_", ""):
+                hits.append({"file": f, "line": 1, "text": f, "kind": "file", "score": 90})
+                break
     seen = set()
     deduped = []
     for h in hits:
@@ -277,7 +277,7 @@ def _expand_from_graph(directive: str, existing_hits: list, index: dict) -> list
     seed_ids = set()
     for n in nodes:
         nid = n.get("id") or n.get("name") or n.get("label")
-        nfile = n.get("file") or n.get("path") or ""
+        nfile = n.get("source_file") or n.get("file") or n.get("path") or ""
         if nid and nfile and nfile in seed_files:
             seed_ids.add(nid)
 
@@ -299,7 +299,7 @@ def _expand_from_graph(directive: str, existing_hits: list, index: dict) -> list
     extra_hits = []
     for nid in neighbor_ids:
         n = id2n.get(nid, {})
-        f = n.get("file") or n.get("path") or ""
+        f = n.get("source_file") or n.get("file") or n.get("path") or ""
         if not f:
             continue
         extra_hits.append({
