@@ -1,0 +1,33 @@
+{
+  "snaps": [
+    {
+      "name": "pyslick-recon-20260913-202714",
+      "ref_at_creation": "stash@{0}",
+      "created_at": "2026-09-13T20:27:15",
+      "branch": "main",
+      "dirty_count_at_snap": 36,
+      "dirty_files_at_snap": [
+        " D .github/workflows/pylint.yml",
+        " D README.md",
+        " D pyslick_package/prerequistes.md",
+        " D pyslick_package/pyslick.bat",
+        " D pyslick_package/pyslick_pkg/README.md",
+        " D pyslick_package/pyslick_pkg/debugger.py",
+        " D pyslick_package/pyslick_pkg/dist/miamico_pyslick-0.2.1-py3-none-any.whl",
+        " D pyslick_package/pyslick_pkg/dist/miamico_pyslick-0.2.1.tar.gz",
+        " D pyslick_package/pyslick_pkg/install.bat",
+        " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/PKG-INFO",
+        " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/SOURCES.txt",
+        " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/dependency_links.txt",
+        " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/entry_points.txt",
+        " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/requires.txt",
+        " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/top_level.txt",
+        " D pyslick_package/pyslick_pkg/pyproject.toml",
+        " D pyslick_package/pyslick_pkg/pyslick.egg-info/PKG-INFO",
+        " D pyslick_package/pyslick_pkg/pyslick.egg-info/SOURCES.txt",
+        " D pyslick_package/pyslick_pkg/pyslick.egg-info/dependency_links.txt",
+        " D pyslick_package/pyslick_pkg/pyslick.egg-info/entry_points.txt"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "thats not what i meant i meant scan package.json line 24-72": "help",
+  "i meant scan package.json line 24-72": "help",
+  "what are lines 23-50 of llmpy": "file_info",
+  "show me git": "list_files",
+  "options": "help",
+  "toshtml teeth": "nearest",
+  "help": "help",
+  "functions aichatbot": "scan_function",
+  "api keys": "graph",
+  "where is the render url or transcriber endpoint configured": "connect",
+  "clean up the old commented-out code in recon_pack.py": "comments",
+  "whats the deal with the intent classifier": "nearest",
+  "walk me through how llm.py decides if semantic search works": "file_info",
+  "what handles copy": "file_info",
+  "nearestnode copy terminal output clipboard": "nearest",
+  "what are spawns": "file_info"
+}

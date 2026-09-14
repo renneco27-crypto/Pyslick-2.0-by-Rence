@@ -1,0 +1,3481 @@
+{
+  "directive": "comprehensive recon of the codebase",
+  "expanded_query": "comprehensive recon of the codebase",
+  "synonyms": null,
+  "tier_used": 1,
+  "graph_used": false,
+  "search_terms_used": [
+    "comprehensive recon of the codebase"
+  ],
+  "generated_at": "2026-09-13T20:27:14",
+  "budget": {
+    "whole_file_max_lines": 300,
+    "snippet_context_lines": 8,
+    "max_files": 6,
+    "max_total_lines": 1200,
+    "max_snippets_per_file": 5
+  },
+  "files": [
+    {
+      "path": "agent.py",
+      "mode": "snippet",
+      "line_count": 4902,
+      "snippet_count": 5,
+      "snippets": [
+        {
+          "start_line": 510,
+          "end_line": 526,
+          "matched_term": "_get_repo_name",
+          "text": "  510:         buf = io.StringIO()\n  511:         with contextlib.redirect_stdout(buf):\n  512:             git_status()\n  513:         return buf.getvalue()\n  514:     except Exception as e:\n  515:         return f\"ERROR: {e}\"\n  516: \n  517: \n  518: def _get_repo_name() -> str:\n  519:     \"\"\"Best-effort repo name from the git root directory. Empty string if not a repo.\"\"\"\n  520:     try:\n  521:         result = subprocess.run(\n  522:             [\"git\", \"rev-parse\", \"--show-toplevel\"],\n  523:             capture_output=True, text=True, timeout=5,\n  524:         )\n  525:         if result.returncode == 0:\n  526:             return os.path.basename(result.stdout.strip())"
+        },
+        {
+          "start_line": 563,
+          "end_line": 596,
+          "matched_term": "\"commit #3\" / \"commit number 3\" / \"commi",
+          "text": "  563:         if rp.returncode != 0:\n  564:             return (\"none\", None)\n  565:         commit_hash = rp.stdout.strip()\n  566:         msg_res = subprocess.run([\"git\", \"log\", \"-1\", \"--pretty=%s\", commit_hash],\n  567:                                   capture_output=True, text=True, timeout=5)\n  568:         commit_msg = msg_res.stdout.strip() if msg_res.returncode == 0 else \"\"\n  569:         return (\"resolved\", commit_hash, commit_msg, f\"HEAD~{n} ({n} commit(s) ago)\")\n  570: \n  571:     # \"commit #3\" / \"commit number 3\" / \"commit 3\" -> 3rd entry in the log\n  572:     m = re.search(r\"commit\\s*(?:#|number|num)?\\s*(\\d+)\\b\", dl)\n  573:     if m:\n  574:         n = int(m.group(1))\n  575:         if n < 1:\n  576:             return (\"none\", None)\n  577:         lg = subprocess.run([\"git\", \"log\", \"--oneline\", f\"-{n}\"], capture_output=True, text=True, timeout=5)\n  578:         if lg.returncode != 0:\n  579:             return (\"none\", None)\n  580:         lines = [l for l in lg.stdout.splitlines() if l.strip()]\n  581:         if len(lines) < n:\n  582:             return (\"none\", None)\n  583:         target = lines[n - 1].split(\" \", 1)\n  584:         commit_hash = target[0]\n  585:         commit_msg = target[1] if len(target) > 1 else \"\"\n  586:         return (\"resolved\", commit_hash, commit_msg, f\"commit #{n}\")\n  587: \n  588:     # Keyword / fuzzy match against recent commit messages, e.g.\n  589:     # \"rollback to the fix commit\", \"revert to initial commit\".\n  590:     lg = subprocess.run([\"git\", \"log\", \"--oneline\", \"-30\"], capture_output=True, text=True, timeout=5)\n  591:     if lg.returncode != 0:\n  592:         return (\"none\", None)\n  593:     lines = [l for l in lg.stdout.splitlines() if l.strip()]\n  594:     if not lines:\n  595:         return (\"none\", None)\n  596: "
+        },
+        {
+          "start_line": 688,
+          "end_line": 704,
+          "matched_term": "Nothing to commit is not a failure for a",
+          "text": "  688:                 message = \"pyslick auto-commit\"\n  689: \n  690:         commit_res = subprocess.run(\n  691:             [\"git\", \"commit\", \"-m\", message], capture_output=True, text=True, timeout=10\n  692:         )\n  693:         if commit_res.returncode == 0:\n  694:             log_lines.append(f'git commit -m \"{message}\"')\n  695:         else:\n  696:             # Nothing to commit is not a failure for a push request \u2014 the\n  697:             # existing ahead-by-N commit(s) may already be exactly what\n  698:             # needs pushing (this is precisely the case in the reported\n  699:             # terminal output: 1 commit ahead, nothing new staged).\n  700:             log_lines.append(\"(nothing new to commit \u2014 pushing existing commits)\")\n  701: \n  702:         push_res = subprocess.run([\"git\", \"push\"], capture_output=True, text=True, timeout=15)\n  703:         if push_res.returncode == 0:\n  704:             log_lines.append(\"git push \u2014 succeeded\")"
+        },
+        {
+          "start_line": 790,
+          "end_line": 818,
+          "matched_term": "Truncate very large outputs so they don'",
+          "text": "  790: \n  791: \n  792: def dispatch_tool(name: str, args: dict) -> str:\n  793:     impl = TOOL_IMPLEMENTATIONS.get(name)\n  794:     if impl is None:\n  795:         return f\"ERROR: unknown tool '{name}'\"\n  796:     try:\n  797:         result = impl(args)\n  798:         # Truncate very large outputs so they don't blow the context window\n  799:         if isinstance(result, str) and len(result) > 12_000:\n  800:             result = result[:12_000] + f\"\\n\u2026 [truncated \u2014 {len(result)} chars total]\"\n  801:         return result\n  802:     except Exception as e:\n  803:         return f\"ERROR executing {name}: {e}\"\n  804: \n  805: \n  806: # \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n  807: # ANTHROPIC API  (tool-use / function-calling)\n  808: # \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n  809: \n  810: # Schema sent to the API so Claude knows what tools exist\n  811: TOOL_SCHEMA = [\n  812:     {\n  813:         \"name\": \"get_file\",\n  814:         \"description\": (\n  815:             \"Read a file's full content. Use this to see the complete source \"\n  816:             \"of any file in the project. Equivalent to Get-Content -Raw.\"\n  817:         ),\n  818:         \"input_schema\": {"
+        },
+        {
+          "start_line": 1069,
+          "end_line": 1085,
+          "matched_term": "_relay_active",
+          "text": " 1069: \n 1070:     for name, provider in PROVIDERS.items():\n 1071:         if os.environ.get(provider[\"key_env\"]):\n 1072:             return name, provider\n 1073: \n 1074:     return None, None\n 1075: \n 1076: \n 1077: def _relay_active() -> bool:\n 1078:     \"\"\"Return True if the relay server (browser extension bridge) is listening.\"\"\"\n 1079:     import socket as _socket\n 1080:     try:\n 1081:         s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)\n 1082:         return s.connect_ex((\"127.0.0.1\", 27182)) == 0\n 1083:     except Exception:\n 1084:         return False\n 1085:     finally:"
+        }
+      ],
+      "hits": [
+        {
+          "kind": "function",
+          "score": 85.5,
+          "file": "agent.py",
+          "line": 518,
+          "end": 529,
+          "name": "_get_repo_name",
+          "signature": "def _get_repo_name() -> str:",
+          "docstring": "Best-effort repo name from the git root directory. Empty string if not a repo."
+        },
+        {
+          "kind": "function",
+          "score": 85.5,
+          "file": "agent.py",
+          "line": 1077,
+          "end": 1087,
+          "name": "_relay_active",
+          "signature": "def _relay_active() -> bool:",
+          "docstring": "Return True if the relay server (browser extension bridge) is listening."
+        },
+        {
+          "kind": "function",
+          "score": 85.5,
+          "file": "agent.py",
+          "line": 1207,
+          "end": 1235,
+          "name": "_load_vocab",
+          "signature": "def _load_vocab() -> dict:",
+          "docstring": "Load intent_vocab.json from the same directory as this file."
+        },
+        {
+          "kind": "function",
+          "score": 85.5,
+          "file": "agent.py",
+          "line": 1933,
+          "end": 2005,
+          "name": "_first_comment_lines",
+          "signature": "def _first_comment_lines(filepath: str, max_lines: int = 5) -> list[str]:",
+          "docstring": "Return the first meaningful comment/docstring lines from a file (up to max_lines)."
+        },
+        {
+          "kind": "function",
+          "score": 85.5,
+          "file": "agent.py",
+          "line": 2294,
+          "end": 2416,
+          "name": "_find_encapsulating_scope",
+          "signature": "def _find_encapsulating_scope(content: str, line_num: int, filepath: str) -> dict:",
+          "docstring": "Finds the enclosing function, class, struct, method, or code block that encapsulates\na given 1-based line number in a file."
+        },
+        {
+          "kind": "function",
+          "score": 85.5,
+          "file": "agent.py",
+          "line": 2419,
+          "end": 2508,
+          "name": "_collect_all_project_nodes",
+          "signature": "def _collect_all_project_nodes(all_files: list[str] | None = None) -> list[dict]:",
+          "docstring": "Builds a unified inventory of all graph, AST, comment, and symbol nodes in the project."
+        },
+        {
+          "kind": "function",
+          "score": 85.5,
+          "file": "agent.py",
+          "line": 2572,
+          "end": 2608,
+          "name": "_find_symbol_callers",
+          "signature": "def _find_symbol_callers(sym_name: str, current_file: str, all_files: list[str]) -> list[dict]:",
+          "docstring": "Finds all functions/methods and line numbers end-to-end that call `sym_name` across the codebase."
+        },
+        {
+          "kind": "function",
+          "score": 85.5,
+          "file": "agent.py",
+          "line": 2611,
+          "end": 2691,
+          "name": "_print_encapsulated_node_view",
+          "signature": "def _print_encapsulated_node_view(",
+          "docstring": "Renders an encapsulated node view. If line count > 20 and not explicitly asking\nfor 'end to end' / 'all lines', it compacts the body and displays all callers\nand line numbers end-to-end."
+        },
+        {
+          "kind": "function",
+          "score": 85.5,
+          "file": "agent.py",
+          "line": 2825,
+          "end": 2888,
+          "name": "_print_file_cat_and_snippet",
+          "signature": "def _print_file_cat_and_snippet(",
+          "docstring": "Print the actual content / lines of a file (cat scan / snippet),\nwith PowerShell command recommendations."
+        },
+        {
+          "kind": "function",
+          "score": 85.5,
+          "file": "agent.py",
+          "line": 2891,
+          "end": 2978,
+          "name": "_print_file_summary",
+          "signature": "def _print_file_summary(filepath: str, directive_lower: str = \"\") -> None:",
+          "docstring": "Print a structured summary of one file:\n  \u2022 total lines\n  \u2022 key functions/classes with first 3 lines of body + inline comments\n  \u2022 relevant comment blocks (filtered by directive words)"
+        }
+      ],
+      "symbols": [
+        {
+          "name": "hdr",
+          "label": "hdr()",
+          "signature": "def hdr(phase: str, title: str):",
+          "file": "agent.py",
+          "start_line": 143,
+          "end_line": 145,
+          "range": "agent.py:143-145",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "ok",
+          "label": "ok()",
+          "signature": "def ok(msg):   print(f\"{GREEN}  \u2714 {msg}{RST}\")",
+          "file": "agent.py",
+          "start_line": 147,
+          "end_line": 147,
+          "range": "agent.py:147-147",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "warn",
+          "label": "warn()",
+          "signature": "def warn(msg): print(f\"{YELL}  \u26a0 {msg}{RST}\")",
+          "file": "agent.py",
+          "start_line": 148,
+          "end_line": 148,
+          "range": "agent.py:148-148",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "err",
+          "label": "err()",
+          "signature": "def err(msg):  print(f\"{RED}  \u2716 {msg}{RST}\")",
+          "file": "agent.py",
+          "start_line": 149,
+          "end_line": 149,
+          "range": "agent.py:149-149",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "tool_get_file",
+          "label": "tool_get_file()",
+          "signature": "def tool_get_file(path: str) -> str:",
+          "file": "agent.py",
+          "start_line": 211,
+          "end_line": 219,
+          "range": "agent.py:211-219",
+          "type": "function",
+          "docstring": "Read a file's full content."
+        },
+        {
+          "name": "tool_get_file_lines",
+          "label": "tool_get_file_lines()",
+          "signature": "def tool_get_file_lines(path: str) -> str:",
+          "file": "agent.py",
+          "start_line": 222,
+          "end_line": 231,
+          "range": "agent.py:222-231",
+          "type": "function",
+          "docstring": "Read a file with 3-digit numbered lines."
+        },
+        {
+          "name": "tool_scan_names",
+          "label": "tool_scan_names()",
+          "signature": "def tool_scan_names(root: str = \".\") -> str:",
+          "file": "agent.py",
+          "start_line": 234,
+          "end_line": 246,
+          "range": "agent.py:234-246",
+          "type": "function",
+          "docstring": "List source files recursively."
+        },
+        {
+          "name": "tool_scan_lines",
+          "label": "tool_scan_lines()",
+          "signature": "def tool_scan_lines(path: str, keyword: str) -> str:",
+          "file": "agent.py",
+          "start_line": 249,
+          "end_line": 265,
+          "range": "agent.py:249-265",
+          "type": "function",
+          "docstring": "Find lines containing keyword (case-insensitive)."
+        },
+        {
+          "name": "_ripgrep_binary",
+          "label": "_ripgrep_binary()",
+          "signature": "def _ripgrep_binary() -> str:",
+          "file": "agent.py",
+          "start_line": 271,
+          "end_line": 275,
+          "range": "agent.py:271-275",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_grep_via_ripgrep",
+          "label": "_grep_via_ripgrep()",
+          "signature": "def _grep_via_ripgrep(path: str, patterns: list[str], context: int) -> list[tuple] | None:",
+          "file": "agent.py",
+          "start_line": 278,
+          "end_line": 315,
+          "range": "agent.py:278-315",
+          "type": "function",
+          "docstring": "Runs one `rg --json` invocation per pattern (rg's JSON stream doesn't\nsay which -e matched, and tool_grep needs to tag each hit with its\npattern, same as the pure-Python loop below). Returns a list of"
+        },
+        {
+          "name": "tool_grep",
+          "label": "tool_grep()",
+          "signature": "def tool_grep(path: str, patterns: list[str], context: int = 2) -> str:",
+          "file": "agent.py",
+          "start_line": 318,
+          "end_line": 369,
+          "range": "agent.py:318-369",
+          "type": "function",
+          "docstring": "Search file for patterns with N lines of context.\n\nTries ripgrep first (fast, respects .gitignore-style conventions even\nthough this is a single-file search) and falls back to the pure-Python\nregex sc"
+        },
+        {
+          "name": "tool_find_blocks",
+          "label": "tool_find_blocks()",
+          "signature": "def tool_find_blocks(path: str) -> str:",
+          "file": "agent.py",
+          "start_line": 372,
+          "end_line": 392,
+          "range": "agent.py:372-392",
+          "type": "function",
+          "docstring": "Find named comment blocks and descriptive comment anchors."
+        },
+        {
+          "name": "tool_ast_query",
+          "label": "tool_ast_query()",
+          "signature": "def tool_ast_query(path: str, question: str) -> str:",
+          "file": "agent.py",
+          "start_line": 395,
+          "end_line": 431,
+          "range": "agent.py:395-431",
+          "type": "function",
+          "docstring": "AST call-graph query on a .py file."
+        },
+        {
+          "name": "tool_jsx_check",
+          "label": "tool_jsx_check()",
+          "signature": "def tool_jsx_check(path: str) -> str:",
+          "file": "agent.py",
+          "start_line": 434,
+          "end_line": 447,
+          "range": "agent.py:434-447",
+          "type": "function",
+          "docstring": "Validate JSX/HTML tag matching."
+        },
+        {
+          "name": "tool_llm_expand",
+          "label": "tool_llm_expand()",
+          "signature": "def tool_llm_expand(directive: str) -> str:",
+          "file": "agent.py",
+          "start_line": 450,
+          "end_line": 463,
+          "range": "agent.py:450-463",
+          "type": "function",
+          "docstring": "Expand directive using local LLM (if available)."
+        },
+        {
+          "name": "tool_llm_patch",
+          "label": "tool_llm_patch()",
+          "signature": "def tool_llm_patch(directive: str, code_context: str) -> str:",
+          "file": "agent.py",
+          "start_line": 466,
+          "end_line": 479,
+          "range": "agent.py:466-479",
+          "type": "function",
+          "docstring": "Use local LLM to extract find/replace blocks from code context."
+        },
+        {
+          "name": "tool_pyslick_help",
+          "label": "tool_pyslick_help()",
+          "signature": "def tool_pyslick_help() -> str:",
+          "file": "agent.py",
+          "start_line": 482,
+          "end_line": 492,
+          "range": "agent.py:482-492",
+          "type": "function",
+          "docstring": "Show pyslick help information."
+        },
+        {
+          "name": "tool_pyslick_checkpoint",
+          "label": "tool_pyslick_checkpoint()",
+          "signature": "def tool_pyslick_checkpoint(message: str = None) -> str:",
+          "file": "agent.py",
+          "start_line": 495,
+          "end_line": 502,
+          "range": "agent.py:495-502",
+          "type": "function",
+          "docstring": "Create a git checkpoint with optional commit message."
+        },
+        {
+          "name": "tool_pyslick_status",
+          "label": "tool_pyslick_status()",
+          "signature": "def tool_pyslick_status() -> str:",
+          "file": "agent.py",
+          "start_line": 505,
+          "end_line": 515,
+          "range": "agent.py:505-515",
+          "type": "function",
+          "docstring": "Show git status."
+        },
+        {
+          "name": "_get_repo_name",
+          "label": "_get_repo_name()",
+          "signature": "def _get_repo_name() -> str:",
+          "file": "agent.py",
+          "start_line": 518,
+          "end_line": 529,
+          "range": "agent.py:518-529",
+          "type": "function",
+          "docstring": "Best-effort repo name from the git root directory. Empty string if not a repo."
+        },
+        {
+          "name": "_resolve_commit_reference",
+          "label": "_resolve_commit_reference()",
+          "signature": "def _resolve_commit_reference(directive: str):",
+          "file": "agent.py",
+          "start_line": 532,
+          "end_line": 625,
+          "range": "agent.py:532-625",
+          "type": "function",
+          "docstring": "Parse a commit reference out of a rollback/revert/undo directive.\n\nHandles three distinct phrasings, which must NOT be conflated:\n  - \"N commits ago\"      -> HEAD~N (relative to current HEAD)\n  - \"com"
+        },
+        {
+          "name": "tool_pyslick_add_commit_push",
+          "label": "tool_pyslick_add_commit_push()",
+          "signature": "def tool_pyslick_add_commit_push(message: str = None) -> tuple:",
+          "file": "agent.py",
+          "start_line": 628,
+          "end_line": 739,
+          "range": "agent.py:628-739",
+          "type": "function",
+          "docstring": "Full auto flow for a plain 'push' request:\n  1. Detect an unresolved merge from a previous pull (.git/MERGE_HEAD\n     exists). If found, the merge must be committed (or aborted) before\n     anything e"
+        },
+        {
+          "name": "tool_pyslick_log",
+          "label": "tool_pyslick_log()",
+          "signature": "def tool_pyslick_log() -> str:",
+          "file": "agent.py",
+          "start_line": 742,
+          "end_line": 753,
+          "range": "agent.py:742-753",
+          "type": "function",
+          "docstring": "Show git commit history log."
+        },
+        {
+          "name": "tool_pyslick_diff",
+          "label": "tool_pyslick_diff()",
+          "signature": "def tool_pyslick_diff() -> str:",
+          "file": "agent.py",
+          "start_line": 756,
+          "end_line": 763,
+          "range": "agent.py:756-763",
+          "type": "function",
+          "docstring": "Show git diff."
+        },
+        {
+          "name": "dispatch_tool",
+          "label": "dispatch_tool()",
+          "signature": "def dispatch_tool(name: str, args: dict) -> str:",
+          "file": "agent.py",
+          "start_line": 792,
+          "end_line": 803,
+          "range": "agent.py:792-803",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_get_provider",
+          "label": "_get_provider()",
+          "signature": "def _get_provider():",
+          "file": "agent.py",
+          "start_line": 1061,
+          "end_line": 1074,
+          "range": "agent.py:1061-1074",
+          "type": "function",
+          "docstring": "Detect which API provider to use based on available keys."
+        },
+        {
+          "name": "_relay_active",
+          "label": "_relay_active()",
+          "signature": "def _relay_active() -> bool:",
+          "file": "agent.py",
+          "start_line": 1077,
+          "end_line": 1087,
+          "range": "agent.py:1077-1087",
+          "type": "function",
+          "docstring": "Return True if the relay server (browser extension bridge) is listening."
+        },
+        {
+          "name": "_call_api",
+          "label": "_call_api()",
+          "signature": "def _call_api(messages: list[dict], use_tools: bool = True, provider_name: str = None) -> dict:",
+          "file": "agent.py",
+          "start_line": 1089,
+          "end_line": 1161,
+          "range": "agent.py:1089-1161",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_convert_openai_to_anthropic",
+          "label": "_convert_openai_to_anthropic()",
+          "signature": "def _convert_openai_to_anthropic(response: dict) -> dict:",
+          "file": "agent.py",
+          "start_line": 1164,
+          "end_line": 1192,
+          "range": "agent.py:1164-1192",
+          "type": "function",
+          "docstring": "Convert OpenAI-format response (NVIDIA) to Anthropic format."
+        },
+        {
+          "name": "_extract_text",
+          "label": "_extract_text()",
+          "signature": "def _extract_text(content: list[dict]) -> str:",
+          "file": "agent.py",
+          "start_line": 1195,
+          "end_line": 1196,
+          "range": "agent.py:1195-1196",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_extract_tool_uses",
+          "label": "_extract_tool_uses()",
+          "signature": "def _extract_tool_uses(content: list[dict]) -> list[dict]:",
+          "file": "agent.py",
+          "start_line": 1199,
+          "end_line": 1200,
+          "range": "agent.py:1199-1200",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_load_vocab",
+          "label": "_load_vocab()",
+          "signature": "def _load_vocab() -> dict:",
+          "file": "agent.py",
+          "start_line": 1207,
+          "end_line": 1235,
+          "range": "agent.py:1207-1235",
+          "type": "function",
+          "docstring": "Load intent_vocab.json from the same directory as this file."
+        },
+        {
+          "name": "_load_user_weights",
+          "label": "_load_user_weights()",
+          "signature": "def _load_user_weights() -> dict:",
+          "file": "agent.py",
+          "start_line": 1260,
+          "end_line": 1267,
+          "range": "agent.py:1260-1267",
+          "type": "function",
+          "docstring": "Load persistent user weight deltas from user_weights.json."
+        },
+        {
+          "name": "_save_user_weights",
+          "label": "_save_user_weights()",
+          "signature": "def _save_user_weights(weights: dict) -> None:",
+          "file": "agent.py",
+          "start_line": 1270,
+          "end_line": 1278,
+          "range": "agent.py:1270-1278",
+          "type": "function",
+          "docstring": "Persist user weight adjustments."
+        },
+        {
+          "name": "_adjust_intent_weight",
+          "label": "_adjust_intent_weight()",
+          "signature": "def _adjust_intent_weight(intent_name: str, delta: float) -> float:",
+          "file": "agent.py",
+          "start_line": 1281,
+          "end_line": 1290,
+          "range": "agent.py:1281-1290",
+          "type": "function",
+          "docstring": "Adjust an intent's weight multiplier dynamically based on user feedback."
+        },
+        {
+          "name": "_get_session_path",
+          "label": "_get_session_path()",
+          "signature": "def _get_session_path() -> Path:",
+          "file": "agent.py",
+          "start_line": 1293,
+          "end_line": 1297,
+          "range": "agent.py:1293-1297",
+          "type": "function",
+          "docstring": "Session state stored in local project .pyslick or user home."
+        },
+        {
+          "name": "_load_session",
+          "label": "_load_session()",
+          "signature": "def _load_session() -> dict:",
+          "file": "agent.py",
+          "start_line": 1300,
+          "end_line": 1307,
+          "range": "agent.py:1300-1307",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_save_session",
+          "label": "_save_session()",
+          "signature": "def _save_session(last_directive: str, last_intent: str, calm_streak: int = 0) -> None:",
+          "file": "agent.py",
+          "start_line": 1310,
+          "end_line": 1321,
+          "range": "agent.py:1310-1321",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_load_frustration_vocab",
+          "label": "_load_frustration_vocab()",
+          "signature": "def _load_frustration_vocab() -> dict:",
+          "file": "agent.py",
+          "start_line": 1324,
+          "end_line": 1330,
+          "range": "agent.py:1324-1330",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_detect_frustration_and_correction",
+          "label": "_detect_frustration_and_correction()",
+          "signature": "def _detect_frustration_and_correction(directive: str) -> tuple[str, bool, str | None]:",
+          "file": "agent.py",
+          "start_line": 1333,
+          "end_line": 1388,
+          "range": "agent.py:1333-1388",
+          "type": "function",
+          "docstring": "Check if the user query contains frustration/correction signals.\n- If frustrated:\n    1. Penalize the last session's intent weight (-0.08)\n    2. Extract clean intended query\n    3. Save query mapping"
+        },
+        {
+          "name": "summarize_intent_keywords",
+          "label": "summarize_intent_keywords()",
+          "signature": "def summarize_intent_keywords(directive: str, intent: str, target_file: str | None = None, line_range: str | None = None) -> str:",
+          "file": "agent.py",
+          "start_line": 1391,
+          "end_line": 1417,
+          "range": "agent.py:1391-1417",
+          "type": "function",
+          "docstring": "Summarizes intent into clean simple keywords like 'cat scan', 'file view', 'lines 30-70'."
+        },
+        {
+          "name": "_load_learned",
+          "label": "_load_learned()",
+          "signature": "def _load_learned() -> dict:",
+          "file": "agent.py",
+          "start_line": 1420,
+          "end_line": 1427,
+          "range": "agent.py:1420-1427",
+          "type": "function",
+          "docstring": "Load learned_intents.json \u2014 maps exact query strings to intent names."
+        },
+        {
+          "name": "_save_learned_intent",
+          "label": "_save_learned_intent()",
+          "signature": "def _save_learned_intent(query: str, intent: str) -> None:",
+          "file": "agent.py",
+          "start_line": 1430,
+          "end_line": 1443,
+          "range": "agent.py:1430-1443",
+          "type": "function",
+          "docstring": "Persist a user-confirmed query \u2192 intent mapping to learned_intents.json.\nNext time this exact query is seen it routes with 100% confidence."
+        },
+        {
+          "name": "_classify_intent",
+          "label": "_classify_intent()",
+          "signature": "def _classify_intent(directive: str) -> str:",
+          "file": "agent.py",
+          "start_line": 1446,
+          "end_line": 1454,
+          "range": "agent.py:1446-1454",
+          "type": "function",
+          "docstring": "Confidence-scored intent routing using rapidfuzz + exact phrase matching.\n  - Exact multi-word substring match  \u2192 100% confidence (fastest path)\n  - Single-word patterns scored word-by-word so a short"
+        },
+        {
+          "name": "_classify_intent_with_confidence",
+          "label": "_classify_intent_with_confidence()",
+          "signature": "def _classify_intent_with_confidence(directive: str) -> tuple:",
+          "file": "agent.py",
+          "start_line": 1457,
+          "end_line": 1903,
+          "range": "agent.py:1457-1903",
+          "type": "function",
+          "docstring": "Hybrid three-tier intent classification. Returns (intent, confidence, top3).\n\nTier 0 \u2014 learned_intents.json  (user-confirmed corrections, 100% confidence)\nTier 1 \u2014 Exact vocab substring  (intent_vocab"
+        },
+        {
+          "name": "_collect_all_files",
+          "label": "_collect_all_files()",
+          "signature": "def _collect_all_files(root: str = \".\") -> list[str]:",
+          "file": "agent.py",
+          "start_line": 1906,
+          "end_line": 1930,
+          "range": "agent.py:1906-1930",
+          "type": "function",
+          "docstring": "Walk project tree and return all source file paths (skips binary, build, and backup files)."
+        },
+        {
+          "name": "_first_comment_lines",
+          "label": "_first_comment_lines()",
+          "signature": "def _first_comment_lines(filepath: str, max_lines: int = 5) -> list[str]:",
+          "file": "agent.py",
+          "start_line": 1933,
+          "end_line": 2005,
+          "range": "agent.py:1933-2005",
+          "type": "function",
+          "docstring": "Return the first meaningful comment/docstring lines from a file (up to max_lines)."
+        },
+        {
+          "name": "_extract_folder_or_file_target",
+          "label": "_extract_folder_or_file_target()",
+          "signature": "def _extract_folder_or_file_target(directive: str, all_files: list[str]) -> tuple:",
+          "file": "agent.py",
+          "start_line": 2008,
+          "end_line": 2034,
+          "range": "agent.py:2008-2034",
+          "type": "function",
+          "docstring": "Best-effort: does the directive name a real folder or a real file that\nexists in the project? Returns (folder_path_or_None, file_path_or_None).\nDeliberately conservative \u2014 only returns a hit when some"
+        },
+        {
+          "name": "_top_connected_files_in",
+          "label": "_top_connected_files_in()",
+          "signature": "def _top_connected_files_in(folder: str, top_n: int = 3) -> list[str]:",
+          "file": "agent.py",
+          "start_line": 2037,
+          "end_line": 2058,
+          "range": "agent.py:2037-2058",
+          "type": "function",
+          "docstring": "Rank files within `folder` by connectivity. Prefers repomap's real\nimport/reference ranking; falls back to plain file count if repomap\nisn't importable or the folder is too small to rank meaningfully."
+        },
+        {
+          "name": "_print_concept_summary_for_folder",
+          "label": "_print_concept_summary_for_folder()",
+          "signature": "def _print_concept_summary_for_folder(folder: str, all_files: list[str]) -> None:",
+          "file": "agent.py",
+          "start_line": 2061,
+          "end_line": 2076,
+          "range": "agent.py:2061-2076",
+          "type": "function",
+          "docstring": "Top-3 most-connected files in `folder`, first 10 comment lines each."
+        },
+        {
+          "name": "_print_concept_summary_for_file",
+          "label": "_print_concept_summary_for_file()",
+          "signature": "def _print_concept_summary_for_file(filepath: str) -> None:",
+          "file": "agent.py",
+          "start_line": 2079,
+          "end_line": 2087,
+          "range": "agent.py:2079-2087",
+          "type": "function",
+          "docstring": "A single file's first 5 comment lines."
+        },
+        {
+          "name": "_graph_functions_with_comments",
+          "label": "_graph_functions_with_comments()",
+          "signature": "def _graph_functions_with_comments(filepath: str) -> list[dict]:",
+          "file": "agent.py",
+          "start_line": 2090,
+          "end_line": 2136,
+          "range": "agent.py:2090-2136",
+          "type": "function",
+          "docstring": "Stdlib-only (ast module) function/class inventory for a .py file, each\nwith its size and the comment (docstring, or a leading '#' comment\ndirectly above it) that explains it. No external deps (graphif"
+        },
+        {
+          "name": "_rank_functions_by_connectivity",
+          "label": "_rank_functions_by_connectivity()",
+          "signature": "def _rank_functions_by_connectivity(filepath: str, top_n: int = 3) -> list[dict]:",
+          "file": "agent.py",
+          "start_line": 2139,
+          "end_line": 2200,
+          "range": "agent.py:2139-2200",
+          "type": "function",
+          "docstring": "Stdlib-only (ast module) in-file call-graph ranking: how many times each\nfunction/method defined in this file is called by other code in the\nSAME file. This is a real count of ast.Call nodes whose cal"
+        },
+        {
+          "name": "_print_file_size_graph",
+          "label": "_print_file_size_graph()",
+          "signature": "def _print_file_size_graph(filepath: str) -> None:",
+          "file": "agent.py",
+          "start_line": 2203,
+          "end_line": 2231,
+          "range": "agent.py:2203-2231",
+          "type": "function",
+          "docstring": "Answer \"why is X so big\": function/class breakdown by size, largest\nfirst, with each one's comment/docstring \u2014 not a full-file dump."
+        },
+        {
+          "name": "_load_graphify_semantic_index",
+          "label": "_load_graphify_semantic_index()",
+          "signature": "def _load_graphify_semantic_index() -> dict:",
+          "file": "agent.py",
+          "start_line": 2234,
+          "end_line": 2291,
+          "range": "agent.py:2234-2291",
+          "type": "function",
+          "docstring": "Parse graphify.md (or graphify-out/) in current directory to build an active semantic index.\nReturns a dict with:\n  - 'symbols': list of (symbol_label, source_file, refs, line_info, community)\n  - 'fi"
+        },
+        {
+          "name": "_find_encapsulating_scope",
+          "label": "_find_encapsulating_scope()",
+          "signature": "def _find_encapsulating_scope(content: str, line_num: int, filepath: str) -> dict:",
+          "file": "agent.py",
+          "start_line": 2294,
+          "end_line": 2416,
+          "range": "agent.py:2294-2416",
+          "type": "function",
+          "docstring": "Finds the enclosing function, class, struct, method, or code block that encapsulates\na given 1-based line number in a file."
+        },
+        {
+          "name": "_collect_all_project_nodes",
+          "label": "_collect_all_project_nodes()",
+          "signature": "def _collect_all_project_nodes(all_files: list[str] | None = None) -> list[dict]:",
+          "file": "agent.py",
+          "start_line": 2419,
+          "end_line": 2508,
+          "range": "agent.py:2419-2508",
+          "type": "function",
+          "docstring": "Builds a unified inventory of all graph, AST, comment, and symbol nodes in the project."
+        },
+        {
+          "name": "_find_nearest_nodes_with_encapsulation",
+          "label": "_find_nearest_nodes_with_encapsulation()",
+          "signature": "def _find_nearest_nodes_with_encapsulation(query: str, all_files: list[str], top_k: int = 3) -> list[dict]:",
+          "file": "agent.py",
+          "start_line": 2511,
+          "end_line": 2569,
+          "range": "agent.py:2511-2569",
+          "type": "function",
+          "docstring": "Finds nearest nodes to the query across the project, then resolves the encapsulating\nfunction/class/block for each node with line numbers and preview."
+        },
+        {
+          "name": "_find_symbol_callers",
+          "label": "_find_symbol_callers()",
+          "signature": "def _find_symbol_callers(sym_name: str, current_file: str, all_files: list[str]) -> list[dict]:",
+          "file": "agent.py",
+          "start_line": 2572,
+          "end_line": 2608,
+          "range": "agent.py:2572-2608",
+          "type": "function",
+          "docstring": "Finds all functions/methods and line numbers end-to-end that call `sym_name` across the codebase."
+        },
+        {
+          "name": "_print_encapsulated_node_view",
+          "label": "_print_encapsulated_node_view()",
+          "signature": "def _print_encapsulated_node_view(",
+          "file": "agent.py",
+          "start_line": 2611,
+          "end_line": 2691,
+          "range": "agent.py:2611-2691",
+          "type": "function",
+          "docstring": "Renders an encapsulated node view. If line count > 20 and not explicitly asking\nfor 'end to end' / 'all lines', it compacts the body and displays all callers\nand line numbers end-to-end."
+        },
+        {
+          "name": "_fuzzy_match_files",
+          "label": "_fuzzy_match_files()",
+          "signature": "def _fuzzy_match_files(directive: str, all_files: list[str]) -> list[str]:",
+          "file": "agent.py",
+          "start_line": 2695,
+          "end_line": 2822,
+          "range": "agent.py:2695-2822",
+          "type": "function",
+          "docstring": "Extract candidate file names from the directive and fuzzy-match them\nagainst the real file list.\nPrioritizes:\n  1. Semantic Graphify Lookup: matches concept/symbol to its source file from graphify.md\n"
+        },
+        {
+          "name": "_print_file_cat_and_snippet",
+          "label": "_print_file_cat_and_snippet()",
+          "signature": "def _print_file_cat_and_snippet(",
+          "file": "agent.py",
+          "start_line": 2825,
+          "end_line": 2888,
+          "range": "agent.py:2825-2888",
+          "type": "function",
+          "docstring": "Print the actual content / lines of a file (cat scan / snippet),\nwith PowerShell command recommendations."
+        },
+        {
+          "name": "_print_file_summary",
+          "label": "_print_file_summary()",
+          "signature": "def _print_file_summary(filepath: str, directive_lower: str = \"\") -> None:",
+          "file": "agent.py",
+          "start_line": 2891,
+          "end_line": 2978,
+          "range": "agent.py:2891-2978",
+          "type": "function",
+          "docstring": "Print a structured summary of one file:\n  \u2022 total lines\n  \u2022 key functions/classes with first 3 lines of body + inline comments\n  \u2022 relevant comment blocks (filtered by directive words)"
+        },
+        {
+          "name": "_print_all_comments",
+          "label": "_print_all_comments()",
+          "signature": "def _print_all_comments(",
+          "file": "agent.py",
+          "start_line": 2981,
+          "end_line": 3103,
+          "range": "agent.py:2981-3103",
+          "type": "function",
+          "docstring": "Print every comment line in a file \u2014 inline (#//) and block (''' / /* */).\nAlso prints the first 3 lines of any function immediately following\na comment block.\n\nWhen start_line/end_line are provided, "
+        },
+        {
+          "name": "flush_block",
+          "label": "flush_block()",
+          "signature": "def flush_block(end_ln: int):",
+          "file": "agent.py",
+          "start_line": 3039,
+          "end_line": 3044,
+          "range": "agent.py:3039-3044",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_ask_did_you_mean",
+          "label": "_ask_did_you_mean()",
+          "signature": "def _ask_did_you_mean(directive: str, intent: str, confidence: float, top3: list) -> str:",
+          "file": "agent.py",
+          "start_line": 3106,
+          "end_line": 3139,
+          "range": "agent.py:3106-3139",
+          "type": "function",
+          "docstring": "Interactive 'did you mean?' shown when intent confidence is uncertain (55-84%).\nOn 'no', shows a numbered list of top-3 alternatives.\nSaves confirmed choice to learned_intents.json for future exact ma"
+        },
+        {
+          "name": "_run_relay_agent",
+          "label": "_run_relay_agent()",
+          "signature": "def _run_relay_agent(directive: str) -> None:",
+          "file": "agent.py",
+          "start_line": 3146,
+          "end_line": 3192,
+          "range": "agent.py:3146-3192",
+          "type": "function",
+          "docstring": "Relay path: package context into relay.json so the browser extension\ncan inject it into claude.ai, then block until /claude-response fires."
+        },
+        {
+          "name": "_run_local_agent",
+          "label": "_run_local_agent()",
+          "signature": "def _run_local_agent(directive: str) -> None:",
+          "file": "agent.py",
+          "start_line": 3194,
+          "end_line": 4624,
+          "range": "agent.py:3194-4624",
+          "type": "function",
+          "docstring": "Vocab-driven local agent for the 124M-param model.\n\nIntent routing is a three-tier hybrid pipeline in _classify_intent_with_confidence():\n  Tier 0 \u2014 learned_intents.json  (user-corrected queries, 100%"
+        },
+        {
+          "name": "maybe_expand_query",
+          "label": "maybe_expand_query()",
+          "signature": "def maybe_expand_query(d): return d  # no-op fallback",
+          "file": "agent.py",
+          "start_line": 3229,
+          "end_line": 3229,
+          "range": "agent.py:3229-3229",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_matches_ext",
+          "label": "_matches_ext()",
+          "signature": "def _matches_ext(fp: str, exts: set[str]) -> bool:",
+          "file": "agent.py",
+          "start_line": 3721,
+          "end_line": 3725,
+          "range": "agent.py:3721-3725",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_FuzzFallback",
+          "label": "_FuzzFallback",
+          "signature": "class _FuzzFallback:",
+          "file": "agent.py",
+          "start_line": 3936,
+          "end_line": 3942,
+          "range": "agent.py:3936-3942",
+          "type": "class",
+          "docstring": ""
+        },
+        {
+          "name": "WRatio",
+          "label": "WRatio()",
+          "signature": "def WRatio(s1, s2): return 100 if s1.lower() in s2.lower() or s2.lower() in s1.lower() else 0",
+          "file": "agent.py",
+          "start_line": 3938,
+          "end_line": 3938,
+          "range": "agent.py:3938-3938",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "token_set_ratio",
+          "label": "token_set_ratio()",
+          "signature": "def token_set_ratio(s1, s2): return 100 if s1.lower() in s2.lower() else 0",
+          "file": "agent.py",
+          "start_line": 3940,
+          "end_line": 3940,
+          "range": "agent.py:3940-3940",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "partial_ratio",
+          "label": "partial_ratio()",
+          "signature": "def partial_ratio(s1, s2): return 100 if s1.lower() in s2.lower() else 0",
+          "file": "agent.py",
+          "start_line": 3942,
+          "end_line": 3942,
+          "range": "agent.py:3942-3942",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_community_name",
+          "label": "_community_name()",
+          "signature": "def _community_name(member_ids: list[str]) -> str:",
+          "file": "agent.py",
+          "start_line": 4095,
+          "end_line": 4098,
+          "range": "agent.py:4095-4098",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "run_agent",
+          "label": "run_agent()",
+          "signature": "def run_agent(directive: str, root: str = \".\") -> None:",
+          "file": "agent.py",
+          "start_line": 4631,
+          "end_line": 4739,
+          "range": "agent.py:4631-4739",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_fmt_args",
+          "label": "_fmt_args()",
+          "signature": "def _fmt_args(args: dict) -> str:",
+          "file": "agent.py",
+          "start_line": 4742,
+          "end_line": 4749,
+          "range": "agent.py:4742-4749",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_parse_patch",
+          "label": "_parse_patch()",
+          "signature": "def _parse_patch(text: str) -> dict | None:",
+          "file": "agent.py",
+          "start_line": 4752,
+          "end_line": 4768,
+          "range": "agent.py:4752-4768",
+          "type": "function",
+          "docstring": "Extract a JSON patch object from model text."
+        },
+        {
+          "name": "_present_and_apply_patch",
+          "label": "_present_and_apply_patch()",
+          "signature": "def _present_and_apply_patch(patch: dict, directive: str) -> None:",
+          "file": "agent.py",
+          "start_line": 4771,
+          "end_line": 4844,
+          "range": "agent.py:4771-4844",
+          "type": "function",
+          "docstring": "Show the diff, ask ONE confirmation question, then apply."
+        },
+        {
+          "name": "main",
+          "label": "main()",
+          "signature": "def main():",
+          "file": "agent.py",
+          "start_line": 4851,
+          "end_line": 4866,
+          "range": "agent.py:4851-4866",
+          "type": "function",
+          "docstring": ""
+        }
+      ],
+      "comments": [
+        {
+          "file": "agent.py",
+          "line": 1,
+          "range": "agent.py:1",
+          "kind": "descriptive_block",
+          "text": "!/usr/bin/env python3"
+        },
+        {
+          "file": "agent.py",
+          "line": 122,
+          "range": "agent.py:122",
+          "kind": "descriptive_block",
+          "text": "Set UTF-8 encoding for stdout/stderr (Windows PowerShell safe)"
+        },
+        {
+          "file": "agent.py",
+          "line": 134,
+          "range": "agent.py:134",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 colours \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 151,
+          "range": "agent.py:151",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 API providers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 190,
+          "range": "agent.py:190",
+          "kind": "descriptive_block",
+          "text": "Python"
+        },
+        {
+          "file": "agent.py",
+          "line": 192,
+          "range": "agent.py:192",
+          "kind": "descriptive_block",
+          "text": "JavaScript / TypeScript / Web"
+        },
+        {
+          "file": "agent.py",
+          "line": 196,
+          "range": "agent.py:196",
+          "kind": "descriptive_block",
+          "text": "Systems / Compiled"
+        },
+        {
+          "file": "agent.py",
+          "line": 200,
+          "range": "agent.py:200",
+          "kind": "descriptive_block",
+          "text": "Shell / Scripts"
+        },
+        {
+          "file": "agent.py",
+          "line": 202,
+          "range": "agent.py:202",
+          "kind": "descriptive_block",
+          "text": "Config / Data"
+        },
+        {
+          "file": "agent.py",
+          "line": 207,
+          "range": "agent.py:207",
+          "kind": "descriptive_block",
+          "text": "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 LOCAL TOOL IMPLEMENTATIONS \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550"
+        },
+        {
+          "file": "agent.py",
+          "line": 419,
+          "range": "agent.py:419",
+          "kind": "descriptive_block",
+          "text": "First 20 lines of source"
+        },
+        {
+          "file": "agent.py",
+          "line": 558,
+          "range": "agent.py:558",
+          "kind": "descriptive_block",
+          "text": "\"N commits ago\" -> HEAD~N"
+        },
+        {
+          "file": "agent.py",
+          "line": 571,
+          "range": "agent.py:571",
+          "kind": "descriptive_block",
+          "text": "\"commit #3\" / \"commit number 3\" / \"commit 3\" -> 3rd entry in the log"
+        },
+        {
+          "file": "agent.py",
+          "line": 588,
+          "range": "agent.py:588",
+          "kind": "descriptive_block",
+          "text": "Keyword / fuzzy match against recent commit messages, e.g. \"rollback to the fix commit\", \"revert to initial commit\"."
+        },
+        {
+          "file": "agent.py",
+          "line": 651,
+          "range": "agent.py:651",
+          "kind": "descriptive_block",
+          "text": "A previous 'git pull' left an unresolved merge. Check whether there are still real conflict markers (unmerged paths) \u2014 if so, this can't be auto-resolved safely and must stop here. If not (the merge was actually resolved, just never committed \u2014 exactly the reported case), commit it now so the flow c"
+        },
+        {
+          "file": "agent.py",
+          "line": 696,
+          "range": "agent.py:696",
+          "kind": "descriptive_block",
+          "text": "Nothing to commit is not a failure for a push request \u2014 the existing ahead-by-N commit(s) may already be exactly what needs pushing (this is precisely the case in the reported terminal output: 1 commit ahead, nothing new staged)."
+        },
+        {
+          "file": "agent.py",
+          "line": 709,
+          "range": "agent.py:709",
+          "kind": "descriptive_block",
+          "text": "\"fetch first\" / non-fast-forward rejection: the remote has commits this clone doesn't. A plain retry can never succeed here \u2014 try a pull (merge) first, same as the hint git itself prints, then retry the push once. If the pull itself hits a conflict, stop and report it honestly rather than guessing h"
+        },
+        {
+          "file": "agent.py",
+          "line": 766,
+          "range": "agent.py:766",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 dispatcher \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 798,
+          "range": "agent.py:798",
+          "kind": "descriptive_block",
+          "text": "Truncate very large outputs so they don't blow the context window"
+        },
+        {
+          "file": "agent.py",
+          "line": 806,
+          "range": "agent.py:806",
+          "kind": "descriptive_block",
+          "text": "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 ANTHROPIC API  (tool-use / function-calling) \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550"
+        },
+        {
+          "file": "agent.py",
+          "line": 810,
+          "range": "agent.py:810",
+          "kind": "descriptive_block",
+          "text": "Schema sent to the API so Claude knows what tools exist"
+        },
+        {
+          "file": "agent.py",
+          "line": 1129,
+          "range": "agent.py:1129",
+          "kind": "descriptive_block",
+          "text": "OpenRouter asks OpenAI-compatible callers to identify their app \u2014 harmless no-op for Groq/NVIDIA, but keeps OpenRouter's dashboard useful."
+        },
+        {
+          "file": "agent.py",
+          "line": 1203,
+          "range": "agent.py:1203",
+          "kind": "descriptive_block",
+          "text": "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 INTENT VOCAB \u2014 loads intent_vocab.json once at import time \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550"
+        },
+        {
+          "file": "agent.py",
+          "line": 1211,
+          "range": "agent.py:1211",
+          "kind": "descriptive_block",
+          "text": "Graceful degradation \u2014 return minimal inline vocab"
+        },
+        {
+          "file": "agent.py",
+          "line": 1362,
+          "range": "agent.py:1362",
+          "kind": "descriptive_block",
+          "text": "Frustration detected"
+        },
+        {
+          "file": "agent.py",
+          "line": 1367,
+          "range": "agent.py:1367",
+          "kind": "descriptive_block",
+          "text": "Extract correction portion"
+        },
+        {
+          "file": "agent.py",
+          "line": 1383,
+          "range": "agent.py:1383",
+          "kind": "descriptive_block",
+          "text": "Calm interaction"
+        },
+        {
+          "file": "agent.py",
+          "line": 1481,
+          "range": "agent.py:1481",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 0: learned corrections \u2014 fastest possible win \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 1486,
+          "range": "agent.py:1486",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 0.1: explicit \"/filename\" or bare \"filename.ext\" reference \u2500\u2500\u2500 If the directive names a file explicitly \u2014 either leading-slash syntax, or just the bare filename as long as it actually exists in the project \u2014 and doesn't also contain a clear git/patch/comment/ graph keyword, the file referenc"
+        },
+        {
+          "file": "agent.py",
+          "line": 1502,
+          "range": "agent.py:1502",
+          "kind": "descriptive_block",
+          "text": "Bare filename check: only counts as a signal if the token actually names a real file in the project \u2014 otherwise words that merely happen to contain a dot (version numbers, \"e.g.\", etc.) would false-positive. Deliberately conservative: exact basename match only."
+        },
+        {
+          "file": "agent.py",
+          "line": 1535,
+          "range": "agent.py:1535",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 0.145: \"rollback/revert/undo to <target>\" \u2192 git, with a target \u2500\u2500 Distinct from bare Tier 0.15 below: this variant names a specific commit to land on (\"rollback to commit 3\", \"revert to the fix commit\", \"undo to before the merge\"), which the git handler needs to route to the confirm-then-res"
+        },
+        {
+          "file": "agent.py",
+          "line": 1549,
+          "range": "agent.py:1549",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 0.15: \"undo / revert / rollback / go back\" \u2192 git, not patch \u2500\u2500 These words describe reversing a change that already happened, which is git's job (checkout/reset/revert), not patch's (which proposes a NEW forward-looking edit). Previously \"undo my last change\" matched \"patch\" at 100% confiden"
+        },
+        {
+          "file": "agent.py",
+          "line": 1563,
+          "range": "agent.py:1563",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 0.165: bare \"commit/push/checkpoint [file]\" \u2192 git \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 The vocab's git require_any needs the exact phrase \"git commit\" etc. A bare \"commit patchit.py please\" correctly gets BLOCKED from the Tier 0.1 file_info shortcut (via _STRONG_OVERRIDE_KEYWORDS above, which is real and working) b"
+        },
+        {
+          "file": "agent.py",
+          "line": 1576,
+          "range": "agent.py:1576",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 0.166: bare \"commits\" / \"show commits\" / \"commit history\" \u2192 git \u2500\u2500 NOT already covered by Tier 0.165 above: that tier's regex is `\\bcommit\\b`, and \\b requires a word boundary immediately after \"commit\" \u2014 which never exists in \"commits\" (the \"s\" is still a word character, so there's no bounda"
+        },
+        {
+          "file": "agent.py",
+          "line": 1590,
+          "range": "agent.py:1590",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 0.17: \"did I already [X]\" \u2192 state-check \u2192 git status \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 \"did I save\", \"did I already run this\") \u2014 informational, never an edit. Smoke-testing found ALL of these landing on \"patch\" at 0% confidence (a random no-match guess), the worst kind of miss since it's silent and gives no useful "
+        },
+        {
+          "file": "agent.py",
+          "line": 1600,
+          "range": "agent.py:1600",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 0.18: \"what happens when I [X]\" \u2192 behavioral question \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 Smoke-testing found these landing on \"patch\" at 0% confidence two out of three times \u2014 a generic-phrasing gap, same root cause as the original #3 log case (no keyword path recognizes this phrasing at all). This does not solve tru"
+        },
+        {
+          "file": "agent.py",
+          "line": 1612,
+          "range": "agent.py:1612",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 0.19: \"what's the deal with [X]\" \u2192 nearest / concept lookup \u2500\u2500 Previously this phrase only reached \"nearest\" by accident (vocab overlap with \"closest\"/\"nearest\" words in some cases) \u2014 smoke-testing showed \"what's the deal with watch mode\" falling to \"patch\" at 0% instead. Route the phrase it"
+        },
+        {
+          "file": "agent.py",
+          "line": 1622,
+          "range": "agent.py:1622",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 0.20: \"why is [this file/it] so big/huge\" with NO filename \u2500\u2500 Tier 0.1 already routes \"why is patchit.py so huge\" to file_info when a real filename is present. This covers the no-filename case (\"why is this file so big\") which previously fell through everything and landed on \"patch\" at 0% co"
+        },
+        {
+          "file": "agent.py",
+          "line": 1631,
+          "range": "agent.py:1631",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 0.16: \"broken / errors / bugs\" \u2192 syntax_check \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 syntax_check actually runs ast.parse() (or jsx_tag_checker for JS/HTML) and reports real line-numbered errors \u2014 a genuinely correct answer to \"is there anything broken in X\". Previously this had no explicit keyword weight and los"
+        },
+        {
+          "file": "agent.py",
+          "line": 1651,
+          "range": "agent.py:1651",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 0.5: Rule \u2014 \"show me / list / all <filetype/lang> files\" always looks for filetype first \u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 1681,
+          "range": "agent.py:1681",
+          "kind": "descriptive_block",
+          "text": "Dynamic regex: 'show me all kotlin files', 'list zig files', 'all lua scripts', etc."
+        },
+        {
+          "file": "agent.py",
+          "line": 1694,
+          "range": "agent.py:1694",
+          "kind": "descriptive_block",
+          "text": "Dot extension syntax: 'show .kt', 'show *.kt', 'list .env', 'show .js', 'all .tsx'"
+        },
+        {
+          "file": "agent.py",
+          "line": 1703,
+          "range": "agent.py:1703",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 0.53: Web / UI / Visual Design Early Route \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 1714,
+          "range": "agent.py:1714",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 0.54: General Recon / Multi-Target Early Route \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 1724,
+          "range": "agent.py:1724",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 0.55: App-Summary Early Exit \u2014 wins before file_info \"what does\" can steal it \u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 1746,
+          "range": "agent.py:1746",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 0.6: File-First Rule \u2014 \"show me / where is / find <filename>\" matches project files first \u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 1756,
+          "range": "agent.py:1756",
+          "kind": "descriptive_block",
+          "text": "Strip navigation prefixes to isolate the target filename"
+        },
+        {
+          "file": "agent.py",
+          "line": 1763,
+          "range": "agent.py:1763",
+          "kind": "descriptive_block",
+          "text": "Also strip trailing location words like \"located\", \"stored\", \"saved\""
+        },
+        {
+          "file": "agent.py",
+          "line": 1779,
+          "range": "agent.py:1779",
+          "kind": "descriptive_block",
+          "text": "pyslick-specific known files"
+        },
+        {
+          "file": "agent.py",
+          "line": 1802,
+          "range": "agent.py:1802",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 1: exact vocab match \u2014 word-boundary check for patterns \u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 1807,
+          "range": "agent.py:1807",
+          "kind": "descriptive_block",
+          "text": "Check excludes first (still plain substring \u2014 exclusions are always multi-word)"
+        },
+        {
+          "file": "agent.py",
+          "line": 1816,
+          "range": "agent.py:1816",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 2: Python fuzzy \u2014 word overlap & token scoring \u00d7 intent weight \u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 1856,
+          "range": "agent.py:1856",
+          "kind": "descriptive_block",
+          "text": "Cap weighted score at 100 so callers can treat it as a percentage"
+        },
+        {
+          "file": "agent.py",
+          "line": 1863,
+          "range": "agent.py:1863",
+          "kind": "descriptive_block",
+          "text": "High confidence \u2014 trust Python, no LLM needed"
+        },
+        {
+          "file": "agent.py",
+          "line": 1867,
+          "range": "agent.py:1867",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Tier 3: LLM arbitration \u2014 only in the uncertain 55-84% zone \u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 1871,
+          "range": "agent.py:1871",
+          "kind": "descriptive_block",
+          "text": "Send top-3 intent candidates + their vocab examples to the LLM (not all 11 \u2014 keep the prompt small for the 124M model)"
+        },
+        {
+          "file": "agent.py",
+          "line": 1881,
+          "range": "agent.py:1881",
+          "kind": "descriptive_block",
+          "text": "LLM wins if it agrees or scores higher than Python's fuzzy"
+        },
+        {
+          "file": "agent.py",
+          "line": 1885,
+          "range": "agent.py:1885",
+          "kind": "descriptive_block",
+          "text": "Binary yes/no verification for borderline candidates"
+        },
+        {
+          "file": "agent.py",
+          "line": 1945,
+          "range": "agent.py:1945",
+          "kind": "descriptive_block",
+          "text": "Shebang lines (\"#!/usr/bin/env python3\") are never a description \u2014 skip entirely rather than cleaning them into \"usr/bin/env python3\". This was the actual bug: '/' was in the strip-charset, so the leading '/' of '/usr/bin/env' got stripped along with '#!', and the cleaned shebang text got kept as if"
+        },
+        {
+          "file": "agent.py",
+          "line": 1956,
+          "range": "agent.py:1956",
+          "kind": "descriptive_block",
+          "text": "Closing line \u2014 take any text before the closing quote"
+        },
+        {
+          "file": "agent.py",
+          "line": 1979,
+          "range": "agent.py:1979",
+          "kind": "descriptive_block",
+          "text": "Single-line docstring: \"\"\"like this\"\"\""
+        },
+        {
+          "file": "agent.py",
+          "line": 2018,
+          "range": "agent.py:2018",
+          "kind": "descriptive_block",
+          "text": "Folder match: a token equals (or path-matches) a real directory name"
+        },
+        {
+          "file": "agent.py",
+          "line": 2027,
+          "range": "agent.py:2027",
+          "kind": "descriptive_block",
+          "text": "File match: a token's basename matches a real file exactly"
+        },
+        {
+          "file": "agent.py",
+          "line": 2051,
+          "range": "agent.py:2051",
+          "kind": "descriptive_block",
+          "text": "Fallback: just take the first top_n source files found, largest first (a rough proxy for \"more going on\" when real ranking isn't available)"
+        },
+        {
+          "file": "agent.py",
+          "line": 2120,
+          "range": "agent.py:2120",
+          "kind": "descriptive_block",
+          "text": "Look at the line(s) directly above the def/class for a leading '#' comment, same convention as _first_comment_lines."
+        },
+        {
+          "file": "agent.py",
+          "line": 2179,
+          "range": "agent.py:2179",
+          "kind": "descriptive_block",
+          "text": "A function calling itself (recursion) still counts, but subtract 1 self-call from \"called by others\" so a purely-recursive helper with no external callers doesn't look falsely well-connected."
+        },
+        {
+          "file": "agent.py",
+          "line": 2227,
+          "range": "agent.py:2227",
+          "kind": "descriptive_block",
+          "text": "Non-Python file, or nothing parsed \u2014 fall back to opening comments"
+        },
+        {
+          "file": "agent.py",
+          "line": 2254,
+          "range": "agent.py:2254",
+          "kind": "descriptive_block",
+          "text": "Community header: ### Community 0 \u2014 `package.json`  *(cohesion 0.15)*"
+        },
+        {
+          "file": "agent.py",
+          "line": 2266,
+          "range": "agent.py:2266",
+          "kind": "descriptive_block",
+          "text": "Member node: - **setContentProtection()** (3 refs) \u00b7 `electron-main.js` L11"
+        },
+        {
+          "file": "agent.py",
+          "line": 2279,
+          "range": "agent.py:2279",
+          "kind": "descriptive_block",
+          "text": "God nodes table: | `package_build` | build | 8 | `package.json` |"
+        },
+        {
+          "file": "agent.py",
+          "line": 2308,
+          "range": "agent.py:2308",
+          "kind": "descriptive_block",
+          "text": "1. Python scope resolution (indentation-based)"
+        },
+        {
+          "file": "agent.py",
+          "line": 2351,
+          "range": "agent.py:2351",
+          "kind": "descriptive_block",
+          "text": "2. C / C++ / Java / Kotlin / JS / TS / Rust / Go / C# / PHP (brace & keyword scope)"
+        },
+        {
+          "file": "agent.py",
+          "line": 2407,
+          "range": "agent.py:2407",
+          "kind": "descriptive_block",
+          "text": "Fallback to local region around target line"
+        },
+        {
+          "file": "agent.py",
+          "line": 2428,
+          "range": "agent.py:2428",
+          "kind": "descriptive_block",
+          "text": "1. Try graphify graph.json"
+        },
+        {
+          "file": "agent.py",
+          "line": 2452,
+          "range": "agent.py:2452",
+          "kind": "descriptive_block",
+          "text": "2. Try graphify.md semantic index"
+        },
+        {
+          "file": "agent.py",
+          "line": 2464,
+          "range": "agent.py:2464",
+          "kind": "descriptive_block",
+          "text": "3. Try comment block nodes"
+        },
+        {
+          "file": "agent.py",
+          "line": 2485,
+          "range": "agent.py:2485",
+          "kind": "descriptive_block",
+          "text": "4. AST / Regex symbol scan across candidate source files"
+        },
+        {
+          "file": "agent.py",
+          "line": 2537,
+          "range": "agent.py:2537",
+          "kind": "descriptive_block",
+          "text": "Resolve relative / absolute file"
+        },
+        {
+          "file": "agent.py",
+          "line": 2662,
+          "range": "agent.py:2662",
+          "kind": "descriptive_block",
+          "text": "Compact mode for > 20 lines"
+        },
+        {
+          "file": "agent.py",
+          "line": 2675,
+          "range": "agent.py:2675",
+          "kind": "descriptive_block",
+          "text": "Show last 2 lines"
+        },
+        {
+          "file": "agent.py",
+          "line": 2681,
+          "range": "agent.py:2681",
+          "kind": "descriptive_block",
+          "text": "Display callers end-to-end with line numbers"
+        },
+        {
+          "file": "agent.py",
+          "line": 2708,
+          "range": "agent.py:2708",
+          "kind": "descriptive_block",
+          "text": "Tier 0 \u2014 explicit \"/filename\" or \"/relative/path\" token. This is an unambiguous \"I mean this exact file\" signal from the user, so it skips fuzzy scoring entirely: resolve by exact path/basename match first, then substring-in-path as a fallback, and return immediately if anything resolves. This exist"
+        },
+        {
+          "file": "agent.py",
+          "line": 2724,
+          "range": "agent.py:2724",
+          "kind": "descriptive_block",
+          "text": "exact relative-path match first"
+        },
+        {
+          "file": "agent.py",
+          "line": 2729,
+          "range": "agent.py:2729",
+          "kind": "descriptive_block",
+          "text": "fall back to basename match if no path-level hit"
+        },
+        {
+          "file": "agent.py",
+          "line": 2761,
+          "range": "agent.py:2761",
+          "kind": "descriptive_block",
+          "text": "1. Prepositional extraction \u2014 matches 'of llmpy', 'in package.json', 'file agent.py'"
+        },
+        {
+          "file": "agent.py",
+          "line": 2768,
+          "range": "agent.py:2768",
+          "kind": "descriptive_block",
+          "text": "2. General tokens"
+        },
+        {
+          "file": "agent.py",
+          "line": 2778,
+          "range": "agent.py:2778",
+          "kind": "descriptive_block",
+          "text": "Tokens ordered right-to-left so end of sentence has higher weight"
+        },
+        {
+          "file": "agent.py",
+          "line": 2792,
+          "range": "agent.py:2792",
+          "kind": "descriptive_block",
+          "text": "Extra bonus if basename is an exact substring of the directive"
+        },
+        {
+          "file": "agent.py",
+          "line": 2798,
+          "range": "agent.py:2798",
+          "kind": "descriptive_block",
+          "text": "3. Semantic Graphify Lookup \u2014 if graphify.md exists, match query concepts to nodes"
+        },
+        {
+          "file": "agent.py",
+          "line": 2805,
+          "range": "agent.py:2805",
+          "kind": "descriptive_block",
+          "text": "Find matching file path"
+        },
+        {
+          "file": "agent.py",
+          "line": 2812,
+          "range": "agent.py:2812",
+          "kind": "descriptive_block",
+          "text": "Sort files by calculated score descending, then by shortest path"
+        },
+        {
+          "file": "agent.py",
+          "line": 2843,
+          "range": "agent.py:2843",
+          "kind": "descriptive_block",
+          "text": "1. Line range requested (e.g. line 30 to 70)"
+        },
+        {
+          "file": "agent.py",
+          "line": 2864,
+          "range": "agent.py:2864",
+          "kind": "descriptive_block",
+          "text": "2. General file cat scan"
+        },
+        {
+          "file": "agent.py",
+          "line": 2887,
+          "range": "agent.py:2887",
+          "kind": "descriptive_block",
+          "text": "3. Structured summary for large code files (functions / classes)"
+        },
+        {
+          "file": "agent.py",
+          "line": 2907,
+          "range": "agent.py:2907",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Semantic community info from graphify.md \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 2917,
+          "range": "agent.py:2917",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 functions and classes \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 2975,
+          "range": "agent.py:2975",
+          "kind": "descriptive_block",
+          "text": "If no functions/classes found, show the first 30 lines"
+        },
+        {
+          "file": "agent.py",
+          "line": 3003,
+          "range": "agent.py:3003",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Focused slice mode \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 3031,
+          "range": "agent.py:3031",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Full-file mode \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 3049,
+          "range": "agent.py:3049",
+          "kind": "descriptive_block",
+          "text": "Python triple-quote block"
+        },
+        {
+          "file": "agent.py",
+          "line": 3054,
+          "range": "agent.py:3054",
+          "kind": "descriptive_block",
+          "text": "Single-line docstring"
+        },
+        {
+          "file": "agent.py",
+          "line": 3071,
+          "range": "agent.py:3071",
+          "kind": "descriptive_block",
+          "text": "C-style block comment"
+        },
+        {
+          "file": "agent.py",
+          "line": 3091,
+          "range": "agent.py:3091",
+          "kind": "descriptive_block",
+          "text": "Inline comment: Python # or JS //"
+        },
+        {
+          "file": "agent.py",
+          "line": 3094,
+          "range": "agent.py:3094",
+          "kind": "descriptive_block",
+          "text": "If the next line defines a function, show its first 3 body lines"
+        },
+        {
+          "file": "agent.py",
+          "line": 3121,
+          "range": "agent.py:3121",
+          "kind": "descriptive_block",
+          "text": "User said no \u2014 show numbered top-3"
+        },
+        {
+          "file": "agent.py",
+          "line": 3142,
+          "range": "agent.py:3142",
+          "kind": "descriptive_block",
+          "text": "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 LOCAL LLM AGENT (no API key required) \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550"
+        },
+        {
+          "file": "agent.py",
+          "line": 3158,
+          "range": "agent.py:3158",
+          "kind": "descriptive_block",
+          "text": "Collect context the same way recon-pack does"
+        },
+        {
+          "file": "agent.py",
+          "line": 3173,
+          "range": "agent.py:3173",
+          "kind": "descriptive_block",
+          "text": "Clear any stale response"
+        },
+        {
+          "file": "agent.py",
+          "line": 3177,
+          "range": "agent.py:3177",
+          "kind": "descriptive_block",
+          "text": "Poll for response (extension POSTs to /claude-response \u00e2\u2020' relay_server saves it)"
+        },
+        {
+          "file": "agent.py",
+          "line": 3219,
+          "range": "agent.py:3219",
+          "kind": "descriptive_block",
+          "text": "Detect frustration / correction from user"
+        },
+        {
+          "file": "agent.py",
+          "line": 3223,
+          "range": "agent.py:3223",
+          "kind": "descriptive_block",
+          "text": "LLM optional \u2014 classification still works without it (just skips Tier 3)"
+        },
+        {
+          "file": "agent.py",
+          "line": 3241,
+          "range": "agent.py:3241",
+          "kind": "descriptive_block",
+          "text": "Show 'did you mean?' when confidence is in the uncertain zone (55-84%) Skip if user already gave an explicit line number \u2014 context is unambiguous"
+        },
+        {
+          "file": "agent.py",
+          "line": 3248,
+          "range": "agent.py:3248",
+          "kind": "descriptive_block",
+          "text": "Save session for context tracking"
+        },
+        {
+          "file": "agent.py",
+          "line": 3251,
+          "range": "agent.py:3251",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 HELP \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 3257,
+          "range": "agent.py:3257",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 GIT \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 3259,
+          "range": "agent.py:3259",
+          "kind": "descriptive_block",
+          "text": "Rollback/revert/undo must be checked FIRST, before the log and push/commit/checkpoint branches below \u2014 a directive like \"rollback to commit 3\" or \"undo 3 commits ago\" contains the substrings \"commit\"/\"commits\", which would otherwise get swallowed by those branches (plain `in dl` substring checks) be"
+        },
+        {
+          "file": "agent.py",
+          "line": 3273,
+          "range": "agent.py:3273",
+          "kind": "descriptive_block",
+          "text": "Bare \"rollback\"/\"undo\" with no named target. Previously this silently fell through to a plain `git status` print with no indication anything related to the rollback request had even been noticed. Show recent commits and ask for an explicit target instead of guessing one."
+        },
+        {
+          "file": "agent.py",
+          "line": 3302,
+          "range": "agent.py:3302",
+          "kind": "descriptive_block",
+          "text": "Show exactly what would be lost before asking for confirmation."
+        },
+        {
+          "file": "agent.py",
+          "line": 3337,
+          "range": "agent.py:3337",
+          "kind": "descriptive_block",
+          "text": "Safety net: tag current HEAD with a recoverable backup branch before doing anything destructive. `git reset --hard` is the only thing that actually delivers \"rollback to X\" as asked \u2014 --soft/--mixed leave the discarded commits' changes sitting in the working tree, which isn't a rollback, it's an und"
+        },
+        {
+          "file": "agent.py",
+          "line": 3372,
+          "range": "agent.py:3372",
+          "kind": "descriptive_block",
+          "text": "Real push-only path: auto add -> commit -> push, no per-step confirmation (\"push\" is already an explicit instruction, not an ambiguous checkpoint request). Previously \"push\" was bucketed with \"commit\"/\"checkpoint\" and always stopped at a \"Create checkpoint?\" prompt, never actually reaching a push \u2014 "
+        },
+        {
+          "file": "agent.py",
+          "line": 3420,
+          "range": "agent.py:3420",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 RUN INFO (how to run project, repo, directory, or file) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 3423,
+          "range": "agent.py:3423",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 APP SUMMARY (what does this app/project do?) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 3444,
+          "range": "agent.py:3444",
+          "kind": "descriptive_block",
+          "text": "Load graph.json from graphify-out/ if present"
+        },
+        {
+          "file": "agent.py",
+          "line": 3451,
+          "range": "agent.py:3451",
+          "kind": "descriptive_block",
+          "text": "Build id\u2192source_file map (only file-type nodes)"
+        },
+        {
+          "file": "agent.py",
+          "line": 3457,
+          "range": "agent.py:3457",
+          "kind": "descriptive_block",
+          "text": "Count in-degree per file (how many others import/reference it)"
+        },
+        {
+          "file": "agent.py",
+          "line": 3463,
+          "range": "agent.py:3463",
+          "kind": "descriptive_block",
+          "text": "Pick top 3 unique source files by degree"
+        },
+        {
+          "file": "agent.py",
+          "line": 3474,
+          "range": "agent.py:3474",
+          "kind": "descriptive_block",
+          "text": "Fallback: common entry-point names if no graphify data"
+        },
+        {
+          "file": "agent.py",
+          "line": 3483,
+          "range": "agent.py:3483",
+          "kind": "descriptive_block",
+          "text": "Also surface package.json description / README first line"
+        },
+        {
+          "file": "agent.py",
+          "line": 3519,
+          "range": "agent.py:3519",
+          "kind": "descriptive_block",
+          "text": "Most-connected function blocks within this file \u2014 in-file call count via stdlib ast, 2-3 per file, not a full function dump."
+        },
+        {
+          "file": "agent.py",
+          "line": 3540,
+          "range": "agent.py:3540",
+          "kind": "descriptive_block",
+          "text": "Detect package manager"
+        },
+        {
+          "file": "agent.py",
+          "line": 3549,
+          "range": "agent.py:3549",
+          "kind": "descriptive_block",
+          "text": "Check if user mentioned a specific file to run"
+        },
+        {
+          "file": "agent.py",
+          "line": 3570,
+          "range": "agent.py:3570",
+          "kind": "descriptive_block",
+          "text": "Check for package.json (Node/Electron/Next/Vite/etc)"
+        },
+        {
+          "file": "agent.py",
+          "line": 3591,
+          "range": "agent.py:3591",
+          "kind": "descriptive_block",
+          "text": "Check for Python projects"
+        },
+        {
+          "file": "agent.py",
+          "line": 3607,
+          "range": "agent.py:3607",
+          "kind": "descriptive_block",
+          "text": "Check README.md for Run / Getting Started / Usage sections"
+        },
+        {
+          "file": "agent.py",
+          "line": 3629,
+          "range": "agent.py:3629",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 LIST FILES \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 3631,
+          "range": "agent.py:3631",
+          "kind": "descriptive_block",
+          "text": "Determine root \u2014 check if user mentioned a specific directory"
+        },
+        {
+          "file": "agent.py",
+          "line": 3685,
+          "range": "agent.py:3685",
+          "kind": "descriptive_block",
+          "text": "1. Check for explicit dot syntax: 'show .kt', 'show *.py', 'show .env', 'list .js'"
+        },
+        {
+          "file": "agent.py",
+          "line": 3687,
+          "range": "agent.py:3687",
+          "kind": "descriptive_block",
+          "text": "2. Check for dynamic language phrase: 'show me all kotlin files', 'list zig files', 'all lua scripts'"
+        },
+        {
+          "file": "agent.py",
+          "line": 3711,
+          "range": "agent.py:3711",
+          "kind": "descriptive_block",
+          "text": "Check general words against _LANG_MAP"
+        },
+        {
+          "file": "agent.py",
+          "line": 3734,
+          "range": "agent.py:3734",
+          "kind": "descriptive_block",
+          "text": "Fallback to Graphify Node Query & Encapsulation search"
+        },
+        {
+          "file": "agent.py",
+          "line": 3780,
+          "range": "agent.py:3780",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 COMMENTS \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 3789,
+          "range": "agent.py:3789",
+          "kind": "descriptive_block",
+          "text": "Extract line range from directive (same regex as file_info)"
+        },
+        {
+          "file": "agent.py",
+          "line": 3797,
+          "range": "agent.py:3797",
+          "kind": "descriptive_block",
+          "text": "When a line range is given, use the top match directly \u2014 no picker"
+        },
+        {
+          "file": "agent.py",
+          "line": 3801,
+          "range": "agent.py:3801",
+          "kind": "descriptive_block",
+          "text": "If the directive itself explicitly names multiple files, skip the interactive picker entirely and show all of them \u2014 the user already told us what they want, no need to ask again."
+        },
+        {
+          "file": "agent.py",
+          "line": 3829,
+          "range": "agent.py:3829",
+          "kind": "descriptive_block",
+          "text": "fall back to first match if nothing valid was entered, rather than silently printing nothing"
+        },
+        {
+          "file": "agent.py",
+          "line": 3838,
+          "range": "agent.py:3838",
+          "kind": "descriptive_block",
+          "text": "\"comments\" is read-only. If the directive's own wording implies an actual EDIT (clean up, remove, delete, strip out...), say so explicitly rather than silently under-delivering \u2014 previously \"clean up the old commented-out code in X\" would just print the comments and stop, with nothing telling the us"
+        },
+        {
+          "file": "agent.py",
+          "line": 3856,
+          "range": "agent.py:3856",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 NEAREST NODE / FUNCTION / METHOD / OBJECT / GENERAL RECON \u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 3858,
+          "range": "agent.py:3858",
+          "kind": "descriptive_block",
+          "text": "Extract a line number if present"
+        },
+        {
+          "file": "agent.py",
+          "line": 3862,
+          "range": "agent.py:3862",
+          "kind": "descriptive_block",
+          "text": "Extract a symbol name if present e.g. \"closest to run_agent\""
+        },
+        {
+          "file": "agent.py",
+          "line": 3887,
+          "range": "agent.py:3887",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Concept-lookup fallback \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 Nothing matched by graph symbol OR filename \u2014 e.g. \"what's the deal with the intent classifier\" where no file/symbol literally contains those words. Rather than leave the user with nothing, fall back to a comment-based summary: if the"
+        },
+        {
+          "file": "agent.py",
+          "line": 3907,
+          "range": "agent.py:3907",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 SCAN FUNCTION (print function end-to-end with comments) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 3913,
+          "range": "agent.py:3913",
+          "kind": "descriptive_block",
+          "text": "If the directive explicitly names multiple files, search across all of them rather than collapsing to just the first match \u2014 same \"multi-file when multi-file is asked for\" rule as file_info."
+        },
+        {
+          "file": "agent.py",
+          "line": 3921,
+          "range": "agent.py:3921",
+          "kind": "descriptive_block",
+          "text": "Clean search term: remove 'show me function', 'where is function', etc."
+        },
+        {
+          "file": "agent.py",
+          "line": 3945,
+          "range": "agent.py:3945",
+          "kind": "descriptive_block",
+          "text": "Search across target file first, or all project files"
+        },
+        {
+          "file": "agent.py",
+          "line": 3977,
+          "range": "agent.py:3977",
+          "kind": "descriptive_block",
+          "text": "Find logical end of function (next top-level def/class/function)"
+        },
+        {
+          "file": "agent.py",
+          "line": 3998,
+          "range": "agent.py:3998",
+          "kind": "descriptive_block",
+          "text": "Fallback to Broad Recon Mode when single function match fails"
+        },
+        {
+          "file": "agent.py",
+          "line": 4016,
+          "range": "agent.py:4016",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 CALL GRAPH \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4019,
+          "range": "agent.py:4019",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 GRAPHIFY.MD EXPORT (create graphify.md for Claude Web paste) \u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4038,
+          "range": "agent.py:4038",
+          "kind": "descriptive_block",
+          "text": "Check if graphify is available"
+        },
+        {
+          "file": "agent.py",
+          "line": 4048,
+          "range": "agent.py:4048",
+          "kind": "descriptive_block",
+          "text": "Run graph extraction"
+        },
+        {
+          "file": "agent.py",
+          "line": 4059,
+          "range": "agent.py:4059",
+          "kind": "descriptive_block",
+          "text": "Fallback check"
+        },
+        {
+          "file": "agent.py",
+          "line": 4079,
+          "range": "agent.py:4079",
+          "kind": "descriptive_block",
+          "text": "Build node id \u2192 node map"
+        },
+        {
+          "file": "agent.py",
+          "line": 4082,
+          "range": "agent.py:4082",
+          "kind": "descriptive_block",
+          "text": "Build in-degree per node for community member ranking"
+        },
+        {
+          "file": "agent.py",
+          "line": 4094,
+          "range": "agent.py:4094",
+          "kind": "descriptive_block",
+          "text": "Derive community names from highest-degree member's source_file"
+        },
+        {
+          "file": "agent.py",
+          "line": 4105,
+          "range": "agent.py:4105",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Communities \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4124,
+          "range": "agent.py:4124",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 God Nodes \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4135,
+          "range": "agent.py:4135",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Surprises (bridge edges) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4151,
+          "range": "agent.py:4151",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Bridge Questions \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4161,
+          "range": "agent.py:4161",
+          "kind": "descriptive_block",
+          "text": "Write file"
+        },
+        {
+          "file": "agent.py",
+          "line": 4171,
+          "range": "agent.py:4171",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Web Design / UI Architecture & Cross-File Communities \u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4190,
+          "range": "agent.py:4190",
+          "kind": "descriptive_block",
+          "text": "Get representative label"
+        },
+        {
+          "file": "agent.py",
+          "line": 4211,
+          "range": "agent.py:4211",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Graphify AST Node Encapsulation Query \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4219,
+          "range": "agent.py:4219",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Python AST call-graph fallback \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4233,
+          "range": "agent.py:4233",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 CONNECT (cross-file call-graph & node encapsulation) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4244,
+          "range": "agent.py:4244",
+          "kind": "descriptive_block",
+          "text": "1. Node-First Resolution \u2014 find closest symbols/nodes and their encapsulating functions/classes"
+        },
+        {
+          "file": "agent.py",
+          "line": 4261,
+          "range": "agent.py:4261",
+          "kind": "descriptive_block",
+          "text": "Cross-file relationships for every pair if multiple files matched"
+        },
+        {
+          "file": "agent.py",
+          "line": 4299,
+          "range": "agent.py:4299",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 FILE INFO \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 \u2500\u2500 FILE INFO (Cat / Scan / Snippet / Purpose / Line Ranges) \u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4305,
+          "range": "agent.py:4305",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 \"why is X so big/huge/large\" \u2192 function/comment size graph \u2500\u2500\u2500\u2500 Answers with structure (functions+classes by size, with their comments), never a full-file dump. Handles both \"why is patchit.py so huge\" (filename given) and \"why is this file so big\" (no filename \u2014 falls back to the single most-con"
+        },
+        {
+          "file": "agent.py",
+          "line": 4332,
+          "range": "agent.py:4332",
+          "kind": "descriptive_block",
+          "text": "Check for line range in directive (e.g. 'line 30 to 70', 'lines 30-70', 'L30-70')"
+        },
+        {
+          "file": "agent.py",
+          "line": 4353,
+          "range": "agent.py:4353",
+          "kind": "descriptive_block",
+          "text": "Multi-file intent: the user gets ALL matched files shown, without needing a follow-up \"show all\", whenever the original directive itself makes multi-file intent explicit \u2014 either by naming \u22652 files directly (e.g. \"compare /a.js and /b.js\", \"/a.js /b.js /c.js all three pls\") or by using an explicit \""
+        },
+        {
+          "file": "agent.py",
+          "line": 4377,
+          "range": "agent.py:4377",
+          "kind": "descriptive_block",
+          "text": "If there are other matching files and we didn't show everything, list them concisely so the user knows they exist."
+        },
+        {
+          "file": "agent.py",
+          "line": 4384,
+          "range": "agent.py:4384",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 STRAY SYMBOLS \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4407,
+          "range": "agent.py:4407",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 SYNTAX CHECK \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4443,
+          "range": "agent.py:4443",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 INDENTATION CHECK \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4469,
+          "range": "agent.py:4469",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 SMOKETEST \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4472,
+          "range": "agent.py:4472",
+          "kind": "descriptive_block",
+          "text": "Try autoloop smoketest runner first"
+        },
+        {
+          "file": "agent.py",
+          "line": 4489,
+          "range": "agent.py:4489",
+          "kind": "descriptive_block",
+          "text": "Fallback: detect and run project test commands"
+        },
+        {
+          "file": "agent.py",
+          "line": 4511,
+          "range": "agent.py:4511",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 PATCH (default) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 Uses rapidfuzz graph match \u2192 LLM extract \u2192 diff \u2192 confirm"
+        },
+        {
+          "file": "agent.py",
+          "line": 4627,
+          "range": "agent.py:4627",
+          "kind": "descriptive_block",
+          "text": "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 AGENTIC LOOP  (Anthropic / NVIDIA API path) \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550"
+        },
+        {
+          "file": "agent.py",
+          "line": 4636,
+          "range": "agent.py:4636",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Priority: relay \u2192 API \u2192 local LLM \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4667,
+          "range": "agent.py:4667",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Agentic tool loop \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4688,
+          "range": "agent.py:4688",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 No more tool calls \u2192 extract patch proposal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4698,
+          "range": "agent.py:4698",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Execute tool calls \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4720,
+          "range": "agent.py:4720",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 Max rounds reached \u2192 ask for final answer without tools \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "agent.py",
+          "line": 4847,
+          "range": "agent.py:4847",
+          "kind": "descriptive_block",
+          "text": "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 ENTRY POINT \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550"
+        }
+      ],
+      "functions_index": [
+        "agent.py:143-145",
+        "agent.py:147-147",
+        "agent.py:148-148",
+        "agent.py:149-149",
+        "agent.py:211-219",
+        "agent.py:222-231",
+        "agent.py:234-246",
+        "agent.py:249-265",
+        "agent.py:271-275",
+        "agent.py:278-315",
+        "agent.py:318-369",
+        "agent.py:372-392",
+        "agent.py:395-431",
+        "agent.py:434-447",
+        "agent.py:450-463",
+        "agent.py:466-479",
+        "agent.py:482-492",
+        "agent.py:495-502",
+        "agent.py:505-515",
+        "agent.py:518-529",
+        "agent.py:532-625",
+        "agent.py:628-739",
+        "agent.py:742-753",
+        "agent.py:756-763",
+        "agent.py:792-803",
+        "agent.py:1061-1074",
+        "agent.py:1077-1087",
+        "agent.py:1089-1161",
+        "agent.py:1164-1192",
+        "agent.py:1195-1196",
+        "agent.py:1199-1200",
+        "agent.py:1207-1235",
+        "agent.py:1260-1267",
+        "agent.py:1270-1278",
+        "agent.py:1281-1290",
+        "agent.py:1293-1297",
+        "agent.py:1300-1307",
+        "agent.py:1310-1321",
+        "agent.py:1324-1330",
+        "agent.py:1333-1388",
+        "agent.py:1391-1417",
+        "agent.py:1420-1427",
+        "agent.py:1430-1443",
+        "agent.py:1446-1454",
+        "agent.py:1457-1903",
+        "agent.py:1906-1930",
+        "agent.py:1933-2005",
+        "agent.py:2008-2034",
+        "agent.py:2037-2058",
+        "agent.py:2061-2076",
+        "agent.py:2079-2087",
+        "agent.py:2090-2136",
+        "agent.py:2139-2200",
+        "agent.py:2203-2231",
+        "agent.py:2234-2291",
+        "agent.py:2294-2416",
+        "agent.py:2419-2508",
+        "agent.py:2511-2569",
+        "agent.py:2572-2608",
+        "agent.py:2611-2691",
+        "agent.py:2695-2822",
+        "agent.py:2825-2888",
+        "agent.py:2891-2978",
+        "agent.py:2981-3103",
+        "agent.py:3039-3044",
+        "agent.py:3106-3139",
+        "agent.py:3146-3192",
+        "agent.py:3194-4624",
+        "agent.py:3229-3229",
+        "agent.py:3721-3725",
+        "agent.py:3936-3942",
+        "agent.py:3938-3938",
+        "agent.py:3940-3940",
+        "agent.py:3942-3942",
+        "agent.py:4095-4098",
+        "agent.py:4631-4739",
+        "agent.py:4742-4749",
+        "agent.py:4752-4768",
+        "agent.py:4771-4844",
+        "agent.py:4851-4866"
+      ]
+    },
+    {
+      "path": "autoloop.py",
+      "mode": "index",
+      "line_count": 325,
+      "hits": [
+        {
+          "kind": "file",
+          "score": 85.5,
+          "file": "autoloop.py",
+          "opening_comments": [
+            "!/usr/bin/env python3",
+            "Give the model a window of context around the failed find_str so it can see real surrounding code, not just the two strings.",
+            "Be tolerant of stray markdown fences even though we asked for none"
+          ]
+        }
+      ],
+      "symbols": [
+        {
+          "name": "Attempt",
+          "label": "Attempt",
+          "signature": "class Attempt:",
+          "file": "autoloop.py",
+          "start_line": 58,
+          "end_line": 64,
+          "range": "autoloop.py:58-64",
+          "type": "class",
+          "docstring": ""
+        },
+        {
+          "name": "LoopResult",
+          "label": "LoopResult",
+          "signature": "class LoopResult:",
+          "file": "autoloop.py",
+          "start_line": 68,
+          "end_line": 72,
+          "range": "autoloop.py:68-72",
+          "type": "class",
+          "docstring": ""
+        },
+        {
+          "name": "_run_test_command",
+          "label": "_run_test_command()",
+          "signature": "def _run_test_command(test_cmd: list[str], cwd: str, timeout: int) -> tuple[bool, str]:",
+          "file": "autoloop.py",
+          "start_line": 75,
+          "end_line": 94,
+          "range": "autoloop.py:75-94",
+          "type": "function",
+          "docstring": "Run the user-supplied test/lint command. Returns (passed, combined_output)."
+        },
+        {
+          "name": "_ask_claude_for_fix",
+          "label": "_ask_claude_for_fix()",
+          "signature": "def _ask_claude_for_fix(",
+          "file": "autoloop.py",
+          "start_line": 97,
+          "end_line": 175,
+          "range": "autoloop.py:97-175",
+          "type": "function",
+          "docstring": "Ask the Claude API for a corrected find/replace pair given a test\nfailure. Returns (new_find_str, new_replace_str) or (None, None) if the\nAPI is unavailable or the response can't be parsed."
+        },
+        {
+          "name": "run_auto_fix_loop",
+          "label": "run_auto_fix_loop()",
+          "signature": "def run_auto_fix_loop(",
+          "file": "autoloop.py",
+          "start_line": 178,
+          "end_line": 311,
+          "range": "autoloop.py:178-311",
+          "type": "function",
+          "docstring": "Attempt a patch, run tests, and retry with Claude-suggested corrections\non failure. Stops after max_attempts. Always shows a diff and requires\nconfirmation before the final write is kept."
+        },
+        {
+          "name": "print_summary",
+          "label": "print_summary()",
+          "signature": "def print_summary(result: LoopResult):",
+          "file": "autoloop.py",
+          "start_line": 314,
+          "end_line": 325,
+          "range": "autoloop.py:314-325",
+          "type": "function",
+          "docstring": ""
+        }
+      ],
+      "comments": [
+        {
+          "file": "autoloop.py",
+          "line": 1,
+          "range": "autoloop.py:1",
+          "kind": "descriptive_block",
+          "text": "!/usr/bin/env python3"
+        },
+        {
+          "file": "autoloop.py",
+          "line": 109,
+          "range": "autoloop.py:109",
+          "kind": "descriptive_block",
+          "text": "Give the model a window of context around the failed find_str so it can see real surrounding code, not just the two strings."
+        },
+        {
+          "file": "autoloop.py",
+          "line": 164,
+          "range": "autoloop.py:164",
+          "kind": "descriptive_block",
+          "text": "Be tolerant of stray markdown fences even though we asked for none"
+        },
+        {
+          "file": "autoloop.py",
+          "line": 213,
+          "range": "autoloop.py:213",
+          "kind": "descriptive_block",
+          "text": "Re-indent to match, same as manual patchit find/replace does"
+        },
+        {
+          "file": "autoloop.py",
+          "line": 266,
+          "range": "autoloop.py:266",
+          "kind": "descriptive_block",
+          "text": "Restore the file to its pre-attempt state before trying the next candidate, so each attempt patches from a clean baseline rather than stacking edits on top of a failing one."
+        },
+        {
+          "file": "autoloop.py",
+          "line": 274,
+          "range": "autoloop.py:274",
+          "kind": "descriptive_block",
+          "text": "If the loop didn't succeed, make sure the file is back to its original on-disk state rather than left mid-failed-attempt."
+        },
+        {
+          "file": "autoloop.py",
+          "line": 284,
+          "range": "autoloop.py:284",
+          "kind": "descriptive_block",
+          "text": "Success path: show the final diff and require explicit confirmation before leaving the change in place, even though tests passed."
+        }
+      ],
+      "functions_index": [
+        "autoloop.py:58-64",
+        "autoloop.py:68-72",
+        "autoloop.py:75-94",
+        "autoloop.py:97-175",
+        "autoloop.py:178-311",
+        "autoloop.py:314-325"
+      ]
+    },
+    {
+      "path": "recon.py",
+      "mode": "index",
+      "line_count": 630,
+      "hits": [
+        {
+          "kind": "file",
+          "score": 85.5,
+          "file": "recon.py",
+          "opening_comments": [
+            "marker(s)",
+            "!/usr/bin/env python3",
+            "With the write-test-fix loop enabled:"
+          ]
+        }
+      ],
+      "symbols": [
+        {
+          "name": "git_log",
+          "label": "git_log()",
+          "signature": "def git_log(): pass",
+          "file": "recon.py",
+          "start_line": 69,
+          "end_line": 69,
+          "range": "recon.py:69-69",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "git_checkpoint",
+          "label": "git_checkpoint()",
+          "signature": "def git_checkpoint(commit_msg=None): pass",
+          "file": "recon.py",
+          "start_line": 70,
+          "end_line": 70,
+          "range": "recon.py:70-70",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "hdr",
+          "label": "hdr()",
+          "signature": "def hdr(phase: str, title: str):",
+          "file": "recon.py",
+          "start_line": 80,
+          "end_line": 82,
+          "range": "recon.py:80-82",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "ok",
+          "label": "ok()",
+          "signature": "def ok(msg):  print(f\"{GREEN}  \u2714 {msg}{RST}\")",
+          "file": "recon.py",
+          "start_line": 84,
+          "end_line": 84,
+          "range": "recon.py:84-84",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "warn",
+          "label": "warn()",
+          "signature": "def warn(msg): print(f\"{YELL}  \u26a0 {msg}{RST}\")",
+          "file": "recon.py",
+          "start_line": 85,
+          "end_line": 85,
+          "range": "recon.py:85-85",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "err",
+          "label": "err()",
+          "signature": "def err(msg):  print(f\"{RED}  \u2716 {msg}{RST}\")",
+          "file": "recon.py",
+          "start_line": 86,
+          "end_line": 86,
+          "range": "recon.py:86-86",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_ensure_graph_exists",
+          "label": "_ensure_graph_exists()",
+          "signature": "def _ensure_graph_exists():",
+          "file": "recon.py",
+          "start_line": 89,
+          "end_line": 132,
+          "range": "recon.py:89-132",
+          "type": "function",
+          "docstring": "Check if graphify graph exists. If not, try to install graphify and run extraction."
+        },
+        {
+          "name": "phase1_orient",
+          "label": "phase1_orient()",
+          "signature": "def phase1_orient():",
+          "file": "recon.py",
+          "start_line": 135,
+          "end_line": 137,
+          "range": "recon.py:135-137",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_py_files_from_node_ids",
+          "label": "_py_files_from_node_ids()",
+          "signature": "def _py_files_from_node_ids(node_ids: list[str]) -> list[str]:",
+          "file": "recon.py",
+          "start_line": 140,
+          "end_line": 149,
+          "range": "recon.py:140-149",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_run_graphify_query",
+          "label": "_run_graphify_query()",
+          "signature": "def _run_graphify_query(py_file: str, question: str, top_k: int = 3):",
+          "file": "recon.py",
+          "start_line": 152,
+          "end_line": 186,
+          "range": "recon.py:152-186",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "phase2_locate",
+          "label": "phase2_locate()",
+          "signature": "def phase2_locate(directive: str) -> list[str] | None:",
+          "file": "recon.py",
+          "start_line": 189,
+          "end_line": 280,
+          "range": "recon.py:189-280",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "phase3_inspect",
+          "label": "phase3_inspect()",
+          "signature": "def phase3_inspect(file_path: str) -> tuple[str, bool]:",
+          "file": "recon.py",
+          "start_line": 283,
+          "end_line": 307,
+          "range": "recon.py:283-307",
+          "type": "function",
+          "docstring": "Inspect a single file. For multi-file runs this is called once per\nfile by phase3_inspect_all; the header/logic per file is unchanged."
+        },
+        {
+          "name": "phase3_inspect_all",
+          "label": "phase3_inspect_all()",
+          "signature": "def phase3_inspect_all(file_paths: list[str]) -> dict[str, tuple[str, bool]]:",
+          "file": "recon.py",
+          "start_line": 310,
+          "end_line": 321,
+          "range": "recon.py:310-321",
+          "type": "function",
+          "docstring": "Run phase3_inspect for every target file. A missing file is reported\nand skipped rather than aborting the whole multi-file run \u2014 the other\nfiles still get inspected."
+        },
+        {
+          "name": "phase4_identify_all",
+          "label": "phase4_identify_all()",
+          "signature": "def phase4_identify_all(inspected: dict[str, tuple[str, bool]], directive: str = \"\") -> dict[str, tuple[str, str]]:",
+          "file": "recon.py",
+          "start_line": 324,
+          "end_line": 336,
+          "range": "recon.py:324-336",
+          "type": "function",
+          "docstring": "Run phase4_identify once per file. A file where the user gives no\nfind/replace is simply left out of the returned dict \u2014 the run\ncontinues with whatever files DO have a target."
+        },
+        {
+          "name": "phase4_identify",
+          "label": "phase4_identify()",
+          "signature": "def phase4_identify(listing: str) -> tuple[str | None, str | None]:",
+          "file": "recon.py",
+          "start_line": 339,
+          "end_line": 341,
+          "range": "recon.py:339-341",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_phase4_identify_core",
+          "label": "_phase4_identify_core()",
+          "signature": "def _phase4_identify_core(listing: str, directive: str = \"\") -> tuple[str | None, str | None]:",
+          "file": "recon.py",
+          "start_line": 344,
+          "end_line": 390,
+          "range": "recon.py:344-390",
+          "type": "function",
+          "docstring": "Try local LLM first to extract find/replace, fall back to manual input."
+        },
+        {
+          "name": "phase5_patch",
+          "label": "phase5_patch()",
+          "signature": "def phase5_patch(",
+          "file": "recon.py",
+          "start_line": 393,
+          "end_line": 461,
+          "range": "recon.py:393-461",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "phase5_patch_all",
+          "label": "phase5_patch_all()",
+          "signature": "def phase5_patch_all(",
+          "file": "recon.py",
+          "start_line": 464,
+          "end_line": 524,
+          "range": "recon.py:464-524",
+          "type": "function",
+          "docstring": "Patch multiple files. For the normal (non-auto-fix) path this shows\nALL planned changes together and asks ONE confirmation, matching the\nsingle-file flow's one-gate design instead of prompting per fil"
+        },
+        {
+          "name": "phase6_verify",
+          "label": "phase6_verify()",
+          "signature": "def phase6_verify():",
+          "file": "recon.py",
+          "start_line": 527,
+          "end_line": 530,
+          "range": "recon.py:527-530",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_parse_recon_argv",
+          "label": "_parse_recon_argv()",
+          "signature": "def _parse_recon_argv(argv: list[str]) -> tuple[str, bool, list[str] | None, int]:",
+          "file": "recon.py",
+          "start_line": 533,
+          "end_line": 569,
+          "range": "recon.py:533-569",
+          "type": "function",
+          "docstring": "Pull --auto-fix / --test-cmd \"...\" / --max-attempts N out of argv,\nreturning (directive, auto_fix, test_cmd, max_attempts). Anything not\nmatching a flag is treated as part of the directive, preserving"
+        },
+        {
+          "name": "main",
+          "label": "main()",
+          "signature": "def main():",
+          "file": "recon.py",
+          "start_line": 572,
+          "end_line": 626,
+          "range": "recon.py:572-626",
+          "type": "function",
+          "docstring": ""
+        }
+      ],
+      "comments": [
+        {
+          "file": "recon.py",
+          "line": 214,
+          "range": "recon.py:214",
+          "kind": "marker_block",
+          "text": "marker(s)"
+        },
+        {
+          "file": "recon.py",
+          "line": 1,
+          "range": "recon.py:1",
+          "kind": "descriptive_block",
+          "text": "!/usr/bin/env python3"
+        },
+        {
+          "file": "recon.py",
+          "line": 8,
+          "range": "recon.py:8",
+          "kind": "descriptive_block",
+          "text": "With the write-test-fix loop enabled:"
+        },
+        {
+          "file": "recon.py",
+          "line": 91,
+          "range": "recon.py:91",
+          "kind": "descriptive_block",
+          "text": "Check if graphify-out/graph.json exists"
+        },
+        {
+          "file": "recon.py",
+          "line": 98,
+          "range": "recon.py:98",
+          "kind": "descriptive_block",
+          "text": "Check if graphify is installed"
+        },
+        {
+          "file": "recon.py",
+          "line": 115,
+          "range": "recon.py:115",
+          "kind": "descriptive_block",
+          "text": "Run graphify extract"
+        },
+        {
+          "file": "recon.py",
+          "line": 192,
+          "range": "recon.py:192",
+          "kind": "descriptive_block",
+          "text": "Auto-generate graph if it doesn't exist"
+        },
+        {
+          "file": "recon.py",
+          "line": 200,
+          "range": "recon.py:200",
+          "kind": "descriptive_block",
+          "text": "Scan the project for comment-defined blocks (both explicit pyslick:start/end markers and natural descriptive comments) and merge them into the same candidate pool as the AST graph nodes, so a directive can match a comment even when there's no named function to anchor to (CSS rule groups, HTML sectio"
+        },
+        {
+          "file": "recon.py",
+          "line": 347,
+          "range": "recon.py:347",
+          "kind": "descriptive_block",
+          "text": "Try local LLM if directive is provided"
+        }
+      ],
+      "functions_index": [
+        "recon.py:69-69",
+        "recon.py:70-70",
+        "recon.py:80-82",
+        "recon.py:84-84",
+        "recon.py:85-85",
+        "recon.py:86-86",
+        "recon.py:89-132",
+        "recon.py:135-137",
+        "recon.py:140-149",
+        "recon.py:152-186",
+        "recon.py:189-280",
+        "recon.py:283-307",
+        "recon.py:310-321",
+        "recon.py:324-336",
+        "recon.py:339-341",
+        "recon.py:344-390",
+        "recon.py:393-461",
+        "recon.py:464-524",
+        "recon.py:527-530",
+        "recon.py:533-569",
+        "recon.py:572-626"
+      ]
+    },
+    {
+      "path": "response_watcher.py",
+      "mode": "full",
+      "line_count": 100,
+      "content": "#!/usr/bin/env python3\n\"\"\"\nresponse_watcher.py \u2014 print Claude's response code blocks to the terminal\n=========================================================================\n\nWhen the extension POSTs code blocks from Claude's reply back to the relay\nserver, this module receives them via the on_claude_response callback and\nprints them to the terminal in a readable format \u2014 so the loop looks like:\n\n    $ pyslick \"help me fix this\"\n    ... pyslick output with PowerShell blocks ...\n    [relay] Injected 2 block(s) into Claude \u2192 waiting for response...\n    \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n    Claude responded with 1 code block(s):\n\n    [powershell]\n    Get-Content 'clipboard.py' | Select-Object -Skip 99 -First 42\n\n    \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n    $\n\nThe watcher is activated by calling register() from __init__.py BEFORE\ncapture_and_offer runs, so the callback is live for the whole session.\n\"\"\"\n\nfrom __future__ import annotations\n\nimport sys\nfrom pathlib import Path\n\n# \u2500\u2500 colours \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n_BOLD  = \"\\033[1m\"\n_GREEN = \"\\033[92m\"\n_CYAN  = \"\\033[96m\"\n_YELL  = \"\\033[93m\"\n_DIM   = \"\\033[2m\"\n_RST   = \"\\033[0m\"\n_BAR   = f\"{_DIM}{'\u2500' * 54}{_RST}\"\n\nSTATE_DIR     = Path.home() / \".pyslick\"\nRESPONSE_FILE = STATE_DIR / \"claude_response.json\"\n\n\ndef _on_response(payload: dict) -> None:\n    \"\"\"\n    Called by relay_server when /claude-response receives data from extension.\n    Prints the blocks to the real terminal (not through the Tee buffer).\n    \"\"\"\n    blocks = payload.get(\"blocks\", [])\n    if not blocks:\n        return\n\n    # Write directly to the real terminal fd so it appears even if stdout\n    # is currently being tee'd into the capture buffer.\n    out = sys.__stdout__\n\n    out.write(f\"\\n{_BAR}\\n\")\n    out.write(\n        f\"  {_GREEN}\u2714{_RST} {_BOLD}Claude responded{_RST} \"\n        f\"with {_CYAN}{len(blocks)}{_RST} code block(s):\\n\\n\"\n    )\n    for block in blocks:\n        lang = block.get(\"lang\", \"code\")\n        code = block.get(\"code\", \"\").strip()\n        out.write(f\"  {_DIM}[{lang}]{_RST}\\n\")\n        # Indent each line for readability\n        for line in code.splitlines():\n            out.write(f\"  {_CYAN}{line}{_RST}\\n\")\n        out.write(\"\\n\")\n    out.write(f\"{_BAR}\\n\\n\")\n    out.flush()\n\n\ndef register() -> None:\n    \"\"\"\n    Register the terminal printer with relay_server.\n    Call this from __init__.py before capture_and_offer.\n\n    Safe to call multiple times \u2014 just overwrites the callback.\n    \"\"\"\n    try:\n        from .relay_server import ensure_running\n        import importlib\n        relay_server = importlib.import_module(\".relay_server\", package=__package__)\n        relay_server.on_claude_response = _on_response\n        ensure_running()\n    except Exception as exc:\n        # Non-fatal \u2014 if relay server isn't available, just skip\n        print(f\"  {_YELL}[response_watcher] Warning: {exc}{_RST}\", file=sys.stderr)\n\n\nif __name__ == \"__main__\":\n    # CLI: print the last saved claude_response.json to terminal\n    import json\n    if RESPONSE_FILE.exists():\n        payload = json.loads(RESPONSE_FILE.read_text(encoding=\"utf-8\"))\n        _on_response(payload)\n    else:\n        print(f\"  {_YELL}No Claude response saved yet.{_RST}\")\n        print(f\"  {_DIM}(Run with relay active and wait for a response){_RST}\")",
+      "hits": [
+        {
+          "kind": "file",
+          "score": 85.5,
+          "file": "response_watcher.py",
+          "opening_comments": [
+            "!/usr/bin/env python3",
+            "\u2500\u2500 colours \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+            "Write directly to the real terminal fd so it appears even if stdout is currently being tee'd into the capture buffer."
+          ]
+        }
+      ],
+      "symbols": [
+        {
+          "name": "_on_response",
+          "label": "_on_response()",
+          "signature": "def _on_response(payload: dict) -> None:",
+          "file": "response_watcher.py",
+          "start_line": 44,
+          "end_line": 71,
+          "range": "response_watcher.py:44-71",
+          "type": "function",
+          "docstring": "Called by relay_server when /claude-response receives data from extension.\nPrints the blocks to the real terminal (not through the Tee buffer)."
+        },
+        {
+          "name": "register",
+          "label": "register()",
+          "signature": "def register() -> None:",
+          "file": "response_watcher.py",
+          "start_line": 74,
+          "end_line": 89,
+          "range": "response_watcher.py:74-89",
+          "type": "function",
+          "docstring": "Register the terminal printer with relay_server.\nCall this from __init__.py before capture_and_offer.\n\nSafe to call multiple times \u2014 just overwrites the callback."
+        }
+      ],
+      "comments": [
+        {
+          "file": "response_watcher.py",
+          "line": 1,
+          "range": "response_watcher.py:1",
+          "kind": "descriptive_block",
+          "text": "!/usr/bin/env python3"
+        },
+        {
+          "file": "response_watcher.py",
+          "line": 31,
+          "range": "response_watcher.py:31",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500 colours \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "response_watcher.py",
+          "line": 53,
+          "range": "response_watcher.py:53",
+          "kind": "descriptive_block",
+          "text": "Write directly to the real terminal fd so it appears even if stdout is currently being tee'd into the capture buffer."
+        },
+        {
+          "file": "response_watcher.py",
+          "line": 66,
+          "range": "response_watcher.py:66",
+          "kind": "descriptive_block",
+          "text": "Indent each line for readability"
+        },
+        {
+          "file": "response_watcher.py",
+          "line": 88,
+          "range": "response_watcher.py:88",
+          "kind": "descriptive_block",
+          "text": "Non-fatal \u2014 if relay server isn't available, just skip"
+        },
+        {
+          "file": "response_watcher.py",
+          "line": 93,
+          "range": "response_watcher.py:93",
+          "kind": "descriptive_block",
+          "text": "CLI: print the last saved claude_response.json to terminal"
+        }
+      ],
+      "functions_index": [
+        "response_watcher.py:44-71",
+        "response_watcher.py:74-89"
+      ]
+    },
+    {
+      "path": "miamico\\content.js",
+      "mode": "index",
+      "line_count": 435,
+      "hits": [
+        {
+          "kind": "file",
+          "score": 85.5,
+          "file": "miamico\\content.js",
+          "opening_comments": [
+            "===== DEBUG MODE =====",
+            "\u2500\u2500\u2500 Constants \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+            "\u2500\u2500\u2500 skill.md loader \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 Fetched once, prepended to the FIRST turn of every ask session only."
+          ]
+        }
+      ],
+      "symbols": [],
+      "comments": [
+        {
+          "file": "miamico\\content.js",
+          "line": 1,
+          "range": "miamico\\content.js:1",
+          "kind": "descriptive_block",
+          "text": "===== DEBUG MODE ====="
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 26,
+          "range": "miamico\\content.js:26",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500\u2500 Constants \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 31,
+          "range": "miamico\\content.js:31",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500\u2500 skill.md loader \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 Fetched once, prepended to the FIRST turn of every ask session only."
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 52,
+          "range": "miamico\\content.js:52",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500\u2500 Message router \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 76,
+          "range": "miamico\\content.js:76",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500\u2500 RELAY POLLING (pyslick \u2192 Claude) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 Polls relay.json every 1.5s. When pyslick ask writes a new payload: \u2022 First turn  \u2192 prepends skill.md before the question \u2022 Later turns \u2192 sends the pyslick command result as-is After Claude responds, harvests BOTH code blo"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 116,
+          "range": "miamico\\content.js:116",
+          "kind": "descriptive_block",
+          "text": "New payload \u2014 check if this is a brand-new session (question turn)"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 127,
+          "range": "miamico\\content.js:127",
+          "kind": "descriptive_block",
+          "text": "Build the message to inject"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 130,
+          "range": "miamico\\content.js:130",
+          "kind": "descriptive_block",
+          "text": "First turn only: prepend skill.md so Claude knows the rules"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 179,
+          "range": "miamico\\content.js:179",
+          "kind": "descriptive_block",
+          "text": "Wait until send button is disabled (streaming started)"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 185,
+          "range": "miamico\\content.js:185",
+          "kind": "descriptive_block",
+          "text": "Wait until send button is enabled again (streaming done)"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 191,
+          "range": "miamico\\content.js:191",
+          "kind": "descriptive_block",
+          "text": "Extra settle so Claude finishes re-rendering"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 199,
+          "range": "miamico\\content.js:199",
+          "kind": "descriptive_block",
+          "text": "Always POST back even if no code blocks \u2014 plain text is what ask.py needs"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 221,
+          "range": "miamico\\content.js:221",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500\u2500 Code block harvesting \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 240,
+          "range": "miamico\\content.js:240",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500\u2500 Plain text harvesting (NEW) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 Captures Claude's latest plain-text reply so ask.py can detect \"I have enough information.\" and extract bare pyslick commands."
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 247,
+          "range": "miamico\\content.js:247",
+          "kind": "descriptive_block",
+          "text": "Get all assistant message containers"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 253,
+          "range": "miamico\\content.js:253",
+          "kind": "descriptive_block",
+          "text": "Take the last one (most recent Claude reply)"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 256,
+          "range": "miamico\\content.js:256",
+          "kind": "descriptive_block",
+          "text": "Exclude code blocks \u2014 we want prose only"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 271,
+          "range": "miamico\\content.js:271",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500\u2500 INJECT \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 347,
+          "range": "miamico\\content.js:347",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500\u2500 READ PAGE (manual) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 369,
+          "range": "miamico\\content.js:369",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500\u2500 Helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 386,
+          "range": "miamico\\content.js:386",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500\u2500 Auto-start on claude.ai \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 POST /tab-ready so ask.py knows the tab is live, then begin polling immediately \u2014 no background.js message needed. \u2500\u2500\u2500 Background fetch proxy \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 Routes ALL fetches to 127.0"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 415,
+          "range": "miamico\\content.js:415",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500\u2500 Tab-ready heartbeat \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "file": "miamico\\content.js",
+          "line": 429,
+          "range": "miamico\\content.js:429",
+          "kind": "descriptive_block",
+          "text": "\u2500\u2500\u2500 Auto-start on claude.ai \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        }
+      ],
+      "functions_index": []
+    },
+    {
+      "path": "jsx_tag_checker.py",
+      "mode": "full",
+      "line_count": 170,
+      "content": "import sys\nimport os\nimport re\n\ndef check_jsx_tags(file_path):\n    if not os.path.exists(file_path):\n        print(f\"Error: File not found: {file_path}\")\n        return False\n\n    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:\n        content = f.read()\n\n    content = re.sub(r'<svg[\\s>].*?</svg>', '<svg />', content, flags=re.DOTALL)\n    content = re.sub(r'<script[\\s>].*?</script>', '', content, flags=re.DOTALL)\n    content = re.sub(r'<style[\\s>].*?</style>', '', content, flags=re.DOTALL)\n\n    # Strip TypeScript generic type arguments BEFORE tag matching.\n    # Patterns like useRef<HTMLDivElement>, useState<Message[]>, Array<T>, Promise<void>\n    # are indistinguishable from JSX opening tags to the regex below \u2014 so blank them out.\n    # We use a two-pass approach: known hook/utility names first, then any PascalCase<...>\n    # that isn't preceded by '<' (which would make it an actual JSX tag).\n    _GENERIC_HOOKS = re.compile(\n        r'\\b(use[A-Z]\\w*|Array|Promise|Map|Set|Record|Partial|Required|Readonly|'\n        r'ReturnType|InstanceType|Parameters|NonNullable|Awaited|Extract|Exclude)'\n        r'<[^<>]*>'\n    )\n    # Also catch PascalCase<...> that is NOT preceded by a literal '<' (i.e. not a JSX tag open)\n    _GENERIC_PASCAL = re.compile(r'(?<![<\\s])([A-Z][a-zA-Z0-9_]*)<([^<>]*)>')\n\n    def _strip_generics(src: str) -> str:\n        # Repeat until stable (handles nested like Promise<Array<T>>)\n        for _ in range(5):\n            prev = src\n            src = _GENERIC_HOOKS.sub(lambda m: m.group(0)[:len(m.group(1))], src)\n            src = _GENERIC_PASCAL.sub(lambda m: m.group(1), src)\n            if src == prev:\n                break\n        return src\n\n    content = _strip_generics(content)\n\n    def collapse_multiline_tags(text):\n        result = []\n        lines = text.split('\\n')\n        i = 0\n        while i < len(lines):\n            line = lines[i]\n            open_count = len(re.findall(r'<[^/!]', line))\n            close_count = len(re.findall(r'(?<!=)>', line))\n            if open_count > close_count and not line.strip().startswith('//'):\n                combined = line\n                while i + 1 < len(lines) and '>' not in lines[i + 1].split('//')[0]:\n                    i += 1\n                    combined += ' ' + lines[i].strip()\n                if i + 1 < len(lines):\n                    i += 1\n                    combined += ' ' + lines[i].strip()\n                result.append(combined)\n            else:\n                result.append(line)\n            i += 1\n        return '\\n'.join(result)\n\n    content = collapse_multiline_tags(content)\n    lines = content.splitlines()\n\n    tag_stack = []\n    errors = []\n\n    VOID_TAGS = {\n        'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',\n        'link', 'meta', 'param', 'source', 'track', 'wbr',\n        'path', 'circle', 'rect', 'line', 'polygon', 'polyline',\n        'ellipse', 'stop', 'use', 'defs', 'clipPath',\n        'linearGradient', 'radialGradient', 'animate', 'animateTransform'\n    }\n\n    TS_GENERIC_TYPES = {\n        'string', 'number', 'boolean', 'any', 'unknown', 'never', 'void',\n        'object', 'symbol', 'bigint', 'undefined', 'null', 't', 'k', 'v', 'u', 'r'\n    }\n\n    in_multi_comment = False\n\n    for line_num, line in enumerate(lines, 1):\n        clean = line.strip()\n\n        if in_multi_comment:\n            if '*/' in clean:\n                in_multi_comment = False\n                clean = clean.split('*/', 1)[1]\n            else:\n                continue\n\n        if '/*' in clean:\n            if '*/' not in clean:\n                in_multi_comment = True\n                clean = clean.split('/*', 1)[0]\n            else:\n                clean = re.sub(r'/\\*.*?\\*/', '', clean)\n\n        clean = re.sub(r'//.*$', '', clean)\n        clean = re.sub(r'=\"[^\"]*\"', '=\"X\"', clean)\n        clean = re.sub(r\"='[^']*'\", \"='X'\", clean)\n\n        tag_matches = re.finditer(r'(</?[a-zA-Z0-9_.:-]+(?:\\s[^>]*)?>|</>)', clean)\n\n        for match in tag_matches:\n            tag_str = match.group(1).strip()\n\n            if tag_str == '<>' or (tag_str.startswith('<React.Fragment') and not tag_str.endswith('/>')):\n                tag_stack.append(('fragment', line_num, tag_str))\n            elif tag_str == '</>' or tag_str.startswith('</React.Fragment'):\n                if not tag_stack:\n                    errors.append(f\"[Line {line_num}] Stray closing fragment '{tag_str}'\")\n                else:\n                    top = tag_stack.pop()\n                    if top[0] != 'fragment':\n                        errors.append(f\"[Line {line_num}] Tag Mismatch: expected '</{top[0]}>' (opened at Line {top[1]}), but found '{tag_str}'\")\n            elif tag_str.endswith('/>'):\n                continue\n            elif tag_str.startswith('</'):\n                m = re.match(r'</([a-zA-Z0-9_.:-]+)', tag_str)\n                if m:\n                    tag_name = m.group(1)\n                    if tag_name.lower() in TS_GENERIC_TYPES:\n                        continue\n                    if not tag_stack:\n                        errors.append(f\"[Line {line_num}] Stray closing tag '</{tag_name}>' (no matching opening tag)\")\n                    else:\n                        top = tag_stack.pop()\n                        if top[0] != tag_name:\n                            errors.append(\n                                f\"[Line {line_num}] Tag Mismatch:\\n\"\n                                f\"    Found closing '</{tag_name}>'\\n\"\n                                f\"    Expected closing '</{top[0]}>' (opened at Line {top[1]}: {top[2][:60]})\\n\"\n                                f\"    Check for an unclosed tag between Line {top[1]} and Line {line_num}.\"\n                            )\n            elif tag_str.startswith('<') and not tag_str.startswith('<!'):\n                m = re.match(r'<([a-zA-Z0-9_.:-]+)', tag_str)\n                if m:\n                    tag_name = m.group(1)\n                    if tag_name.lower() in VOID_TAGS or tag_name.lower() in TS_GENERIC_TYPES:\n                        continue\n                    tag_stack.append((tag_name, line_num, tag_str))\n\n    if tag_stack:\n        for tag in tag_stack:\n            errors.append(\n                f\"[Line {tag[1]}] Unclosed tag '<{tag[0]}>':\\n\"\n                f\"    Snippet: \\\"{tag[2][:80]}\\\"\"\n            )\n\n    if not errors:\n        print(f\"OK: No JSX/HTML tag issues detected!\")\n        return True\n    else:\n        print(f\"[ERROR] Found {len(errors)} JSX / HTML tag issue(s) in: {file_path}\\n\" + \"=\" * 70)\n        for err in errors:\n            print(f\"- {err}\\n\")\n        return False\n\nif __name__ == '__main__':\n    if len(sys.argv) < 2:\n        print(\"Usage: python jsx_tag_checker.py <path_to_file>\")\n        sys.exit(1)\n\n    file_path = sys.argv[1]\n    success = check_jsx_tags(file_path)\n    sys.exit(0 if success else 1)",
+      "hits": [
+        {
+          "kind": "file",
+          "score": 57.0,
+          "file": "jsx_tag_checker.py",
+          "opening_comments": [
+            "Strip TypeScript generic type arguments BEFORE tag matching. Patterns like useRef<HTMLDivElement>, useState<Message[]>, Array<T>, Promise<void> are indistinguishable from JSX opening tags to the regex below \u2014 so blank them out. We use a two-pass approach: known hook/utility names first, then any PascalCase<...> that isn't preceded by '<' (which would make it an actual JSX tag).",
+            "Also catch PascalCase<...> that is NOT preceded by a literal '<' (i.e. not a JSX tag open)",
+            "Repeat until stable (handles nested like Promise<Array<T>>)"
+          ]
+        }
+      ],
+      "symbols": [
+        {
+          "name": "check_jsx_tags",
+          "label": "check_jsx_tags()",
+          "signature": "def check_jsx_tags(file_path):",
+          "file": "jsx_tag_checker.py",
+          "start_line": 5,
+          "end_line": 161,
+          "range": "jsx_tag_checker.py:5-161",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "_strip_generics",
+          "label": "_strip_generics()",
+          "signature": "def _strip_generics(src: str) -> str:",
+          "file": "jsx_tag_checker.py",
+          "start_line": 30,
+          "end_line": 38,
+          "range": "jsx_tag_checker.py:30-38",
+          "type": "function",
+          "docstring": ""
+        },
+        {
+          "name": "collapse_multiline_tags",
+          "label": "collapse_multiline_tags()",
+          "signature": "def collapse_multiline_tags(text):",
+          "file": "jsx_tag_checker.py",
+          "start_line": 42,
+          "end_line": 62,
+          "range": "jsx_tag_checker.py:42-62",
+          "type": "function",
+          "docstring": ""
+        }
+      ],
+      "comments": [
+        {
+          "file": "jsx_tag_checker.py",
+          "line": 17,
+          "range": "jsx_tag_checker.py:17",
+          "kind": "descriptive_block",
+          "text": "Strip TypeScript generic type arguments BEFORE tag matching. Patterns like useRef<HTMLDivElement>, useState<Message[]>, Array<T>, Promise<void> are indistinguishable from JSX opening tags to the regex below \u2014 so blank them out. We use a two-pass approach: known hook/utility names first, then any Pas"
+        },
+        {
+          "file": "jsx_tag_checker.py",
+          "line": 27,
+          "range": "jsx_tag_checker.py:27",
+          "kind": "descriptive_block",
+          "text": "Also catch PascalCase<...> that is NOT preceded by a literal '<' (i.e. not a JSX tag open)"
+        },
+        {
+          "file": "jsx_tag_checker.py",
+          "line": 31,
+          "range": "jsx_tag_checker.py:31",
+          "kind": "descriptive_block",
+          "text": "Repeat until stable (handles nested like Promise<Array<T>>)"
+        }
+      ],
+      "functions_index": [
+        "jsx_tag_checker.py:5-161",
+        "jsx_tag_checker.py:30-38",
+        "jsx_tag_checker.py:42-62"
+      ]
+    }
+  ],
+  "mode": "full_recon",
+  "snap": {
+    "name": "pyslick-recon-20260913-202714",
+    "ref_at_creation": "stash@{0}",
+    "created_at": "2026-09-13T20:27:15",
+    "branch": "main",
+    "dirty_count_at_snap": 36,
+    "dirty_files_at_snap": [
+      " D .github/workflows/pylint.yml",
+      " D README.md",
+      " D pyslick_package/prerequistes.md",
+      " D pyslick_package/pyslick.bat",
+      " D pyslick_package/pyslick_pkg/README.md",
+      " D pyslick_package/pyslick_pkg/debugger.py",
+      " D pyslick_package/pyslick_pkg/dist/miamico_pyslick-0.2.1-py3-none-any.whl",
+      " D pyslick_package/pyslick_pkg/dist/miamico_pyslick-0.2.1.tar.gz",
+      " D pyslick_package/pyslick_pkg/install.bat",
+      " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/PKG-INFO",
+      " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/SOURCES.txt",
+      " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/dependency_links.txt",
+      " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/entry_points.txt",
+      " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/requires.txt",
+      " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/top_level.txt",
+      " D pyslick_package/pyslick_pkg/pyproject.toml",
+      " D pyslick_package/pyslick_pkg/pyslick.egg-info/PKG-INFO",
+      " D pyslick_package/pyslick_pkg/pyslick.egg-info/SOURCES.txt",
+      " D pyslick_package/pyslick_pkg/pyslick.egg-info/dependency_links.txt",
+      " D pyslick_package/pyslick_pkg/pyslick.egg-info/entry_points.txt"
+    ]
+  },
+  "keyword_terms": [],
+  "keyword_functions": [],
+  "centrality": [],
+  "git": {
+    "is_repo": true,
+    "branch": "main",
+    "remote_url": "https://github.com/renneco27-crypto/Pyslick-2.0-by-Rence.git",
+    "upstream": "origin/main",
+    "ahead": 0,
+    "behind": 0,
+    "dirty_count": 2,
+    "dirty_files": [
+      "?? pyslick_package/pyslick_pkg/pyslick/.pyslick/checkpoints.json",
+      "?? pyslick_package/pyslick_pkg/pyslick/.pyslick/index.json"
+    ],
+    "last_commit": "60bae5e Update ask.py: Paths \u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac...; background.js: Relay proxy \u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac..."
+  },
+  "git_log": [
+    {
+      "hash": "60bae5e",
+      "date": "2026-09-12",
+      "author": "Lawrence Cortes",
+      "subject": "Update ask.py: Paths \u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac...; background.js: Relay proxy \u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac..."
+    },
+    {
+      "hash": "359f2f2",
+      "date": "2026-09-12",
+      "author": "Lawrence Cortes",
+      "subject": "Update agent.py.20260912_164059_006088.bak: !/usr/bin/env python3; agent.py: Collect context the same way recon-pack does"
+    },
+    {
+      "hash": "74cdd67",
+      "date": "2026-09-12",
+      "author": "Lawrence Cortes",
+      "subject": "Update agent.py: Priority: relay \u00e2\u2020\u2019 API \u00e2\u2020\u2019 local LLM \u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac\u00e2\u201d\u20ac..."
+    },
+    {
+      "hash": "6f8b6d9",
+      "date": "2026-09-12",
+      "author": "Lawrence Cortes",
+      "subject": "Update agent.py (_relay_active)"
+    },
+    {
+      "hash": "b96fa0b",
+      "date": "2026-09-12",
+      "author": "Lawrence Cortes",
+      "subject": "Update relay_server.py (is_running)"
+    },
+    {
+      "hash": "5a4a01c",
+      "date": "2026-09-12",
+      "author": "Lawrence Cortes",
+      "subject": "Update learned_intents.json, relay_server.py, response_watcher.py"
+    },
+    {
+      "hash": "6780f20",
+      "date": "2026-09-12",
+      "author": "Lawrence Cortes",
+      "subject": "Update agent.py: \"N commits ago\" -> HEAD~N"
+    },
+    {
+      "hash": "7805ec7",
+      "date": "2026-09-12",
+      "author": "Lawrence Cortes",
+      "subject": "Update agent.py: Shebang lines (\"#!/usr/bin/env python3\") are never a desc..."
+    },
+    {
+      "hash": "f691278",
+      "date": "2026-09-12",
+      "author": "Lawrence Cortes",
+      "subject": "Update agent.py: A previous 'git pull' left an unresolved merge. Check"
+    },
+    {
+      "hash": "b56be55",
+      "date": "2026-09-12",
+      "author": "Lawrence Cortes",
+      "subject": "lawereje"
+    }
+  ],
+  "git_stash": [
+    {
+      "ref": "stash@{0}",
+      "message": "On main: pyslick-recon-20260913-202714",
+      "date": "2026-09-13 20:27:15 -0700",
+      "branch_note": "On main: pyslick-recon-20260913-202714"
+    },
+    {
+      "ref": "stash@{1}",
+      "message": "On main: pyslick-recon-20260913-195332",
+      "date": "2026-09-13 19:53:32 -0700",
+      "branch_note": "On main: pyslick-recon-20260913-195332"
+    }
+  ],
+  "snaps": [
+    {
+      "name": "pyslick-recon-20260913-202714",
+      "ref_at_creation": "stash@{0}",
+      "created_at": "2026-09-13T20:27:15",
+      "branch": "main",
+      "dirty_count_at_snap": 36,
+      "dirty_files_at_snap": [
+        " D .github/workflows/pylint.yml",
+        " D README.md",
+        " D pyslick_package/prerequistes.md",
+        " D pyslick_package/pyslick.bat",
+        " D pyslick_package/pyslick_pkg/README.md",
+        " D pyslick_package/pyslick_pkg/debugger.py",
+        " D pyslick_package/pyslick_pkg/dist/miamico_pyslick-0.2.1-py3-none-any.whl",
+        " D pyslick_package/pyslick_pkg/dist/miamico_pyslick-0.2.1.tar.gz",
+        " D pyslick_package/pyslick_pkg/install.bat",
+        " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/PKG-INFO",
+        " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/SOURCES.txt",
+        " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/dependency_links.txt",
+        " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/entry_points.txt",
+        " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/requires.txt",
+        " D pyslick_package/pyslick_pkg/miamico_pyslick.egg-info/top_level.txt",
+        " D pyslick_package/pyslick_pkg/pyproject.toml",
+        " D pyslick_package/pyslick_pkg/pyslick.egg-info/PKG-INFO",
+        " D pyslick_package/pyslick_pkg/pyslick.egg-info/SOURCES.txt",
+        " D pyslick_package/pyslick_pkg/pyslick.egg-info/dependency_links.txt",
+        " D pyslick_package/pyslick_pkg/pyslick.egg-info/entry_points.txt"
+      ],
+      "live_ref": ""
+    }
+  ]
+}
