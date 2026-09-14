@@ -3245,7 +3245,20 @@ def _run_local_agent(directive: str) -> None:
             _pack_path = write_pack(pack)
             print(f"{DIM}  pack -> {_pack_path}{RST}")
             for _f in pack.get("files", []):
-                print(f"  - {_f.get('path')}  ({_f.get('mode')}, {_f.get('line_count')} lines)")
+                print(f"\n{BOLD}{_f.get('path')}{RST}  {DIM}({_f.get('mode')}, {_f.get('line_count')} lines){RST}")
+                for _h in _f.get("hits", []):
+                    print(f"  {CYAN}L{_h.get('line')}{RST} {_h.get('name') or _h.get('kind') or ''}  {DIM}{_h.get('kind')}{RST}")
+                    _txt = (_h.get("text") or "").strip()
+                    if _txt:
+                        print(f"    {_txt[:800]}")
+                for _s in _f.get("snippets", []):
+                    print(f"  {CYAN}L{_s.get('start_line')}-{_s.get('end_line')}{RST} {DIM}({_s.get('matched_term')}){RST}")
+                    _txt = (_s.get("text") or "").strip()
+                    if _txt:
+                        print(f"    {_txt[:800]}")
+                _c = _f.get("content")
+                if _c:
+                    print(f"  {DIM}[full file: {len(_c)} chars]{RST}")
             return
     except Exception as _router_err:
         print(f"  [router block error: {type(_router_err).__name__}: {_router_err}]")

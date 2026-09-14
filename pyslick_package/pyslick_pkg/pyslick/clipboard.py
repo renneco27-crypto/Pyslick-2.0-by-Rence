@@ -192,11 +192,11 @@ _RST   = "\033[0m"
 def _print_footer(buf_len: int) -> None:
     """Print the copy-offer footer after a command finishes."""
     lines = f"{buf_len:,} chars"
-    bar   = "â”€" * 52
+    bar   = "\u2500" * 52
     print(f"\n{_DIM}{bar}{_RST}")
     print(
-        f"  {_GREEN}âœ”{_RST} Output captured  {_DIM}({lines}){_RST}"
-        f"  â”‚  {_BOLD}Press Ctrl+C to copy to clipboard{_RST}"
+        f"  {_GREEN}\u2714{_RST} Output captured  {_DIM}({lines}){_RST}"
+        f"  \u2502  {_BOLD}Press Ctrl+C to copy to clipboard{_RST}"
     )
     print(
         f"  {_DIM}Or run:{_RST}  {_CYAN}pyslick copy{_RST}"
