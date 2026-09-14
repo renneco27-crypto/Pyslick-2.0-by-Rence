@@ -788,7 +788,7 @@ def _llm_keywords(directive, max_terms=8):
 # Main: full recon
 # ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 
-def run_full_recon(directive, root=".", budget=None, checkpoint=True):
+def run_full_recon(directive, root=".", budget=None, checkpoint=False):
     """
     Comprehensive READ-ONLY recon. Superset of run_universal_recon().
     If the git tree is dirty, creates a named stash snap first.
@@ -842,4 +842,5 @@ def run_full_recon(directive, root=".", budget=None, checkpoint=True):
     pack["snaps"] = list_snaps(root=root)
 
     return pack
+
 
