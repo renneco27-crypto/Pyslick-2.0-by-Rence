@@ -3311,11 +3311,6 @@ def _run_local_agent(directive: str) -> None:
             # Set intent and skip classifier; handler is further down.
             intent = "find_symbol"
             _skip_router = True
-        elif _r == "find_symbol":
-            # "where is X defined" / "find X" / "definition of X".
-            # Set intent and skip classifier; handler is further down.
-            intent = "find_symbol"
-            _skip_router = True
         elif _r == "recon_full":
             from recon_semantic import run_full_recon
             from recon_pack import write_pack
@@ -3334,10 +3329,19 @@ def _run_local_agent(directive: str) -> None:
             from recon_semantic import run_universal_recon
             from recon_pack import write_pack
             pack = run_universal_recon(active_directive)
-            _pack_path = write_pack(pack)
-            print(f"{DIM}  pack -> {_pack_path}{RST}")
             _rel = pack.get("relation") or {}
             _rel_answered = bool(_rel.get("is_relation_query") and _rel.get("paths"))
+            _rel_failed = bool(_rel.get("is_relation_query") and not _rel.get("paths"))
+            if not pack.get("files") and not _rel.get("is_relation_query"):
+                print(f"{DIM}  no strong matches for: {active_directive}{RST}")
+                print(f"{DIM}  try: pyslick find <symbol>  |  pyslick grep <file> <term>{RST}")
+                return
+            if _rel_failed:
+                print(f"\n{BOLD}RELATION{RST}  {_rel.get('entities')}")
+                print(f"{DIM}  {_rel.get('note') or 'no path found'}{RST}")
+                print(f"{DIM}  try: pyslick find <symbol>  |  pyslick grep <file> <term>{RST}")
+                return
+            _pack_path = write_pack(pack)
             if _rel_answered:
                 print(f"\n{BOLD}RELATION{RST}  {_rel.get('entities')}")
                 print(f"{DIM}  confidence: {_rel.get('confidence')}  —  {_rel.get('note')}{RST}")
@@ -3359,9 +3363,7 @@ def _run_local_agent(directive: str) -> None:
                         print(f"  {DIM}(could not read source: {_e}){RST}")
                 print(f"\n{DIM}  for broader context run: pyslick recon-pack '{active_directive}'{RST}")
                 return
-            elif _rel.get("is_relation_query"):
-                print(f"\n{BOLD}RELATION{RST}  {_rel.get('entities')}")
-                print(f"{DIM}  {_rel.get('note') or 'no path found'}{RST}")
+
             for _f in pack.get("files", []):
                 print(f"\n{BOLD}{_f.get('path')}{RST}  {DIM}({_f.get('mode')}, {_f.get('line_count')} lines){RST}")
                 for _h in _f.get("hits", []):
