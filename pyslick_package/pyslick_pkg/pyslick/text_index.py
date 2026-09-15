@@ -191,26 +191,59 @@ def build_text_index(root: str = ".") -> dict:
         "n_docs": n_docs,
     }
 
-def find_files_by_name(query: str, files: list[str], top_k: int = 5):
-    """If the query contains a filename-shaped token, return files whose
-    basename matches it. Runs before content search."""
-    import os as _os
+def find_files_by_name(query: str, files: list[str], top_k: int = 5) -> list[tuple[str, float, list[str]]]:
+    """Filename-first search. Returns files whose basename matches a
+    filename-shaped token in the query. Tight matching: exact basename,
+    or prefix with . or _ separator. No loose substring.
+
+    Returns [(filepath, score, matched_tokens)], or [] if no filename tokens.
+    """
     import re as _re
-    # Extract things that look like filenames: contain a dot + extension,
-    # or an underscore like activity_main, or CamelCase.java, etc.
-    candidates = _re.findall(r"[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,5}", query)
-    candidates += _re.findall(r"[a-z]+_[a-z_]+", query)  # activity_main style
+    import os as _os
+
+    ext_matches = _re.findall(r"[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,6}\b", query)
+    underscore_matches = _re.findall(r"\b[a-z]+_[a-z_]+\b", query)
+    candidates = list(dict.fromkeys(ext_matches + underscore_matches))
+
+    # CamelCase fallback: require 6+ chars total to avoid JSON/HTML/HTTP false positives.
+    if not candidates:
+        camel = _re.findall(r"\b[A-Z][a-zA-Z0-9]{5,}\b", query)
+        candidates = list(dict.fromkeys(camel))
+
     if not candidates:
         return []
-    hits = []
+
+    hits: list[tuple[str, float, list[str]]] = []
+    seen: set = set()
     for c in candidates:
         c_low = c.lower()
         for f in files:
             base = _os.path.basename(f).lower()
-            if c_low == base or c_low in base:
+            if (base == c_low
+                    or base.startswith(c_low + ".")
+                    or base.startswith(c_low + "_")):
+                if f in seen:
+                    continue
+                seen.add(f)
                 hits.append((f, 1.0, [c_low]))
                 break
     return hits[:top_k]
+
+
+def _has_non_filename_token(query: str) -> bool:
+    """True if query has meaningful tokens beyond a bare filename/identifier.
+    Used to decide whether to merge filename match with BM25 results."""
+    import re as _re
+    tokens = [t.lower() for t in _re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", query) if len(t) >= 3]
+    if not tokens:
+        return False
+    stop = {"where", "what", "how", "the", "is", "are", "for", "and", "find",
+            "show", "locate", "which", "does", "did", "in", "on", "at"}
+    meaningful = [t for t in tokens if t not in stop]
+    # A single CamelCase-looking token isn't "non-filename" — it might be the file.
+    if len(meaningful) == 1 and meaningful[0][0].isupper():
+        return False
+    return len(meaningful) >= 2
 
 def search_text_index(query: str, index: dict, top_k: int = 5) -> list[tuple[str, float, list[str]]]:
     """BM25 over the built index. Returns [(filepath, score, matched_tokens)],
@@ -358,17 +391,36 @@ def search_text_index_auto(
     Returns (results, expanded_keywords_used). Keywords are [] when no
     expansion happened.
     """
-    # Filename-first: if the query names a file, return it directly.
+    # Filename-first: if the query names a file, return it directly UNLESS
+    # the query also has content tokens that should be searched.
     try:
         _files = list(index.get("doc_len", {}).keys())
         _by_name = find_files_by_name(query, _files, top_k=top_k)
     except Exception:
         _by_name = []
-    if _by_name:
+
+    if _by_name and not _has_non_filename_token(query):
+        # Pure filename query: return as-is.
         return _by_name, []
 
     seed = search_text_index(query, index, top_k=seed_k)
 
+    # If we have filename hits AND BM25 hits, merge (filename rank boosted).
+    if _by_name:
+        # Filename matches always rank first. BM25 results follow in their
+        # natural order. Don't compare scores across the two sources —
+        # they're on different scales and BM25 raw scores can exceed the
+        # filename sentinel of 1.0, producing >100% normalized values.
+        seen = {fp for fp, _s, _t in _by_name}
+        # Normalize filename scores to sit above any plausible BM25 score
+        # so the display's top-hit divisor works cleanly.
+        _top_bm25 = seed[0][1] if seed else 1.0
+        _boost = max(_top_bm25, 1.0) * 1.1
+        merged = [(fp, _boost, tk) for fp, _s, tk in _by_name]
+        for fp, sc, tk in seed:
+            if fp not in seen:
+                merged.append((fp, sc, tk))
+        seed = merged[:top_k]
     if len(seed) != 2:
         return seed, []
 

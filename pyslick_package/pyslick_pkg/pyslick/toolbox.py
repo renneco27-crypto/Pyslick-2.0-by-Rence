@@ -231,6 +231,73 @@ def _grep_via_ripgrep(path: str, patterns: list[str], context: int) -> list[tupl
     except (subprocess.TimeoutExpired, OSError, Exception):
         return None
 
+def _function_ranges_for_hits(filepath: str, hit_lines: list[int], cap: int = 80):
+    """Return [(start, end, matched_lines)] of enclosing functions.
+
+    None if the language isn't tree-sitter supported (fall back to context).
+    Only functions/methods, not classes. Overlapping hits merged.
+    """
+    try:
+        from repomap import extract_tags
+    except Exception:
+        return None
+    tags = extract_tags(filepath)
+    if not tags:
+        return None
+    funcs = [t for t in tags if t.is_def and "class" not in t.kind.lower()]
+    if not funcs:
+        return None
+
+    ranges: list[tuple[int, int, list[int]]] = []
+    for line_no in hit_lines:
+        enclosing = [t for t in funcs if t.start_line <= line_no <= t.end_line]
+        if not enclosing:
+            ranges.append((line_no, line_no, [line_no]))
+            continue
+        best = min(enclosing, key=lambda t: t.end_line - t.start_line)
+        ranges.append((best.start_line, best.end_line, [line_no]))
+
+    merged: list[tuple[int, int, list[int]]] = []
+    for start, end, hits_in in sorted(ranges):
+        if merged and start <= merged[-1][1] + 1:
+            p_start, p_end, p_hits = merged[-1]
+            merged[-1] = (p_start, max(p_end, end), sorted(set(p_hits + hits_in)))
+        else:
+            merged.append((start, end, hits_in))
+    return merged
+
+
+def _print_function_range(lines: list[str], start: int, end: int,
+                          hit_lines: set[int], matched_patterns: dict[int, str],
+                          cap: int = 80):
+    total = end - start + 1
+    if total > cap:
+        first_end = start + 14
+        last_start = end - 4
+        mid_lo = max(first_end + 1, min(hit_lines) - 10)
+        mid_hi = min(last_start - 1, max(hit_lines) + 10)
+        segments = [(start, first_end), (mid_lo, mid_hi), (last_start, end)]
+    else:
+        segments = [(start, end)]
+
+    prev_end = start - 2
+    for seg_start, seg_end in segments:
+        seg_start = max(seg_start, start)
+        seg_end = min(seg_end, end)
+        if seg_start > prev_end + 1:
+            print(f"{DIM}  ...{RST}")
+        for j in range(seg_start, seg_end + 1):
+            idx = j - 1
+            if idx < 0 or idx >= len(lines):
+                continue
+            is_hit = j in hit_lines
+            marker = f"{GREEN}>{RST}" if is_hit else " "
+            tag = f"{YELL}[{matched_patterns.get(j, '')}]{RST} " if is_hit else ""
+            print(f"{marker} {DIM}{j:4d}:{RST} {tag}{lines[idx].rstrip()}")
+        prev_end = seg_end
+    if total > cap:
+        print(f"{DIM}  [function truncated — {total} lines total]{RST}")
+    print()
 
 def mode_grep(filepath: str, patterns: list[str], context: int = 1):
     # ── normalize: if a pattern arrived containing '|' (e.g. from a shell
@@ -259,6 +326,26 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
         # same lack of dedup for overlapping windows) rather than reusing
         # tool_grep's seen_ranges skip — that's a different tool's semantics.
         print(f"{BOLD}{filepath}{RST} — {len(rg_hits)} match(es) {DIM}(via ripgrep){RST}")
+        hit_lines = [h[0] + 1 for h in rg_hits]
+        matched_patterns = {h[0] + 1: h[1] for h in rg_hits}
+        try:
+            with open(filepath, "r", encoding="utf-8", errors="replace") as _f:
+                src_lines = _f.readlines()
+        except OSError:
+            src_lines = []
+        ranges = _function_ranges_for_hits(filepath, hit_lines) if src_lines else None
+        if ranges:
+            for r_start, r_end, r_hits in ranges:
+                if r_start == r_end:
+                    j = r_start
+                    if 1 <= j <= len(src_lines):
+                        print(f"{GREEN}>{RST} {DIM}{j:4d}:{RST} {YELL}[{matched_patterns.get(j, '')}]{RST} {src_lines[j-1].rstrip()}")
+                    print()
+                    continue
+                _print_function_range(src_lines, r_start, r_end,
+                                      set(r_hits), matched_patterns)
+            return
+        # Fallback: existing context-window output
         last_printed = -1
         for line_idx, matched_pattern, window in rg_hits:
             lo, hi = max(0, line_idx - context), line_idx + context
@@ -289,6 +376,21 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
         return
 
     print(f"{BOLD}{filepath}{RST} — {len(hits)} match(es)")
+    hit_lines = [h[0] + 1 for h in hits]
+    matched_patterns = {h[0] + 1: h[1] for h in hits}
+    ranges = _function_ranges_for_hits(filepath, hit_lines)
+    if ranges:
+        for r_start, r_end, r_hits in ranges:
+            if r_start == r_end:
+                j = r_start
+                if 1 <= j <= len(lines):
+                    print(f"{GREEN}>{RST} {DIM}{j:4d}:{RST} {YELL}[{matched_patterns.get(j, '')}]{RST} {lines[j-1].rstrip()}")
+                print()
+                continue
+            _print_function_range(lines, r_start, r_end,
+                                  set(r_hits), matched_patterns)
+        return
+    # Fallback: existing context-window output
     last_printed = -1
     for line_idx, matched_pattern in hits:
         start = max(0, line_idx - context)
