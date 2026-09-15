@@ -764,14 +764,36 @@ def is_ai_multi_patch(text: str) -> bool:
 # Modes
 # ─────────────────────────────────────────────────────────────────────────
 
-def mode_show_lines(filepath: str):
-    """Print the file with 1-indexed line numbers."""
+def mode_show_lines(filepath: str, start: int | None = None, end: int | None = None):
+    """Print the file with 1-indexed line numbers.
+
+    Optional start/end limit the output:
+        pyslick patchit file.tsx -l              # whole file
+        pyslick patchit file.tsx -l 17           # only line 17
+        pyslick patchit file.tsx -l 10-25        # lines 10 through 25
+        pyslick patchit file.tsx -l 10:25        # same
+        pyslick patchit file.tsx -l --head 20    # first 20 lines
+        pyslick patchit file.tsx -l --tail 20    # last 20 lines
+    """
     if not os.path.exists(filepath):
         print(f"{RED}Error: File '{filepath}' does not exist.{RESET}")
         return
     with open(filepath, "r", encoding="utf-8", errors="replace") as f:
-        for i, line in enumerate(f, start=1):
-            print(f"{DIM}{i:5d}{RESET}  {line.rstrip()}")
+        all_lines = f.readlines()
+
+    total = len(all_lines)
+    lo = 1 if start is None else max(1, start)
+    hi = total if end is None else min(total, end)
+
+    if start is not None and end is None and start > 0:
+        # single-line mode
+        hi = min(total, start)
+
+    for i in range(lo - 1, hi):
+        print(f"{DIM}{i + 1:5d}{RESET}  {all_lines[i].rstrip()}")
+
+    if lo > 1 or hi < total:
+        print(f"{DIM}... ({total} lines total; showing {lo}-{hi}){RESET}")
 
 
 def mode_smart_patch(filepath: str | None = None, initial_paste: str | None = None, verify_cmd: str | None = None):
@@ -1073,11 +1095,32 @@ def mode_paste(filepath: str):
     if shrank_a_lot or near_empty:
         print(f"\n{YELLOW}[SAFETY WARNING] File has {orig_line_cnt} lines, "
               f"but the paste you gave has only {new_line_cnt} lines.{RESET}")
-        print(f"{DIM}To edit specific lines instead, use: pyslick patchit <file> -f (or -a){RESET}")
+        print(f"{CYAN}Looks like a small edit. Trying Find & Replace first.{RESET}")
+        find_str = raw_input_text.strip("\n")
+        found = False
+        matched_span = find_str
+        if find_str and find_str in original:
+            print(f"{GREEN}  Matched your paste exactly.{RESET}")
+            found = True
+        elif find_str:
+            located = _locate_block(find_str, original, filepath=filepath)
+            if located:
+                matched_span, kind = located
+                print(f"{YELLOW}  Matched via {kind}.{RESET}")
+                found = True
+        if found:
+            replace_block = read_multiline_input("Replace with (paste NEW block)")
+            fixed = reindent_to_match(matched_span, replace_block)
+            modified = original.replace(matched_span, fixed, 1)
+            changed = show_diff(original, modified, filepath)
+            if changed and confirm():
+                write_with_safety(filepath, modified)
+            return
+        print(f"{YELLOW}Could not locate your paste in the file.{RESET}")
+        print(f"{DIM}Falling back to whole-file overwrite. This will replace all {orig_line_cnt} lines.{RESET}")
         if not confirm_phrase("OVERWRITE", "Type OVERWRITE (all caps) to replace the ENTIRE file anyway: "):
             print(f"{YELLOW}Aborted — nothing was written.{RESET}")
             return
-
     modified = "\n".join(lines)
     if not modified.endswith("\n") and lines:
         modified += "\n"
@@ -1165,7 +1208,31 @@ def main():
     elif flag in ("-i", "--insert"):
         mode_insert(filepath)
     elif flag in ("-l", "--lines"):
-        mode_show_lines(filepath)
+        extra_args = sys.argv[3:]
+        start = None
+        end = None
+        for a in extra_args:
+            if a in ("--head",):
+                continue
+            if a in ("--tail",):
+                continue
+            m = re.match(r"^(\d+)(?:[-:](\d+))?$", a)
+            if m:
+                start = int(m.group(1))
+                end = int(m.group(2)) if m.group(2) else (start if "-" not in a and ":" not in a else None)
+                break
+        # --head N / --tail N
+        for i, a in enumerate(extra_args):
+            if a == "--head" and i + 1 < len(extra_args) and extra_args[i+1].isdigit():
+                start = 1
+                end = int(extra_args[i+1])
+            if a == "--tail" and i + 1 < len(extra_args) and extra_args[i+1].isdigit():
+                with open(filepath, "r", encoding="utf-8", errors="replace") as _f:
+                    _total = len(_f.readlines())
+                n = int(extra_args[i+1])
+                start = max(1, _total - n + 1)
+                end = _total
+        mode_show_lines(filepath, start=start, end=end)
     elif flag == "--check":
         if os.path.exists(filepath):
             syntax_err = validate_syntax(filepath, read_file(filepath))

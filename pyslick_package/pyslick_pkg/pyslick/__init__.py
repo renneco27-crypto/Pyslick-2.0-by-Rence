@@ -615,10 +615,31 @@ def main():
                     sys.exit(1)
                 try:
                     _, mode_lines, _ = import_toolbox()
-                    mode_lines(args[0])
+                    file_path = args[0]
+                    start = None
+                    end = None
+                    rest = args[1:]
+                    if "--head" in rest:
+                        i = rest.index("--head")
+                        if i + 1 < len(rest) and rest[i+1].isdigit():
+                            start = 1
+                            end = int(rest[i+1])
+                    elif "--tail" in rest:
+                        i = rest.index("--tail")
+                        if i + 1 < len(rest) and rest[i+1].isdigit():
+                            with open(file_path, "r", encoding="utf-8", errors="replace") as _f:
+                                _total = len(_f.readlines())
+                            start = max(1, _total - int(rest[i+1]) + 1)
+                            end = _total
+                    elif rest and not rest[0].startswith("--"):
+                        import re as _re
+                        m = _re.match(r"^(\d+)(?:[-:](\d+))?$", rest[0])
+                        if m:
+                            start = int(m.group(1))
+                            end = int(m.group(2)) if m.group(2) else start
+                    mode_lines(file_path, start=start, end=end)
                 except Exception as e:
                     print(f"Error: {e}")
-                    sys.exit(1)
 
             elif command == "grep":
                 if len(args) < 2:

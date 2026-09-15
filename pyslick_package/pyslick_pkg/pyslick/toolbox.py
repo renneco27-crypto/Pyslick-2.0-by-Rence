@@ -160,21 +160,10 @@ def mode_ls(root: str = ".", names_only: bool = True):
         print(f"{DIM}(no files found under '{root}'){RST}")
 
 
-# ─────────────────────────────────────────────────────────────────────────
-# lines  ==  Get-Content | ForEach-Object numbered
-# ─────────────────────────────────────────────────────────────────────────
-def mode_lines(filepath: str):
-    if not os.path.exists(filepath):
-        print(f"{RED}Error: File '{filepath}' does not exist.{RST}")
-        sys.exit(1)
-    with open(filepath, "r", encoding="utf-8", errors="replace") as f:
-        for i, line in enumerate(f, start=1):
-            print(f"{i:03d}: {line.rstrip()}")
-
 
 # ─────────────────────────────────────────────────────────────────────────
 # grep  ==  Select-String -Pattern ... -Context N,N
-# ─────────────────────────────────────────────────────────────────────────
+# ────────────────────────c─────────────────────────────────────────────────
 _RG_BIN = None  # cached: resolved ripgrep binary path, or "" if unavailable
 
 
@@ -183,6 +172,26 @@ def _ripgrep_binary() -> str:
     if _RG_BIN is None:
         _RG_BIN = shutil.which("rg") or ""
     return _RG_BIN
+def mode_lines(filepath: str, start: int | None = None, end: int | None = None):
+    if not os.path.exists(filepath):
+        print(f"{RED}Error: File '{filepath}' does not exist.{RST}")
+        sys.exit(1)
+    with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+        all_lines = f.readlines()
+
+    total = len(all_lines)
+    lo = 1 if start is None else max(1, start)
+    hi = total if end is None else min(total, end)
+
+    if start is not None and end is None and start > 0:
+        hi = min(total, start)
+
+    for i in range(lo - 1, hi):
+        print(f"{i + 1:03d}: {all_lines[i].rstrip()}")
+
+    if lo > 1 or hi < total:
+        print(f"... ({total} lines total; showing {lo}-{hi})")
+
 
 
 def _grep_via_ripgrep(path: str, patterns: list[str], context: int) -> list[tuple] | None:
@@ -299,6 +308,12 @@ def main():
 
     p_lines = sub.add_parser("lines")
     p_lines.add_argument("file")
+    p_lines.add_argument("range", nargs="?", default=None,
+                         help="line number, or start-end (e.g. 17 or 10-25 or 10:25)")
+    p_lines.add_argument("--head", type=int, default=None,
+                         help="show first N lines")
+    p_lines.add_argument("--tail", type=int, default=None,
+                         help="show last N lines")
 
     p_grep = sub.add_parser("grep")
     p_grep.add_argument("file")
@@ -310,7 +325,25 @@ def main():
     if args.cmd == "ls":
         mode_ls(args.root, names_only=not args.full_path)
     elif args.cmd == "lines":
-        mode_lines(args.file)
+        start = None
+        end = None
+        if args.head is not None:
+            start = 1
+            end = args.head
+        elif args.tail is not None:
+            with open(args.file, "r", encoding="utf-8", errors="replace") as _f:
+                _total = len(_f.readlines())
+            start = max(1, _total - args.tail + 1)
+            end = _total
+        elif args.range:
+            m = re.match(r"^(\d+)(?:[-:](\d+))?$", args.range)
+            if m:
+                start = int(m.group(1))
+                end = int(m.group(2)) if m.group(2) else start
+            else:
+                print(f"{RED}Bad range: {args.range}{RST}")
+                sys.exit(1)
+        mode_lines(args.file, start=start, end=end)
     elif args.cmd == "grep":
         mode_grep(args.file, args.patterns, context=args.context)
     else:
