@@ -812,6 +812,15 @@ def main():
                 except Exception as e:
                     print(f"Error: {e}")
                     sys.exit(1)
+            elif command == "runrepo":
+                import subprocess
+                import os as _os
+                target = args[0] if args else _os.getcwd()
+                bat = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "scripts", "runrepo.bat")
+                if not _os.path.isfile(bat):
+                    print(f"[runrepo] missing script: {bat}")
+                    sys.exit(1)
+                subprocess.call([bat, target], shell=True)
 
             elif command == "ask":
                 if not args:
@@ -832,6 +841,22 @@ def main():
                 # is routed directly to the AI agent. Reassemble argv into a
                 # single directive string so flags like --full / --grep X
                 # survive as text instead of tripping agent's argparse.
+                # Ask the local router what this is before sending to the agent.
+                try:
+                    from .router import route as _route
+                    _intent = _route(_joined) if "_joined" in dir() else _route(" ".join([command] + args))
+                except Exception:
+                    _intent = None
+
+                if _intent == "run_repo":
+                    import subprocess
+                    import os as _os
+                    bat = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "scripts", "runrepo.bat")
+                    if _os.path.isfile(bat):
+                        subprocess.call([bat, _os.getcwd()], shell=True)
+                        return
+                    print(f"[run_repo] script missing: {bat}")
+      
                 directive_args = [command] + args
                 _joined = " ".join(directive_args)
                 try:

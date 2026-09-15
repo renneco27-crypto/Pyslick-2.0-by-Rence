@@ -39,6 +39,7 @@ VALID_INTENTS = [
     "grep",
     "help",
     "comment_scan",
+    "run_repo",
 ]
 
 
@@ -115,6 +116,20 @@ def _rule_route(directive: str) -> str:
     d = (directive or "").lower().strip()
     if not d:
         return "recon"
+
+    # Run-repo — checked FIRST so "how to run this repo" never falls
+    # through to recon.
+    if any(k in d for k in (
+        "how to run", "how do i run", "how do you run",
+        "run this repo", "run the repo", "run this project",
+        "start this repo", "start the repo", "start this project",
+        "getting started", "getting-started",
+        "how to install", "how do i install",
+        "how to set up", "how to setup",
+        "how to build", "how do i build",
+        "what command", "what commands",
+    )):
+        return "run_repo"
 
     # Run-repo — checked FIRST so "how to run this repo" never falls
     # through to recon. Matches install/setup/start/getting-started style
