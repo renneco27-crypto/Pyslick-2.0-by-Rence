@@ -3666,6 +3666,19 @@ def _run_local_agent(directive: str) -> None:
             intent = "what_columns"
             _skip_router = True
 
+        elif _r == "run_repo":
+            # "how to run this repo" / "getting started" / "how to install".
+            # Run scripts/runrepo.bat and stop — no classifier, no agent.
+            import subprocess as _sp
+            import os as _os2
+            _bat = _os2.path.join(_os2.path.dirname(_os2.path.abspath(__file__)), "scripts", "runrepo.bat")
+            if _os2.path.isfile(_bat):
+                _target = _os2.environ.get("Pyslick_TARGET") or _os2.getcwd()
+                _sp.call([_bat, _target], shell=True)
+                return
+            print(f"[run_repo] script missing: {_bat}")
+            return
+
         elif _r == "recon_full":
             from recon_semantic import run_full_recon
             from recon_pack import write_pack

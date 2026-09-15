@@ -848,12 +848,12 @@ def main():
                 except Exception:
                     _intent = None
 
-                if _intent == "run_repo":
                     import subprocess
                     import os as _os
                     bat = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "scripts", "runrepo.bat")
                     if _os.path.isfile(bat):
-                        subprocess.call([bat, _os.getcwd()], shell=True)
+                        target = _os.environ.get("Pyslick_TARGET") or _os.getcwd()
+                        subprocess.call([bat, target], shell=True)
                         return
                     print(f"[run_repo] script missing: {bat}")
       

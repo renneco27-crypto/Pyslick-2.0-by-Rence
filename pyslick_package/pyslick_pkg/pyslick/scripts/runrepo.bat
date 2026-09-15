@@ -34,7 +34,7 @@ if exist "%REPO%\package.json" (
     echo   Lint:     !PKG_MGR! run lint
     echo.
     echo   Scripts actually declared in package.json:
-    powershell -NoProfile -Command "$j = Get-Content '%REPO%\package.json' -Raw | ConvertFrom-Json; if ($j.scripts) { $j.scripts.PSObject.Properties | ForEach-Object { Write-Host ('    {0,-20} -> {1}' -f $_.Name, $_.Value) } } else { Write-Host '    (no scripts)' }"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$j = Get-Content -Raw -Path '%REPO%\package.json' | ConvertFrom-Json; $j.scripts.PSObject.Properties | ForEach-Object { Write-Host ('    {0,-20} -> {1}' -f $_.Name, $_.Value) }"
     echo.
 )
 if exist "%REPO%\pyproject.toml" (
