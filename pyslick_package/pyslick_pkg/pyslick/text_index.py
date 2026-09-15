@@ -24,17 +24,49 @@ from repomap import collect_files
 _CAMEL = re.compile(r"([a-z0-9])([A-Z])")
 _WORD = re.compile(r"[a-zA-Z0-9]+")
 
+# NLTK stopwords + Snowball stemmer. Loaded lazily so import never fails
+# hard if the data files are missing — falls back to a small inline set.
+_STOPWORDS: set[str] | None = None
+_STEMMER = None
+_STEM_FALLBACK = frozenset({
+    "a", "an", "and", "are", "as", "at", "be", "by", "do", "does", "for",
+    "from", "has", "have", "how", "in", "is", "it", "its", "me", "my",
+    "of", "on", "or", "that", "the", "this", "to", "was", "were", "what",
+    "when", "where", "which", "who", "why", "will", "with", "you", "your",
+})
+
+
+def _load_nltk():
+    global _STOPWORDS, _STEMMER
+    if _STOPWORDS is not None:
+        return
+    try:
+        from nltk.corpus import stopwords as _sw
+        from nltk.stem import SnowballStemmer
+        _STOPWORDS = set(_sw.words("english"))
+        _STEMMER = SnowballStemmer("english")
+    except Exception:
+        _STOPWORDS = set(_STEM_FALLBACK)
+        _STEMMER = None
+
 
 def _tokenize_for_index(text: str) -> list[str]:
-    """Lowercase, split camelCase and snake_case, keep alnum runs.
+    """Lowercase, split camelCase and snake_case, strip stopwords, stem.
 
     Deliberately separate from repomap._tokenize (which is regex [a-z]+ and
     is load-bearing for the existing symbol search). Changing that one would
     risk the symbol path; this one is free to be better.
     """
+    _load_nltk()
     text = _CAMEL.sub(r"\1 \2", text)
     text = text.replace("_", " ").replace("-", " ")
-    return [w.lower() for w in _WORD.findall(text) if len(w) > 1]
+    out = []
+    for w in _WORD.findall(text):
+        lw = w.lower()
+        if len(lw) <= 1 or lw in _STOPWORDS:
+            continue
+        out.append(_STEMMER.stem(lw) if _STEMMER else lw)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -198,6 +230,25 @@ def search_text_index(query: str, index: dict, top_k: int = 5) -> list[tuple[str
 def format_text_results(results: list[tuple[str, float, list[str]]]) -> None:
     """Print results in a shape consistent with find-nearest-nodes output."""
     print("\n--- Text Index Matches (BM25) ---")
+    if not results:
+        print("  No text matches found.")
+        return
+    top = results[0][1] or 1.0
+    for filepath, score, toks in results:
+        pct = (score / top) * 100 if top else 0.0
+        shown = ", ".join(toks[:6])
+        print(f"  [{pct:5.1f}%]  {filepath}  <- matched: {shown}")
+    print()
+def format_text_results(results: list[tuple[str, float, list[str]]]) -> None:
+    """Print results in a shape consistent with find-nearest-nodes output."""
+    print("\n--- Text Index Matches (BM25) ---")
+    if not results:
+        print("  No text matches found.")
+        return
+    # Require at least one real token match per result. Stopword-only
+    # matches ("is", "the") collapse to zero tokens after tokenization,
+    # but belt-and-suspenders in case the fallback stopword set is active.
+    results = [r for r in results if r[2]]
     if not results:
         print("  No text matches found.")
         return
