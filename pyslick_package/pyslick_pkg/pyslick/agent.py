@@ -3649,7 +3649,24 @@ def _run_local_agent(directive: str) -> None:
     # Detect frustration / correction from user
     cleaned_directive, was_frustrated, prev_intent = _detect_frustration_and_correction(directive)
     active_directive = cleaned_directive
+    # ── Compound-query decomposition ──────────────────────────────────────
+    # If the directive contains 2+ question markers, split it into separate
+    # questions and run each through the full pipeline. Fast-paths to a
+    # single-element list for normal single-question input, so the T5 model
+    # never loads unless there are genuinely multiple questions.
+    try:
+        from decompose import decompose as _decompose
+        _sub_queries = _decompose(active_directive)
+    except Exception:
+        _sub_queries = [active_directive]
 
+    if len(_sub_queries) > 1:
+        for _i, _sq in enumerate(_sub_queries, 1):
+            print(f"\n{'=' * 60}")
+            print(f"  Q{_i}: {_sq}")
+            print('=' * 60)
+            _run_local_agent(_sq)
+        return
     # ── Repo-overview shortcut ────────────────────────────────────────────
     # Overview questions ("what does this codebase do", "app overview", …)
     # should reach the existing App Overview block (God Nodes + first
