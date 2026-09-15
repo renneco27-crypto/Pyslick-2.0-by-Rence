@@ -405,14 +405,6 @@ straight to that file. Combine multiple: "compare /a.js and /b.js".
       "describe the project", â€¦) route to the App Overview panel:
       god-node files by in-degree + their opening comments.
 
-  query <directive>
-      Same as the bare form above; "query" is just a token and is ignored
-      for routing. Kept for backwards compatibility.
-      Options:  --root, --top-files, --top-symbols, --depth, --full
-      Example:  pyslick query "what changes the mic button size"
-      Example:  pyslick "what does this codebase do?"   (overview)
-      Example:  pyslick "how does the router decide between recon and recon_full"
-
   recon <directive>
       Guided interactive pipeline: find → inspect → patch → checkpoint.
       Asks you to confirm the target file and the exact find/replace before
@@ -446,6 +438,8 @@ straight to that file. Combine multiple: "compare /a.js and /b.js".
       Default: filename only.  --full-path: relative path from root.
 
   lines <file>
+    text-search "<query>"
+        BM25 search over comments, strings, CSS classes, JSX attrs.
       Print a file with 3-digit line numbers (great for pasting into LLMs).
 
   grep <file> <pattern> [<pattern> …] [--context N]
@@ -695,6 +689,21 @@ def main():
                     print(f"Error: {e}")
                     print("Note: This command requires graphify output in graphify-out/graph.json")
                     print("Run 'graphify extract .' first to generate the graph output.")
+                    sys.exit(1)
+
+            elif command == "text-search":
+                if not args:
+                    print('Error: text-search requires a query, e.g. pyslick text-search "purple cursor"')
+                    sys.exit(1)
+                try:
+                    from text_index import (
+                        build_text_index, search_text_index, format_text_results,
+                    )
+                    _idx = build_text_index(".")
+                    _results = search_text_index(" ".join(args), _idx)
+                    format_text_results(_results)
+                except Exception as e:
+                    print(f"Error: {e}")
                     sys.exit(1)
 
             elif command == "find-stray-symbols":

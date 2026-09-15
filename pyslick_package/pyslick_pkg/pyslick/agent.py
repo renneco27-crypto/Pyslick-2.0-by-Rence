@@ -1453,6 +1453,54 @@ def _classify_intent(directive: str) -> str:
       - Single-word patterns scored word-by-word so a short word like 'patch'
         cannot outscore a typo of a longer phrase like 'how it connects'.
     """
+_CONCEPT_VERBS = ("where is", "where are", "find", "locate", "show me", "which file")
+
+
+def _looks_like_concept_query(directive: str) -> bool:
+    """True if the directive is a 'where is X' style lookup AND none of its
+    tokens match a graph node label. Symbol queries like
+    'where is parseCSVLine defined' return False and stay on the symbol path.
+    """
+    low = directive.lower()
+    if not any(v in low for v in _CONCEPT_VERBS):
+        return False
+    try:
+        from find_nearest_nodes import _load_with_auto_repair
+        nodes = _load_with_auto_repair(".") or []
+    except Exception:
+        nodes = []
+    labels = set()
+    for n in nodes:
+        lbl = (n.get("norm_label") or n.get("label") or "").lower()
+        if lbl:
+            labels.add(lbl)
+    if not labels:
+        return True  # no graph at all — text index is the only option
+    qtokens = [t for t in re.findall(r"[a-zA-Z0-9]+", low) if len(t) > 2]
+    for t in qtokens:
+        if t in labels:
+            return False  # a symbol matches — let the symbol path handle it
+    return True
+
+
+def _try_text_index_for_concept(directive: str):
+    """Run the BM25 index and return results only if they look meaningful.
+    Returns None when the index is empty or all scores collapse to zero.
+    """
+    try:
+        from text_index import build_text_index, search_text_index
+        idx = build_text_index(".")
+        hits = search_text_index(directive, idx)
+    except Exception:
+        return None
+    if not hits:
+        return None
+    # Require the top hit to share at least one real token with the query.
+    top_tokens = set(hits[0][2])
+    q_tokens = set(re.findall(r"[a-zA-Z0-9]+", directive.lower()))
+    if not (top_tokens & q_tokens):
+        return None
+    return hits
     intent, _, _ = _classify_intent_with_confidence(directive)
     return intent
 
@@ -3398,6 +3446,21 @@ def _god_recon(directive: str) -> bool:
 
     # ---------------- no-match branch: curiosity ----------------
     if not _scored:
+        # --- Patch 1: text-index fallback ------------------------------------
+        # No graph node matched. Try BM25 over comments/strings/CSS before
+        # showing the curiosity list. This is what answers concept queries
+        # like "where is the purple cursor" that the symbol graph can't see.
+        try:
+            from text_index import (
+                build_text_index, search_text_index, format_text_results,
+            )
+            _th = search_text_index(directive, build_text_index("."))
+            if _th:
+                format_text_results(_th)
+                return True
+        except Exception:
+            pass
+        # ---------------------------------------------------------------------
         print(f"\n{BOLD}=== GOD RECON ==={RST}  {DIM}{directive}{RST}")
         print(f"{DIM}  no nodes matched this query.{RST}")
         # Top god nodes as curiosity suggestions
@@ -3701,6 +3764,22 @@ def _run_local_agent(directive: str) -> None:
             _rel_answered = bool(_rel.get("is_relation_query") and _rel.get("paths"))
             _rel_failed = bool(_rel.get("is_relation_query") and not _rel.get("paths"))
             if not pack.get("files") and not _rel.get("is_relation_query"):
+                # --- Patch 1: text-index fallback ---------------------------------
+                # Recon found no files. Before giving up, try the BM25 text
+                # index over comments/strings/CSS classes. Concept queries
+                # ("where is the purple cursor") land here because the graph
+                # has no text — this is the last chance to answer them.
+                try:
+                    from text_index import (
+                        build_text_index, search_text_index, format_text_results,
+                    )
+                    _th = search_text_index(active_directive, build_text_index("."))
+                    if _th:
+                        format_text_results(_th)
+                        return
+                except Exception:
+                    pass
+                # -------------------------------------------------------------------
                 print(f"{DIM}  no strong matches for: {active_directive}{RST}")
                 print(f"{DIM}  try: pyslick find <symbol>  |  pyslick grep <file> <term>{RST}")
                 return
@@ -3804,6 +3883,17 @@ def _run_local_agent(directive: str) -> None:
         confidence = 100.0
         top3 = [(intent, confidence)]
     else:
+        # --- Concept-query pre-check (Patch 1) -------------------------------
+        # "where is the purple cursor" has no matching symbol, so the symbol
+        # fuzzy matcher returns garbage. Try the text index first when the
+        # directive looks like a concept lookup and no symbol matches cleanly.
+        if _looks_like_concept_query(active_directive):
+            _text_hits = _try_text_index_for_concept(active_directive)
+            if _text_hits:
+                from text_index import format_text_results
+                format_text_results(_text_hits)
+                return
+        # ---------------------------------------------------------------------
         intent, confidence, top3 = _classify_intent_with_confidence(active_directive)
     dl = active_directive.lower()
     print(f"{DIM}  intent â†’ {intent}  ({confidence:.0f}%){RST}")
