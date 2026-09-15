@@ -28,6 +28,7 @@ VALID_INTENTS = [
     "agent",
     "recon_pack",
     "graph",
+    "run_repo",       # "how to run this repo" — reads package.json etc.
     "git_status",
     "git_log",
     "git_rollback",
@@ -115,7 +116,24 @@ def _rule_route(directive: str) -> str:
     if not d:
         return "recon"
 
-    # Full recon keywords (checked first â€” most specific)
+    # Run-repo — checked FIRST so "how to run this repo" never falls
+    # through to recon. Matches install/setup/start/getting-started style
+    # questions. Reads package.json / pyproject.toml / Cargo.toml / etc.
+    if any(k in d for k in (
+        "how to run", "how do i run", "how do you run",
+        "run this repo", "run the repo", "run this project",
+        "start this repo", "start the repo", "start this project",
+        "getting started", "getting-started",
+        "how to install", "how do i install",
+        "how to set up", "how to setup", "how do i setup",
+        "setup this repo", "setup the repo",
+        "how to build", "how do i build", "build this repo",
+        "what command", "what commands", "which command",
+        "how to start", "how do i start",
+    )):
+        return "run_repo"
+
+    # Full recon keywords (checked first — most specific)
     if any(k in d for k in (
         "comprehensive recon", "full recon", "describe the codebase",
         "overview of everything", "list all files and describe",
@@ -222,7 +240,17 @@ def _apply_guards(directive: str, intent: str) -> str:
         return "recon_full"
 
     return intent
-
+def _run_repo_script(root: str = ".") -> int:
+    """Call scripts/runrepo.bat (or runrepo.sh) on the given root."""
+    script_bat = os.path.join(THIS_DIR, "scripts", "runrepo.bat")
+    script_sh  = os.path.join(THIS_DIR, "scripts", "runrepo.sh")
+    import subprocess
+    if os.path.isfile(script_bat):
+        return subprocess.call([script_bat, root], shell=True)
+    if os.path.isfile(script_sh):
+        return subprocess.call(["bash", script_sh, root])
+    print(f"[run_repo] no runrepo script found in {os.path.join(THIS_DIR, 'scripts')}")
+    return 1
 
 def route(directive: str) -> str:
     """
