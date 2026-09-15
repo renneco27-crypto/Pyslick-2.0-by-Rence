@@ -191,6 +191,26 @@ def build_text_index(root: str = ".") -> dict:
         "n_docs": n_docs,
     }
 
+def find_files_by_name(query: str, files: list[str], top_k: int = 5):
+    """If the query contains a filename-shaped token, return files whose
+    basename matches it. Runs before content search."""
+    import os as _os
+    import re as _re
+    # Extract things that look like filenames: contain a dot + extension,
+    # or an underscore like activity_main, or CamelCase.java, etc.
+    candidates = _re.findall(r"[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,5}", query)
+    candidates += _re.findall(r"[a-z]+_[a-z_]+", query)  # activity_main style
+    if not candidates:
+        return []
+    hits = []
+    for c in candidates:
+        c_low = c.lower()
+        for f in files:
+            base = _os.path.basename(f).lower()
+            if c_low == base or c_low in base:
+                hits.append((f, 1.0, [c_low]))
+                break
+    return hits[:top_k]
 
 def search_text_index(query: str, index: dict, top_k: int = 5) -> list[tuple[str, float, list[str]]]:
     """BM25 over the built index. Returns [(filepath, score, matched_tokens)],
@@ -213,6 +233,16 @@ def search_text_index(query: str, index: dict, top_k: int = 5) -> list[tuple[str
 
     for tok in q_tokens:
         files = postings.get(tok)
+        if not files and len(tok) >= 4:
+            # Prefix fallback: "auth" should match "authentication",
+            # "authorization", "authToken". Merge all matching postings.
+            merged: dict[str, int] = {}
+            for p_tok, p_files in postings.items():
+                if p_tok.startswith(tok):
+                    for fp, tf in p_files.items():
+                        merged[fp] = merged.get(fp, 0) + tf
+            if merged:
+                files = merged
         if not files:
             continue
         df = len(files)
@@ -276,6 +306,46 @@ def _load_yake():
         _YAKE_EXTRACTOR = False
     return _YAKE_EXTRACTOR
 
+def find_files_by_name(query: str, files: list[str], top_k: int = 5) -> list[tuple[str, float, list[str]]]:
+    """Filename-first search. If the query contains a filename-shaped token
+    (activity_main.xml, MainActivity.java, activity_main), return files whose
+    basename matches. Runs before BM25 so exact file lookups don't get lost
+    in content-token noise.
+
+    Returns [(filepath, score, matched_tokens)], or [] if no filename tokens.
+    """
+    import re as _re
+
+    # Filename-shaped tokens: have an extension, OR use underscores.
+    ext_matches = _re.findall(r"[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,6}\b", query)
+    underscore_matches = _re.findall(r"\b[a-z]+_[a-z_]+\b", query)
+    candidates = list(dict.fromkeys(ext_matches + underscore_matches))
+
+    # Bare CamelCase names (MainActivity, UrlNavigation) as fallback.
+    if not candidates:
+        camel = _re.findall(r"\b[A-Z][a-zA-Z0-9]{3,}\b", query)
+        candidates = list(dict.fromkeys(camel))
+
+    if not candidates:
+        return []
+
+    import os as _os
+    hits: list[tuple[str, float, list[str]]] = []
+    seen: set = set()
+    for c in candidates:
+        c_low = c.lower()
+        for f in files:
+            base = _os.path.basename(f).lower()
+            # Exact basename match, or match with path separator stripped
+            if base == c_low or base.startswith(c_low + ".") or c_low in base:
+                if f in seen:
+                    continue
+                seen.add(f)
+                hits.append((f, 1.0, [c_low]))
+                break
+    return hits[:top_k]
+
+
 def search_text_index_auto(
     query: str, index: dict, top_k: int = 5, seed_k: int = 5, max_keywords: int = 12
 ) -> tuple[list[tuple[str, float, list[str]]], list[str]]:
@@ -288,6 +358,15 @@ def search_text_index_auto(
     Returns (results, expanded_keywords_used). Keywords are [] when no
     expansion happened.
     """
+    # Filename-first: if the query names a file, return it directly.
+    try:
+        _files = list(index.get("doc_len", {}).keys())
+        _by_name = find_files_by_name(query, _files, top_k=top_k)
+    except Exception:
+        _by_name = []
+    if _by_name:
+        return _by_name, []
+
     seed = search_text_index(query, index, top_k=seed_k)
 
     if len(seed) != 2:

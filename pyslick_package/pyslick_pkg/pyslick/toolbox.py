@@ -242,8 +242,13 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
     patterns = [p.strip() for p in normalized if p.strip()]
 
     if not os.path.exists(filepath):
-        print(f"{RED}Error: File '{filepath}' does not exist.{RST}")
-        sys.exit(1)
+        # Repo-relative fallback: strip leading slash, retry.
+        _alt = filepath.lstrip("/\\").replace("\\", "/")
+        if _alt and os.path.exists(_alt):
+            filepath = _alt
+        else:
+            print(f"{RED}Error: File '{filepath}' does not exist.{RST}")
+            sys.exit(1)
 
     rg_hits = _grep_via_ripgrep(filepath, patterns, context)
     if rg_hits is not None:
