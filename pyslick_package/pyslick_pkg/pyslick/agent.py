@@ -1501,7 +1501,35 @@ def _try_text_index_for_concept(directive: str):
     if not (top_tokens & q_tokens):
         return None
     return hits, _kw
+_STOP_FOR_CONTENT = frozenset({
+    "show", "me", "find", "get", "see", "view", "the", "a", "an", "in",
+    "of", "on", "at", "for", "from", "to", "with", "and", "or", "is",
+    "are", "does", "do", "what", "where", "how", "file", "contents",
+    "content", "code", "usage", "uses", "using", "line", "lines", "please",
+})
 
+
+def _extract_content_token(directive_lower: str, has_explicit: bool, has_bare: bool) -> str | None:
+    """Return the first non-stopword, non-filename token in the directive.
+    Used to detect "show me X in Y.java" — X is the content token, and its
+    presence means the user wants grep, not file metadata.
+    """
+    import re as _re
+
+    # Strip explicit file refs so they don't count as content tokens.
+    cleaned = _re.sub(r"[a-zA-Z0-9_./\\\-]+\.[a-zA-Z0-9]+", " ", directive_lower)
+    # Strip bare file names if the classifier flagged them.
+    if has_bare:
+        cleaned = _re.sub(r"\b[a-z_]+\.(?:py|java|kt|js|ts|tsx|jsx|xml|json|md|css|scss|html)\b", " ", cleaned)
+
+    for tok in _re.findall(r"[a-zA-Z_][a-zA-Z0-9_]{2,}", cleaned):
+        low = tok.lower()
+        if low in _STOP_FOR_CONTENT:
+            continue
+        # Skip if this token is itself a filename (contains a dot already removed)
+        # or looks like a path segment
+        return tok
+    return None
 
 def _classify_intent_with_confidence(directive: str) -> tuple:
     """
@@ -1579,6 +1607,12 @@ def _classify_intent_with_confidence(directive: str) -> tuple:
     ]
     has_strong_override = any(re.search(kw, dl) for kw in _STRONG_OVERRIDE_KEYWORDS)
     if (has_explicit_file_ref or has_bare_file_ref) and not has_strong_override:
+        # If the query names a file AND has a content token (symbol to grep
+        # for), route to grep instead of file_info. "show me openExternalBrowser
+        # in MainActivity.java" wants the function body, not file metadata.
+        _content_tok = _extract_content_token(dl, has_explicit_file_ref, has_bare_file_ref)
+        if _content_tok:
+            return "grep", 92.0, [("grep", 92.0)]
         return "file_info", 92.0, [("file_info", 92.0)]
 
     # â”€â”€ Tier 0.145: "rollback/revert/undo to <target>" â†’ git, with a target â”€â”€
@@ -3710,7 +3744,9 @@ def _run_local_agent(directive: str) -> None:
         except Exception:
             _exact_path = None
         if _exact_path:
-            intent = "file_info"
+            _dl_pre = (active_directive or "").lower()
+            _pre_tok = _extract_content_token(_dl_pre, True, False)
+            intent = "grep" if _pre_tok else "file_info"
             _skip_router = True
 
     # ── Rule/LLM router: broad Q&A → universal recon ──────────────────────
@@ -4556,15 +4592,58 @@ def _run_local_agent(directive: str) -> None:
                                 print(f"        {DIM}â†’ {fn['comment']}{RST}")
                     print()
             else:
-                if _ensure_graph(verbose=True) and os.path.exists(os.path.join("graphify-out", "graph.json")):
-                    # re-run the overview branch by reloading the graph
+                if _ensure_graph(verbose=True) and os.path.exists(graph_path):
+                    # Graph just built. Re-populate god_files from the fresh
+                    # graph and fall through to the display code above (which
+                    # we already skipped past). Easiest path: retry the same
+                    # extraction inline, then print.
                     try:
-                        _gdata = json.loads(Path(os.path.join("graphify-out", "graph.json")).read_text(encoding="utf-8"))
-                        print(f"  {DIM}Graph built. Re-run the same directive to see the overview.{RST}\n")
+                        gdata = json.loads(Path(graph_path).read_text(encoding="utf-8"))
+                        id_to_file: dict[str, str] = {}
+                        for node in gdata.get("nodes", []):
+                            sf = node.get("source_file", "")
+                            if sf and node.get("file_type") == "code":
+                                id_to_file[node["id"]] = sf
+                        file_deg: dict[str, int] = {}
+                        for link in gdata.get("links", []):
+                            tgt = id_to_file.get(link.get("target", ""))
+                            if tgt:
+                                file_deg[tgt] = file_deg.get(tgt, 0) + 1
+                        seen2: set[str] = set()
+                        for sf, deg in sorted(file_deg.items(), key=lambda x: -x[1]):
+                            if sf not in seen2 and os.path.exists(sf):
+                                god_files.append((deg, sf))
+                                seen2.add(sf)
+                            if len(god_files) >= 5:
+                                break
                     except Exception:
-                        print(f"  {DIM}No graphify-out/graph.json found â€” run graphify first for richer results.{RST}\n")
+                        pass
+
+                    if god_files:
+                        print(f"  {CYAN}Most connected files (god nodes):{RST}\n")
+                        for deg, sf in god_files:
+                            deg_label = f"{DIM}({deg} refs){RST}" if deg else ""
+                            print(f"  {BOLD}{sf}{RST}  {deg_label}")
+                            comments = _first_comment_lines(sf, max_lines=3)
+                            if comments:
+                                for c in comments:
+                                    print(f"    {DIM}→ {c}{RST}")
+                            else:
+                                print(f"    {DIM}(no opening comments){RST}")
+                            top_fns = _rank_functions_by_connectivity(sf, top_n=3)
+                            if top_fns:
+                                print(f"    {CYAN}Most-connected functions:{RST}")
+                                for fn in top_fns:
+                                    print(f"      {BOLD}{fn['name']}{RST}  "
+                                          f"{DIM}L{fn['start']}-{fn['end']} "
+                                          f"({fn['callers_in_file']} calls in file){RST}")
+                                    if fn["comment"]:
+                                        print(f"        {DIM}→ {fn['comment']}{RST}")
+                            print()
+                    else:
+                        print(f"  {DIM}Graph built but no files had incoming references.{RST}\n")
                 else:
-                    print(f"  {DIM}No graphify-out/graph.json found â€” run graphify first for richer results.{RST}\n")
+                    print(f"  {DIM}No graphify-out/graph.json found — run graphify first for richer results.{RST}\n")
 
             return
 

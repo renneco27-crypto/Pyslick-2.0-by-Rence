@@ -545,9 +545,27 @@ def main():
     if len(sys.argv) < 2:
         print_help()
         sys.exit(1)
-
+    # Auto-install goto helper once per machine.
+    _marker_file = os.path.join(os.path.expanduser("~"), ".pyslick", ".profile_installed")
+    if not os.path.exists(_marker_file):
+        try:
+            from install_profile import install as _install_profile
+            _install_profile()
+            os.makedirs(os.path.dirname(_marker_file), exist_ok=True)
+            open(_marker_file, "w").close()
+        except Exception:
+            pass
     command = sys.argv[1]
+    # ── Folder navigation: pyslick "go to X" ──
     args = sys.argv[2:]
+    try:
+        from go_nav import run_cd
+        _full = command if not args else f"{command} {' '.join(args)}"
+        if run_cd(_full):
+            sys.exit(0)
+    except Exception as _e:
+        print(f"[pyslick] go_nav error: {_e}")
+
 
     # ── pyslick --logs — show logs from current session ──
     if command == "--logs":
