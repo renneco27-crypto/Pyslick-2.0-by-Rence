@@ -276,7 +276,6 @@ def _load_yake():
         _YAKE_EXTRACTOR = False
     return _YAKE_EXTRACTOR
 
-
 def search_text_index_auto(
     query: str, index: dict, top_k: int = 5, seed_k: int = 5, max_keywords: int = 12
 ) -> tuple[list[tuple[str, float, list[str]]], list[str]]:
@@ -291,7 +290,7 @@ def search_text_index_auto(
     """
     seed = search_text_index(query, index, top_k=seed_k)
 
-    if not (2 <= len(seed) <= 5):
+    if len(seed) != 2:
         return seed, []
 
     extractor = _load_yake()
