@@ -1488,9 +1488,9 @@ def _try_text_index_for_concept(directive: str):
     Returns None when the index is empty or all scores collapse to zero.
     """
     try:
-        from text_index import build_text_index, search_text_index
+        from text_index import build_text_index, search_text_index_auto
         idx = build_text_index(".")
-        hits = search_text_index(directive, idx)
+        hits, _kw = search_text_index_auto(directive, idx)
     except Exception:
         return None
     if not hits:
@@ -1500,9 +1500,7 @@ def _try_text_index_for_concept(directive: str):
     q_tokens = set(re.findall(r"[a-zA-Z0-9]+", directive.lower()))
     if not (top_tokens & q_tokens):
         return None
-    return hits
-    intent, _, _ = _classify_intent_with_confidence(directive)
-    return intent
+    return hits, _kw
 
 
 def _classify_intent_with_confidence(directive: str) -> tuple:
@@ -3452,11 +3450,11 @@ def _god_recon(directive: str) -> bool:
         # like "where is the purple cursor" that the symbol graph can't see.
         try:
             from text_index import (
-                build_text_index, search_text_index, format_text_results,
+                build_text_index, search_text_index_auto, format_auto_results,
             )
-            _th = search_text_index(directive, build_text_index("."))
+            _th, _kw = search_text_index_auto(directive, build_text_index("."))
             if _th:
-                format_text_results(_th)
+                format_auto_results(_th, _kw)
                 return True
         except Exception:
             pass
@@ -3771,11 +3769,11 @@ def _run_local_agent(directive: str) -> None:
                 # has no text — this is the last chance to answer them.
                 try:
                     from text_index import (
-                        build_text_index, search_text_index, format_text_results,
+                        build_text_index, search_text_index_auto, format_auto_results,
                     )
-                    _th = search_text_index(active_directive, build_text_index("."))
+                    _th, _kw = search_text_index_auto(active_directive, build_text_index("."))
                     if _th:
-                        format_text_results(_th)
+                        format_auto_results(_th, _kw)
                         return
                 except Exception:
                     pass
@@ -3890,8 +3888,13 @@ def _run_local_agent(directive: str) -> None:
         if _looks_like_concept_query(active_directive):
             _text_hits = _try_text_index_for_concept(active_directive)
             if _text_hits:
-                from text_index import format_text_results
-                format_text_results(_text_hits)
+                from text_index import format_auto_results
+                # _try_text_index_for_concept returns (hits, keywords) via the
+                # auto path; preserve the expanded-keywords header when present.
+                if isinstance(_text_hits, tuple):
+                    format_auto_results(_text_hits[0], _text_hits[1])
+                else:
+                    format_auto_results(_text_hits, [])
                 return
         # ---------------------------------------------------------------------
         intent, confidence, top3 = _classify_intent_with_confidence(active_directive)

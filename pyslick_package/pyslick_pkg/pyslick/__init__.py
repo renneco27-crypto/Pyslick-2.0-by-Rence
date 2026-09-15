@@ -697,11 +697,11 @@ def main():
                     sys.exit(1)
                 try:
                     from text_index import (
-                        build_text_index, search_text_index, format_text_results,
+                        build_text_index, search_text_index_auto, format_auto_results,
                     )
                     _idx = build_text_index(".")
-                    _results = search_text_index(" ".join(args), _idx)
-                    format_text_results(_results)
+                    _res, _kw = search_text_index_auto(" ".join(args), _idx)
+                    format_auto_results(_res, _kw)
                 except Exception as e:
                     print(f"Error: {e}")
                     sys.exit(1)

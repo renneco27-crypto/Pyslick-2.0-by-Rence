@@ -258,3 +258,115 @@ def format_text_results(results: list[tuple[str, float, list[str]]]) -> None:
         shown = ", ".join(toks[:6])
         print(f"  [{pct:5.1f}%]  {filepath}  <- matched: {shown}")
     print()
+    # ---------------------------------------------------------------------------
+# YAKE auto-expansion
+# ---------------------------------------------------------------------------
+
+_YAKE_EXTRACTOR = None
+
+
+def _load_yake():
+    global _YAKE_EXTRACTOR
+    if _YAKE_EXTRACTOR is not None:
+        return _YAKE_EXTRACTOR
+    try:
+        import yake
+        _YAKE_EXTRACTOR = yake.KeywordExtractor(lan="en", n=2, top=20, dedupLim=0.9)
+    except Exception:
+        _YAKE_EXTRACTOR = False
+    return _YAKE_EXTRACTOR
+
+
+def search_text_index_auto(
+    query: str, index: dict, top_k: int = 5, seed_k: int = 5, max_keywords: int = 12
+) -> tuple[list[tuple[str, float, list[str]]], list[str]]:
+    """BM25 with automatic YAKE expansion when the seed result set is narrow.
+
+    - 0 or 1 seed file  -> nothing to expand from, return as-is
+    - 2 to 5 seed files -> run YAKE on them, re-search with combined query
+    - 6+ seed files     -> already broad, return as-is
+
+    Returns (results, expanded_keywords_used). Keywords are [] when no
+    expansion happened.
+    """
+    seed = search_text_index(query, index, top_k=seed_k)
+
+    if not (2 <= len(seed) <= 5):
+        return seed, []
+
+    extractor = _load_yake()
+    if not extractor:
+        return seed, []
+
+    chunks = []
+    for fp, _sc, _tk in seed:
+        txt = extract_text_for_index(fp)
+        if txt:
+            chunks.append(txt)
+    if not chunks:
+        return seed, []
+
+    try:
+        pairs = extractor.extract_keywords("\n".join(chunks))
+    except Exception:
+        return seed, []
+
+    q_tokens = set(_tokenize_for_index(query))
+    extra: list[str] = []
+    seen: set[str] = set()
+    for kw, _score in pairs:  # lower score = more important
+        kw_norm = kw.strip().lower()
+        if not kw_norm or kw_norm in seen:
+            continue
+        kw_toks = set(_tokenize_for_index(kw_norm))
+        if not kw_toks or kw_toks.issubset(q_tokens):
+            continue
+        seen.add(kw_norm)
+        extra.append(kw_norm)
+        if len(extra) >= max_keywords:
+            break
+
+    if not extra:
+        return seed, []
+
+    combined = query + " " + " ".join(extra)
+    expanded = search_text_index(combined, index, top_k=top_k)
+
+    by_file: dict[str, tuple[float, list[str]]] = {}
+    for fp, sc, tk in seed:
+        by_file[fp] = (sc, tk)
+    for fp, sc, tk in expanded:
+        prev = by_file.get(fp)
+        if prev is None or sc > prev[0]:
+            by_file[fp] = (sc, tk)
+
+    merged = sorted(
+        ((fp, sc, tk) for fp, (sc, tk) in by_file.items()),
+        key=lambda r: r[1],
+        reverse=True,
+    )[:top_k]
+    return merged, extra
+
+
+def format_auto_results(
+    results: list[tuple[str, float, list[str]]], keywords: list[str]
+) -> None:
+    """Same shape as format_text_results, plus a note when YAKE ran."""
+    if keywords:
+        print("\n--- Text Index Matches (BM25 + YAKE auto-expand) ---")
+        print(f"  expanded with: {', '.join(keywords)}")
+    else:
+        print("\n--- Text Index Matches (BM25) ---")
+    if not results:
+        print("  No text matches found.")
+        return
+    results = [r for r in results if r[2]]
+    if not results:
+        print("  No text matches found.")
+        return
+    top = results[0][1] or 1.0
+    for filepath, score, toks in results:
+        pct = (score / top) * 100 if top else 0.0
+        shown = ", ".join(toks[:6])
+        print(f"  [{pct:5.1f}%]  {filepath}  <- matched: {shown}")
+    print()
