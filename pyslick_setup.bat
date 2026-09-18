@@ -37,7 +37,10 @@ python -m pip install ^
     tree-sitter ^
     tree-sitter-typescript ^
     tree-sitter-language-pack ^
-    watchdog
+    watchdog ^
+    nltk ^
+    yake ^
+    transformers
 if errorlevel 1 (
     echo [X] Core dependency install failed. Scroll up for the error.
     pause
@@ -45,6 +48,15 @@ if errorlevel 1 (
 )
 echo [OK] Core dependencies installed
 echo.
+
+REM ---------- 3a. NLTK data files ----------
+echo [2a/6] Downloading NLTK stopwords...
+python -m nltk.downloader stopwords --quiet
+if errorlevel 1 (
+    echo [!] NLTK stopwords download failed. Run manually: python -m nltk.downloader stopwords
+)
+echo.
+
 REM ---------- 3b. Install graphify via pipx ----------
 echo [3b/6] Installing graphify CLI via pipx...
 where pipx >nul 2>nul

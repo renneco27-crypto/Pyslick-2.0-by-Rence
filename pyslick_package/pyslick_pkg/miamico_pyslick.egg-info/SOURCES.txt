@@ -13,12 +13,16 @@ pyslick/ask.py
 pyslick/autoloop.py
 pyslick/clipboard.py
 pyslick/comment_blocks.py
+pyslick/decompose.py
+pyslick/explore.py
 pyslick/find_nearest_nodes.py
 pyslick/find_stray_symbols.py
 pyslick/frustration_vocab.json
+pyslick/go_nav.py
 pyslick/graphify.py
 pyslick/graphify_sitter.py
 pyslick/indentation.py
+pyslick/install_profile.py
 pyslick/install_pyslick_deps.py
 pyslick/intent_vocab.json
 pyslick/jsx_tag_checker.py
@@ -36,6 +40,7 @@ pyslick/repomap.py
 pyslick/response_watcher.py
 pyslick/router.py
 pyslick/synonyms.py
+pyslick/text_index.py
 pyslick/toolbox.py
 pyslick/user_weights.json
 pyslick/watch.py

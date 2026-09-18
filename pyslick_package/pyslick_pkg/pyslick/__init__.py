@@ -88,8 +88,8 @@ def import_query():
     return query_main
 
 def import_toolbox():
-    from toolbox import mode_ls, mode_lines, mode_grep
-    return mode_ls, mode_lines, mode_grep
+    from toolbox import mode_ls, mode_lines, mode_grep, mode_semantic_grep
+    return mode_ls, mode_lines, mode_grep, mode_semantic_grep
 
 def import_watch():
     from watch import watch
@@ -443,8 +443,10 @@ straight to that file. Combine multiple: "compare /a.js and /b.js".
       Print a file with 3-digit line numbers (great for pasting into LLMs).
 
   grep <file> <pattern> [<pattern> …] [--context N]
-      Search a file for one or more patterns, N lines of context each.
-      Default context: 1.  Patterns can be plain text or regex.
+  grep "<natural language query>"
+      Search a file or semantic-search across the repository.
+      When tree-sitter is available, matches automatically expand to the full
+      enclosing function end-to-end (--context is used as fallback).
 
   comment-scan [path]
       Scan a file or whole project for named comment blocks
@@ -464,10 +466,10 @@ straight to that file. Combine multiple: "compare /a.js and /b.js".
 
   find-nearest-nodes <query>
       Fuzzy search across a pre-built graphify graph (graphify-out/graph.json).
-      Run "graphify extract ." first to generate the graph.
+      Auto-generates the graph if missing.
 
-  find-stray-symbols <project_root>
-      Scan for unmatched JSX tags and stray symbols in .tsx files.
+  find-stray-symbols <file_or_dir>
+      Scan a .tsx/.jsx file or directory for unmatched JSX tags and stray symbols.
 
   indentation <file>
       Analyse indentation scopes and brace matching.
@@ -654,23 +656,37 @@ def main():
                     print(f"Error: {e}")
 
             elif command == "grep":
-                if len(args) < 2:
-                    print("Error: grep requires <file_path> <pattern> [<pattern> ...] [--context N]")
+                if not args:
+                    print("Error: grep requires <file_path> <pattern> [<pattern> ...] [--context N] or \"<natural language query>\"")
                     sys.exit(1)
                 try:
-                    _, _, mode_grep = import_toolbox()
-                    file_path = args[0]
+                    _, _, mode_grep, mode_semantic_grep = import_toolbox()
                     context = 1
-                    patterns = []
-                    i = 1
+                    cleaned_args = []
+                    i = 0
                     while i < len(args):
                         if args[i] == "--context" and i + 1 < len(args):
                             context = int(args[i + 1])
                             i += 2
                         else:
-                            patterns.append(args[i])
+                            cleaned_args.append(args[i])
                             i += 1
-                    mode_grep(file_path, patterns, context=context)
+
+                    if not cleaned_args:
+                        print("Error: grep requires a pattern or search query.")
+                        sys.exit(1)
+
+                    if len(cleaned_args) >= 2 and os.path.isfile(cleaned_args[0]):
+                        file_path = cleaned_args[0]
+                        patterns = cleaned_args[1:]
+                        mode_grep(file_path, patterns, context=context)
+                    elif len(cleaned_args) == 1 and os.path.isfile(cleaned_args[0]):
+                        _, mode_lines, _, _ = import_toolbox()
+                        mode_lines(cleaned_args[0])
+                    else:
+                        # Semantic grep across repository using BM25 and AST expansion
+                        query_str = " ".join(cleaned_args)
+                        mode_semantic_grep(query_str, context=context)
                 except Exception as e:
                     print(f"Error: {e}")
                     sys.exit(1)

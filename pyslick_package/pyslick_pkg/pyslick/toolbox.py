@@ -405,6 +405,100 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
         print()
 
 
+def mode_semantic_grep(query: str, top_k: int = 5, context: int = 1):
+    """Semantic grep across the repository using BM25 index + AST function snapping.
+    
+    When given a vague natural language query (e.g. 'powerpoint wipe animation'),
+    finds the nearest relevant code, locates candidate lines, and expands them
+    to full enclosing functions end-to-end.
+    """
+    try:
+        from text_index import build_text_index, search_text_index_auto
+    except ImportError:
+        print(f"{RED}Error: text_index module not available for semantic grep.{RST}")
+        return
+
+    print(f"\n{BOLD}{CYAN}━━  Semantic Grep  {RST}{BOLD}'{query}'{RST}")
+    print(f"{DIM}{'─' * 60}{RST}")
+
+    idx = build_text_index(".")
+    results, keywords = search_text_index_auto(query, idx, top_k=top_k)
+
+    if not results:
+        print(f"{DIM}No semantic matches found for '{query}'.{RST}")
+        return
+
+    # Extract query tokens for in-file line matching
+    q_tokens = [t.lower() for t in re.findall(r"[a-zA-Z0-9_]+", query) if len(t) > 2]
+    if keywords:
+        q_tokens.extend([k.lower() for k in keywords if len(k) > 2])
+    q_tokens = list(dict.fromkeys(q_tokens))
+
+    total_shown = 0
+    for filepath, score, matched_tokens in results:
+        if not os.path.isfile(filepath):
+            continue
+
+        try:
+            with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+        except OSError:
+            continue
+
+        if not lines:
+            continue
+
+        # Find lines matching the search terms
+        hit_lines = []
+        matched_map = {}
+        for line_idx, line_text in enumerate(lines):
+            low = line_text.lower()
+            for tok in q_tokens:
+                if tok in low:
+                    lineno = line_idx + 1
+                    hit_lines.append(lineno)
+                    matched_map[lineno] = tok
+                    break
+
+        if not hit_lines:
+            # Fallback to first line if no specific token matched (e.g. filename match)
+            hit_lines = [1]
+            matched_map[1] = "file"
+
+        print(f"{BOLD}{GREEN}{filepath}{RST} {DIM}(score: {score:.2f}){RST} — {len(hit_lines)} match line(s)")
+        print(f"{DIM}  VS Code shortcut: code -g \"{filepath}:{hit_lines[0]}\"{RST}")
+
+        ranges = _function_ranges_for_hits(filepath, hit_lines)
+        if ranges:
+            for r_start, r_end, r_hits in ranges:
+                if r_start == r_end:
+                    j = r_start
+                    if 1 <= j <= len(lines):
+                        print(f"{GREEN}>{RST} {DIM}{j:4d}:{RST} {YELL}[{matched_map.get(j, '')}]{RST} {lines[j-1].rstrip()}")
+                    print()
+                    continue
+                _print_function_range(lines, r_start, r_end, set(r_hits), matched_map)
+        else:
+            # Context window fallback
+            last_printed = -1
+            for lineno in hit_lines[:5]:
+                line_idx = lineno - 1
+                start = max(0, line_idx - context)
+                end = min(len(lines), line_idx + context + 1)
+                if start > last_printed + 1:
+                    print(f"{DIM}  ...{RST}")
+                for j in range(start, end):
+                    marker = f"{GREEN}>{RST}" if j == line_idx else " "
+                    tag = f"{YELL}[{matched_map.get(j+1, '')}]{RST} " if j == line_idx else ""
+                    print(f"{marker} {DIM}{j+1:4d}:{RST} {tag}{lines[j].rstrip()}")
+                last_printed = end - 1
+                print()
+
+        total_shown += 1
+        if total_shown >= top_k:
+            break
+
+
 def main():
     parser = argparse.ArgumentParser(prog="pyslick", add_help=False)
     sub = parser.add_subparsers(dest="cmd")
@@ -424,7 +518,7 @@ def main():
 
     p_grep = sub.add_parser("grep")
     p_grep.add_argument("file")
-    p_grep.add_argument("patterns", nargs="+")
+    p_grep.add_argument("patterns", nargs="*")
     p_grep.add_argument("--context", type=int, default=1)
 
     args = parser.parse_args()
@@ -452,10 +546,16 @@ def main():
                 sys.exit(1)
         mode_lines(args.file, start=start, end=end)
     elif args.cmd == "grep":
-        mode_grep(args.file, args.patterns, context=args.context)
+        if os.path.isfile(args.file):
+            mode_grep(args.file, args.patterns, context=args.context)
+        else:
+            # If the first argument isn't a file, treat whole input as semantic search query
+            full_query = " ".join([args.file] + args.patterns)
+            mode_semantic_grep(full_query, context=args.context)
     else:
         parser.print_help()
 
 
 if __name__ == "__main__":
     main()
+

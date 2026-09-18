@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 agent.py â€” PySlick Agentic AI Session
 =======================================
@@ -3341,16 +3341,22 @@ def _ensure_graph(verbose: bool = False) -> bool:
         if verbose:
             print(f"  {DIM}Graphify not installed. Installing via pip...{RST}")
         subprocess.run(
+            [sys.executable, "-m", "pip", "install", "graphifyy", "--user", "--quiet"],
+            capture_output=True,
+        )
+        subprocess.run(
             [sys.executable, "-m", "pip", "install", "graphify", "--user", "--quiet"],
             capture_output=True,
         )
     if verbose:
         print(f"  {DIM}Extracting code dependencies and building graph.json...{RST}")
     for argv in (
-        [sys.executable, "-m", "graphify", "extract", ".", "--code-only"],
         ["graphify", "extract", ".", "--code-only"],
-        [sys.executable, "-m", "graphify", "update", "."],
+        ["graphifyy", "extract", ".", "--code-only"],
+        [sys.executable, "-m", "graphify", "extract", ".", "--code-only"],
+        [sys.executable, "-m", "graphifyy", "extract", ".", "--code-only"],
         ["graphify", "update", "."],
+        [sys.executable, "-m", "graphify", "update", "."],
     ):
         try:
             subprocess.run(argv, capture_output=True, text=True)
@@ -3360,7 +3366,7 @@ def _ensure_graph(verbose: bool = False) -> bool:
             break
     if not os.path.exists(graph_json):
         if verbose:
-            warn("Could not generate graph. Ensure graphify is installed: pip install graphify")
+            warn("Could not generate graph. Ensure graphify is installed: pip install graphifyy")
         return False
     if verbose:
         ok("Graph generated successfully in graphify-out/")
@@ -3389,6 +3395,9 @@ def _god_recon(directive: str) -> bool:
     from collections import defaultdict as _dd
 
     graph_path = _os.path.join(".", "graphify-out", "graph.json")
+    if not _os.path.exists(graph_path):
+        _ensure_graph(verbose=True)
+
     if not _os.path.exists(graph_path):
         print(f"\n{BOLD}=== GOD RECON ==={RST}  {DIM}{directive}{RST}")
         print(f"{DIM}  no graph found at {graph_path}. run: graphify extract .{RST}")

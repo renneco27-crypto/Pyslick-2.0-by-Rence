@@ -42,19 +42,34 @@ def scan_file(file_path: Path):
         problems.append((lineno, f"Unmatched opening tag <{tag}>"))
     return problems
 
-def main(root_dir: str):
-    root = Path(root_dir)
-    if not root.is_dir():
-        print(f"Error: {root_dir} is not a directory", file=sys.stderr)
+def main(target_path: str):
+    target = Path(target_path)
+    if not target.exists():
+        print(f"Error: {target_path} does not exist", file=sys.stderr)
         sys.exit(1)
+
     total = 0
-    for tsx_path in root.rglob('*.tsx'):
-        problems = scan_file(tsx_path)
+    if target.is_file():
+        problems = scan_file(target)
         if problems:
             total += len(problems)
-            print(f"File: {tsx_path}")
+            print(f"File: {target}")
             for line_no, msg in problems:
                 print(f"  Line {line_no}: {msg}")
+    else:
+        # Search all tsx and jsx files under target directory
+        candidates = list(target.rglob('*.tsx')) + list(target.rglob('*.jsx'))
+        for path in candidates:
+            # Skip node_modules, .next, etc.
+            if any(part in {"node_modules", ".next", "dist", "build", ".git"} for part in path.parts):
+                continue
+            problems = scan_file(path)
+            if problems:
+                total += len(problems)
+                print(f"File: {path}")
+                for line_no, msg in problems:
+                    print(f"  Line {line_no}: {msg}")
+
     if total == 0:
         print("OK: No stray symbols detected.")
     else:
@@ -62,6 +77,7 @@ def main(root_dir: str):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python find_stray_symbols.py <project_root>")
+        print("Usage: python find_stray_symbols.py <file_or_directory>")
         sys.exit(1)
     main(sys.argv[1])
+

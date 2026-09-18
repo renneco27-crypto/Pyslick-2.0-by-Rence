@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 recon_semantic.py ΓÇö Universal semantic recon for pyslick.
 
@@ -327,7 +327,12 @@ def _ensure_graph_once() -> bool:
     _graph_ensured_this_process = True
     if os.path.isfile(GRAPH_PATH):
         return True
-    return False
+    try:
+        from find_nearest_nodes import ensure_graph_freshness
+        ensure_graph_freshness(os.getcwd(), verbose=True)
+    except Exception:
+        pass
+    return os.path.isfile(GRAPH_PATH)
 
 
 def _expand_from_graph(directive: str, existing_hits: list, index: dict) -> list:
