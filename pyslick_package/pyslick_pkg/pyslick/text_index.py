@@ -128,24 +128,36 @@ def extract_text_for_index(filepath: str) -> str:
     ext = os.path.splitext(filepath)[1].lower()
     chunks: list[str] = []
 
+    # High-value semantic comments (docstrings, JSDoc, block descriptions)
+    # These are boosted by appending them twice to increase term frequency in BM25
+    semantic_comments: list[str] = []
+
     # Comments
     if ext in _LINE_COMMENT:
         for m in _LINE_COMMENT[ext].finditer(src):
-            c = m.group(1)
-            if len(c) <= 250:
+            c = m.group(1).strip()
+            # Filter out non-semantic noise comments (e.g. delimiters, linter directives)
+            if 6 <= len(c) <= 250 and not c.startswith(("eslint-", "@ts-", "TODO", "FIXME", "===", "---")):
                 chunks.append(c)
+                semantic_comments.append(c)
     if ext in (".js", ".jsx", ".ts", ".tsx", ".css", ".scss", ".go", ".rs", ".java"):
         for m in _BLOCK_COMMENT.finditer(src):
-            c = m.group(1)
-            if len(c) <= 500:
+            c = m.group(1).strip()
+            if 6 <= len(c) <= 500:
                 chunks.append(c)
+                semantic_comments.append(c)
 
-    # Python docstrings (including triple-quoted non-docstrings — fine, more text)
+    # Python docstrings (highest semantic density in Python)
     if ext == ".py":
         for m in _PY_DOCSTRING.finditer(src):
-            c = m.group(2)
-            if len(c) <= 500:
+            c = m.group(2).strip()
+            if 6 <= len(c) <= 800:
                 chunks.append(c)
+                semantic_comments.append(c)
+
+    # Boost: append semantic comments again so intent-based queries rank higher
+    if semantic_comments:
+        chunks.append(" ".join(semantic_comments))
 
     # String literals (cap at 150 chars to exclude base64 blobs, SVGs, and bundles)
     if ext in (".js", ".jsx", ".ts", ".tsx", ".py", ".go", ".rs", ".java", ".rb"):

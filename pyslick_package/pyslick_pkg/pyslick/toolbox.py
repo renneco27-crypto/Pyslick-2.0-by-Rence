@@ -232,30 +232,65 @@ def _grep_via_ripgrep(path: str, patterns: list[str], context: int) -> list[tupl
         return None
 
 def _function_ranges_for_hits(filepath: str, hit_lines: list[int], cap: int = 80):
-    """Return [(start, end, matched_lines)] of enclosing functions.
+    """Return [(start, end, matched_lines)] of enclosing functions and comment blocks.
 
-    None if the language isn't tree-sitter supported (fall back to context).
-    Only functions/methods, not classes. Overlapping hits merged.
+    Checks:
+    1. Functions from tree-sitter AST tags.
+    2. Descriptive comment blocks and explicit marker blocks from comment_blocks.py.
+    3. Merges comments directly above functions so the function doc is included.
     """
+    funcs = []
     try:
         from repomap import extract_tags
+        tags = extract_tags(filepath)
+        if tags:
+            funcs = [t for t in tags if t.is_def and "class" not in t.kind.lower()]
     except Exception:
-        return None
-    tags = extract_tags(filepath)
-    if not tags:
-        return None
-    funcs = [t for t in tags if t.is_def and "class" not in t.kind.lower()]
-    if not funcs:
+        pass
+
+    cm_blocks = []
+    try:
+        from comment_blocks import scan_file_for_comment_blocks
+        cm_blocks = scan_file_for_comment_blocks(filepath) or []
+    except Exception:
+        pass
+
+    if not funcs and not cm_blocks:
         return None
 
     ranges: list[tuple[int, int, list[int]]] = []
     for line_no in hit_lines:
-        enclosing = [t for t in funcs if t.start_line <= line_no <= t.end_line]
-        if not enclosing:
+        matched_span = None
+
+        # 1. Check if inside a function
+        enclosing_funcs = [t for t in funcs if t.start_line <= line_no <= t.end_line]
+        if enclosing_funcs:
+            best_func = min(enclosing_funcs, key=lambda t: t.end_line - t.start_line)
+            f_start = best_func.start_line
+            f_end = best_func.end_line
+            # Check if there is a comment block directly preceding this function
+            for c in cm_blocks:
+                if c.start_line < f_start and c.end_line >= f_start - 2:
+                    f_start = c.start_line
+                    break
+            matched_span = (f_start, f_end)
+
+        # 2. Check if inside a comment block or marker block
+        if not matched_span:
+            for c in cm_blocks:
+                if c.start_line <= line_no <= c.end_line:
+                    # If this comment leads into a function, expand to that function's end
+                    target_func = next((t for t in funcs if t.start_line >= c.start_line and t.start_line <= c.end_line + 3), None)
+                    if target_func:
+                        matched_span = (c.start_line, target_func.end_line)
+                    else:
+                        matched_span = (c.start_line, c.end_line)
+                    break
+
+        if matched_span:
+            ranges.append((matched_span[0], matched_span[1], [line_no]))
+        else:
             ranges.append((line_no, line_no, [line_no]))
-            continue
-        best = min(enclosing, key=lambda t: t.end_line - t.start_line)
-        ranges.append((best.start_line, best.end_line, [line_no]))
 
     merged: list[tuple[int, int, list[int]]] = []
     for start, end, hits_in in sorted(ranges):
@@ -436,22 +471,42 @@ def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int
         print(f"{RED}Error: text_index module not available for semantic grep.{RST}")
         return
 
+    # Expand query with domain synonyms (e.g. cache -> offline, prefetch, storage)
+    search_query = query
+    syn_terms = []
+    try:
+        from synonyms import expand as _syn_expand
+        exp = _syn_expand(query)
+        if exp and exp.get("terms"):
+            syn_terms = [t for t in exp["terms"] if t.lower() not in query.lower() and len(t) > 2]
+    except Exception:
+        pass
+
+    if syn_terms:
+        search_query = f"{query} {' '.join(syn_terms[:4])}"
+
     print(f"\n{BOLD}{CYAN}━━  Semantic Grep  {RST}{BOLD}'{query}'{RST}")
     if root and root != ".":
         print(f"{DIM}Scope: {root}{RST}")
+    if syn_terms:
+        print(f"{DIM}Synonyms expanded: {', '.join(syn_terms[:4])}{RST}")
     print(f"{DIM}{'─' * 60}{RST}")
 
     idx = build_text_index(root)
-    results, keywords = search_text_index_auto(query, idx, top_k=top_k)
+    results, keywords = search_text_index_auto(search_query, idx, top_k=top_k)
 
     if not results:
         print(f"{DIM}No semantic matches found for '{query}'.{RST}")
         return
 
-    # Extract query tokens for in-file line matching
-    q_tokens = [t.lower() for t in re.findall(r"[a-zA-Z0-9_]+", query) if len(t) > 2]
+    # Stopwords to filter out from in-file line matching to avoid false hits on code keywords like 'for'
+    STOP_WORDS = {"for", "the", "and", "with", "from", "that", "this", "are", "does", "did", "was", "were", "what", "how", "have", "has", "all", "out", "can"}
+    # Extract query tokens for in-file line matching (original + keywords + top synonyms)
+    q_tokens = [t.lower() for t in re.findall(r"[a-zA-Z0-9_]+", query) if len(t) > 2 and t.lower() not in STOP_WORDS]
     if keywords:
-        q_tokens.extend([k.lower() for k in keywords if len(k) > 2])
+        q_tokens.extend([k.lower() for k in keywords if len(k) > 2 and k.lower() not in STOP_WORDS])
+    if syn_terms:
+        q_tokens.extend([s.lower() for s in syn_terms[:4] if s.lower() not in STOP_WORDS])
     q_tokens = list(dict.fromkeys(q_tokens))
 
     total_shown = 0
@@ -468,7 +523,7 @@ def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int
         if not lines:
             continue
 
-        # Find lines matching the search terms
+        # Find lines matching the search terms with semantic origin labeling
         hit_lines = []
         matched_map = {}
         for line_idx, line_text in enumerate(lines):
@@ -477,7 +532,24 @@ def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int
                 if tok in low:
                     lineno = line_idx + 1
                     hit_lines.append(lineno)
-                    matched_map[lineno] = tok
+                    strip_low = line_text.strip().lower()
+                    is_docstring = '"""' in strip_low or "'''" in strip_low or "/**" in strip_low or "*/" in strip_low
+                    is_comment = strip_low.startswith(("//", "#", "*", "<!--")) or is_docstring
+                    is_marker = "pyslick:start" in strip_low or "pyslick:end" in strip_low
+                    is_def = any(strip_low.startswith(kw) for kw in ("def ", "function ", "class ", "interface ", "export function ", "export const ", "export default ", "public ", "private "))
+
+                    if is_marker:
+                        origin = "marker"
+                    elif is_docstring:
+                        origin = "docstring"
+                    elif is_comment:
+                        origin = "comment"
+                    elif is_def:
+                        origin = "def"
+                    else:
+                        origin = ""
+
+                    matched_map[lineno] = f"{origin}:{tok}" if origin else tok
                     break
 
         if not hit_lines:

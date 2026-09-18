@@ -48,6 +48,23 @@ STATIC_MAP = {
     "graph": ["node", "edge", "centrality", "topology"],
     "keyword": ["term", "token", "symbol"],
     "comment": ["docstring", "note", "annotation"],
+    "cache": ["caching", "offline", "storage", "prefetch", "persist"],
+    "caching": ["cache", "offline", "storage", "prefetch", "persist"],
+    "offline": ["cache", "caching", "sync", "sw", "serviceworker", "disconnected"],
+    "online": ["network", "connected", "sync", "fetch"],
+    "sync": ["synchronize", "queue", "outbox", "offline", "online", "syncengine"],
+    "worker": ["serviceworker", "background", "sw", "thread", "serwist"],
+    "serviceworker": ["worker", "sw", "cache", "offline", "serwist"],
+    "route": ["endpoint", "handler", "api", "url"],
+    "session": ["auth", "login", "cookie", "token", "jwt", "user"],
+    "download": ["export", "save", "fetch", "apk", "file"],
+    "upload": ["import", "parse", "file", "csv"],
+    "deck": ["flashcards", "study", "cards", "quiz"],
+    "card": ["flashcard", "deck", "study"],
+    "quiz": ["flashcards", "test", "multiple-choice", "study"],
+    "notification": ["onesignal", "push", "alert", "message"],
+    "apk": ["android", "build", "gradle", "app", "mobile"],
+    "qr": ["qrcode", "scan", "code", "barcode"],
 }
 
 
