@@ -72,7 +72,68 @@ except ImportError:
 SKIP_DIRS = {
     "node_modules", ".git", ".next", "dist", "build", "__pycache__",
     ".venv", "venv", ".turbo", ".cache", "coverage", "out", "graphify-out",
+    ".gradle", "target", "bin", "obj", ".pnpm", ".gemini", ".agents",
+    ".system_generated", "android_capacitor_backup", "outputs", ".idea",
+    ".vscode", "captures", "intermediates", "generated",
 }
+
+# Substrings in directory paths that always indicate build artifacts
+SKIP_DIR_PARTS = {"/build/", "\\build\\", "/out/", "\\out\\", "/dist/", "\\dist\\",
+                  "/intermediates/", "\\intermediates\\", "/generated/", "\\generated\\",
+                  "/outputs/", "\\outputs\\", "/.next/", "\\.next\\", "/node_modules/", "\\node_modules\\"}
+
+# Files that are generated bundles, sourcemaps, minified, or lockfiles
+SKIP_FILE_EXTS = {".map", ".min.js", ".min.css", ".bundle.js", ".chunk.js", ".wasm", ".lock", ".d.ts.map"}
+SKIP_FILE_NAMES = {"package-lock.json", "pnpm-lock.yaml", "yarn.lock", "sw.js", "workbox-*.js"}
+
+def is_generated_or_minified_file(filepath: str) -> bool:
+    """Return True if filepath is a generated artifact, bundle, sourcemap, or minified."""
+    norm = filepath.replace("\\", "/").lower()
+    base = os.path.basename(filepath).lower()
+
+    # Direct filename / extension skips
+    for ext in SKIP_FILE_EXTS:
+        if base.endswith(ext):
+            return True
+    if base in ("sw.js", "workbox-window.prod.mjs"):
+        # sw.js in public or root is a compiled bundle
+        return True
+    if ".min." in base or ".bundle." in base or ".chunk." in base:
+        return True
+
+    # Path substring check
+    for part in SKIP_DIR_PARTS:
+        if part.replace("\\", "/").lower() in norm:
+            return True
+
+    # Check file size: ignore files > 1.2 MB for code AST / semantic search
+    try:
+        size = os.path.getsize(filepath)
+        if size > 1_200_000:
+            return True
+    except OSError:
+        return True
+
+    # Content inspection on first 16KB: check for minification or binary
+    try:
+        with open(filepath, "rb") as f:
+            chunk = f.read(16384)
+        if b"\0" in chunk:
+            return True
+        # Check line lengths: minified files have few lines with extreme length
+        lines = chunk.split(b"\n")
+        if lines:
+            max_line = max(len(l) for l in lines)
+            if max_line > 1500:
+                return True
+            if len(lines) > 1:
+                avg_line = sum(len(l) for l in lines) / len(lines)
+                if avg_line > 400:
+                    return True
+    except Exception:
+        return True
+
+    return False
 
 # extension -> tree-sitter-language-pack language name
 EXT_TO_LANG = {
@@ -126,10 +187,20 @@ def _get_parser_for(ext: str):
 def collect_files(root: str = ".") -> list[str]:
     files = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in SKIP_DIRS and not d.startswith(".") and not d.endswith(".tmp")
+        ]
+        norm_dir = dirpath.replace("\\", "/").lower()
+        if any(part in norm_dir for part in ("build", "dist", "out", "node_modules", ".next", "intermediates", "outputs")):
+            continue
+
         for fn in filenames:
-            if Path(fn).suffix in EXT_TO_LANG:
-                files.append(os.path.normpath(os.path.join(dirpath, fn)))
+            ext = Path(fn).suffix.lower()
+            if ext in EXT_TO_LANG:
+                fpath = os.path.normpath(os.path.join(dirpath, fn))
+                if not is_generated_or_minified_file(fpath):
+                    files.append(fpath)
     return files
 
 

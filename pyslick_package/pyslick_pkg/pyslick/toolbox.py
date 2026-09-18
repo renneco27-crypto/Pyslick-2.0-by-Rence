@@ -267,6 +267,19 @@ def _function_ranges_for_hits(filepath: str, hit_lines: list[int], cap: int = 80
     return merged
 
 
+def clean_line_for_display(line: str, max_len: int = 220) -> str:
+    """Sanitize and truncate lines for display to prevent huge base64/minified dumps."""
+    s = line.rstrip("\r\n")
+    # Collapse base64 data URIs
+    s = re.sub(r'data:[^;]+;base64,[A-Za-z0-9+/=]{20,}', 'data:...;base64,[omitted]', s)
+    # Collapse long base64/hex hash strings
+    s = re.sub(r'([A-Za-z0-9+/=]{60,})', lambda m: m.group(1)[:16] + '...[omitted]...' + m.group(1)[-8:], s)
+    # Truncate if still over max_len
+    if len(s) > max_len:
+        s = s[:max_len] + f" ... [{len(line.strip())} chars]"
+    return s
+
+
 def _print_function_range(lines: list[str], start: int, end: int,
                           hit_lines: set[int], matched_patterns: dict[int, str],
                           cap: int = 80):
@@ -293,7 +306,8 @@ def _print_function_range(lines: list[str], start: int, end: int,
             is_hit = j in hit_lines
             marker = f"{GREEN}>{RST}" if is_hit else " "
             tag = f"{YELL}[{matched_patterns.get(j, '')}]{RST} " if is_hit else ""
-            print(f"{marker} {DIM}{j:4d}:{RST} {tag}{lines[idx].rstrip()}")
+            clean_text = clean_line_for_display(lines[idx])
+            print(f"{marker} {DIM}{j:4d}:{RST} {tag}{clean_text}")
         prev_end = seg_end
     if total > cap:
         print(f"{DIM}  [function truncated — {total} lines total]{RST}")
@@ -338,8 +352,9 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
             for r_start, r_end, r_hits in ranges:
                 if r_start == r_end:
                     j = r_start
+                    clean_text = clean_line_for_display(src_lines[j-1])
                     if 1 <= j <= len(src_lines):
-                        print(f"{GREEN}>{RST} {DIM}{j:4d}:{RST} {YELL}[{matched_patterns.get(j, '')}]{RST} {src_lines[j-1].rstrip()}")
+                        print(f"{GREEN}>{RST} {DIM}{j:4d}:{RST} {YELL}[{matched_patterns.get(j, '')}]{RST} {clean_text}")
                     print()
                     continue
                 _print_function_range(src_lines, r_start, r_end,
@@ -355,7 +370,8 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
             for j in range(start, end):
                 marker = f"{GREEN}>{RST}" if j == line_idx else " "
                 tag = f"{YELL}[{matched_pattern}]{RST} " if j == line_idx else ""
-                print(f"{marker} {DIM}{j+1:4d}:{RST} {tag}{window.get(j, '')}")
+                clean_text = clean_line_for_display(window.get(j, ''))
+                print(f"{marker} {DIM}{j+1:4d}:{RST} {tag}{clean_text}")
             last_printed = end - 1
             print()
         return
@@ -384,7 +400,8 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
             if r_start == r_end:
                 j = r_start
                 if 1 <= j <= len(lines):
-                    print(f"{GREEN}>{RST} {DIM}{j:4d}:{RST} {YELL}[{matched_patterns.get(j, '')}]{RST} {lines[j-1].rstrip()}")
+                    clean_text = clean_line_for_display(lines[j-1])
+                    print(f"{GREEN}>{RST} {DIM}{j:4d}:{RST} {YELL}[{matched_patterns.get(j, '')}]{RST} {clean_text}")
                 print()
                 continue
             _print_function_range(lines, r_start, r_end,
@@ -400,12 +417,13 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
         for j in range(start, end):
             marker = f"{GREEN}>{RST}" if j == line_idx else " "
             tag = f"{YELL}[{matched_pattern}]{RST} " if j == line_idx else ""
-            print(f"{marker} {DIM}{j+1:4d}:{RST} {tag}{lines[j].rstrip()}")
+            clean_text = clean_line_for_display(lines[j])
+            print(f"{marker} {DIM}{j+1:4d}:{RST} {tag}{clean_text}")
         last_printed = end - 1
         print()
 
 
-def mode_semantic_grep(query: str, top_k: int = 5, context: int = 1):
+def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int = 1):
     """Semantic grep across the repository using BM25 index + AST function snapping.
     
     When given a vague natural language query (e.g. 'powerpoint wipe animation'),
@@ -419,9 +437,11 @@ def mode_semantic_grep(query: str, top_k: int = 5, context: int = 1):
         return
 
     print(f"\n{BOLD}{CYAN}━━  Semantic Grep  {RST}{BOLD}'{query}'{RST}")
+    if root and root != ".":
+        print(f"{DIM}Scope: {root}{RST}")
     print(f"{DIM}{'─' * 60}{RST}")
 
-    idx = build_text_index(".")
+    idx = build_text_index(root)
     results, keywords = search_text_index_auto(query, idx, top_k=top_k)
 
     if not results:
@@ -474,7 +494,8 @@ def mode_semantic_grep(query: str, top_k: int = 5, context: int = 1):
                 if r_start == r_end:
                     j = r_start
                     if 1 <= j <= len(lines):
-                        print(f"{GREEN}>{RST} {DIM}{j:4d}:{RST} {YELL}[{matched_map.get(j, '')}]{RST} {lines[j-1].rstrip()}")
+                        clean_text = clean_line_for_display(lines[j-1])
+                        print(f"{GREEN}>{RST} {DIM}{j:4d}:{RST} {YELL}[{matched_map.get(j, '')}]{RST} {clean_text}")
                     print()
                     continue
                 _print_function_range(lines, r_start, r_end, set(r_hits), matched_map)
@@ -490,7 +511,8 @@ def mode_semantic_grep(query: str, top_k: int = 5, context: int = 1):
                 for j in range(start, end):
                     marker = f"{GREEN}>{RST}" if j == line_idx else " "
                     tag = f"{YELL}[{matched_map.get(j+1, '')}]{RST} " if j == line_idx else ""
-                    print(f"{marker} {DIM}{j+1:4d}:{RST} {tag}{lines[j].rstrip()}")
+                    clean_text = clean_line_for_display(lines[j])
+                    print(f"{marker} {DIM}{j+1:4d}:{RST} {tag}{clean_text}")
                 last_printed = end - 1
                 print()
 

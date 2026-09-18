@@ -616,7 +616,7 @@ def main():
 
             elif command == "ls":
                 try:
-                    mode_ls, _, _ = import_toolbox()
+                    mode_ls, _, _, _ = import_toolbox()
                     root = args[0] if args and not args[0].startswith("--") else "."
                     mode_ls(root, names_only="--full-path" not in args)
                 except Exception as e:
@@ -628,7 +628,7 @@ def main():
                     print("Error: lines requires <file_path>")
                     sys.exit(1)
                 try:
-                    _, mode_lines, _ = import_toolbox()
+                    _, mode_lines, _, _ = import_toolbox()
                     file_path = args[0]
                     start = None
                     end = None
@@ -676,6 +676,15 @@ def main():
                         print("Error: grep requires a pattern or search query.")
                         sys.exit(1)
 
+                    # Detect if a directory path was passed in args (e.g. pyslick grep "query" "src" or pyslick grep "src" "query")
+                    target_dir = "."
+                    query_tokens = []
+                    for a in cleaned_args:
+                        if os.path.isdir(a):
+                            target_dir = a
+                        else:
+                            query_tokens.append(a)
+
                     if len(cleaned_args) >= 2 and os.path.isfile(cleaned_args[0]):
                         file_path = cleaned_args[0]
                         patterns = cleaned_args[1:]
@@ -684,9 +693,9 @@ def main():
                         _, mode_lines, _, _ = import_toolbox()
                         mode_lines(cleaned_args[0])
                     else:
-                        # Semantic grep across repository using BM25 and AST expansion
-                        query_str = " ".join(cleaned_args)
-                        mode_semantic_grep(query_str, context=context)
+                        # Semantic grep across repository or target dir using BM25 and AST expansion
+                        query_str = " ".join(query_tokens) if query_tokens else " ".join(cleaned_args)
+                        mode_semantic_grep(query_str, root=target_dir, context=context)
                 except Exception as e:
                     print(f"Error: {e}")
                     sys.exit(1)

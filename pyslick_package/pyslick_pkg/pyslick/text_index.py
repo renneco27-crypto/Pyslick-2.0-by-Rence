@@ -52,20 +52,27 @@ def _load_nltk():
 
 def _tokenize_for_index(text: str) -> list[str]:
     """Lowercase, split camelCase and snake_case, strip stopwords, stem.
-
-    Deliberately separate from repomap._tokenize (which is regex [a-z]+ and
-    is load-bearing for the existing symbol search). Changing that one would
-    risk the symbol path; this one is free to be better.
+    Also preserves original compound token so exact symbol queries match strongly.
     """
     _load_nltk()
-    text = _CAMEL.sub(r"\1 \2", text)
-    text = text.replace("_", " ").replace("-", " ")
+    raw_words = _WORD.findall(text)
     out = []
-    for w in _WORD.findall(text):
-        lw = w.lower()
-        if len(lw) <= 1 or lw in _STOPWORDS:
-            continue
-        out.append(_STEMMER.stem(lw) if _STEMMER else lw)
+    for raw in raw_words:
+        low = raw.lower()
+        if len(low) > 2 and low not in _STOPWORDS:
+            # Include compound token (e.g. createbrowserclient)
+            out.append(low)
+
+        # Also split camelCase and snake_case
+        split_text = _CAMEL.sub(r"\1 \2", raw).replace("_", " ").replace("-", " ")
+        sub_words = _WORD.findall(split_text)
+        if len(sub_words) > 1:
+            for sw in sub_words:
+                slw = sw.lower()
+                if len(slw) > 1 and slw not in _STOPWORDS:
+                    out.append(_STEMMER.stem(slw) if _STEMMER else slw)
+        else:
+            out.append(_STEMMER.stem(low) if _STEMMER else low)
     return out
 
 
@@ -114,31 +121,61 @@ def extract_text_for_index(filepath: str) -> str:
     except Exception:
         return ""
 
+    # Strip data URIs and sourcemaps before extraction to avoid noise
+    src = re.sub(r'data:[^;]+;base64,[A-Za-z0-9+/=]+', '', src)
+    src = re.sub(r'sourceMappingURL=data:[^\n]+', '', src)
+
     ext = os.path.splitext(filepath)[1].lower()
     chunks: list[str] = []
 
     # Comments
     if ext in _LINE_COMMENT:
-        chunks.extend(m.group(1) for m in _LINE_COMMENT[ext].finditer(src))
+        for m in _LINE_COMMENT[ext].finditer(src):
+            c = m.group(1)
+            if len(c) <= 250:
+                chunks.append(c)
     if ext in (".js", ".jsx", ".ts", ".tsx", ".css", ".scss", ".go", ".rs", ".java"):
-        chunks.extend(m.group(1) for m in _BLOCK_COMMENT.finditer(src))
+        for m in _BLOCK_COMMENT.finditer(src):
+            c = m.group(1)
+            if len(c) <= 500:
+                chunks.append(c)
 
     # Python docstrings (including triple-quoted non-docstrings — fine, more text)
     if ext == ".py":
-        chunks.extend(m.group(2) for m in _PY_DOCSTRING.finditer(src))
+        for m in _PY_DOCSTRING.finditer(src):
+            c = m.group(2)
+            if len(c) <= 500:
+                chunks.append(c)
 
-    # String literals
+    # String literals (cap at 150 chars to exclude base64 blobs, SVGs, and bundles)
     if ext in (".js", ".jsx", ".ts", ".tsx", ".py", ".go", ".rs", ".java", ".rb"):
         for m in _QUOTED.finditer(src):
-            chunks.append(m.group(0))
+            s = m.group(0)
+            if 3 <= len(s) <= 150 and not s.startswith(('"data:', "'data:", '`data:')):
+                chunks.append(s)
 
     # JSX / HTML attributes
     if ext in (".jsx", ".tsx", ".html", ".htm", ".vue", ".svelte"):
-        chunks.extend(m.group(1) for m in _JSX_ATTR.finditer(src))
+        for m in _JSX_ATTR.finditer(src):
+            a = m.group(1)
+            if len(a) <= 150:
+                chunks.append(a)
 
     # CSS selectors and custom properties
     if ext in (".css", ".scss", ".sass", ".less"):
         chunks.extend(m.group(1) for m in _CSS_SELECTOR.finditer(src))
+
+    # Code identifiers (functions, classes, interfaces, exported symbols, imports)
+    if ext in (".js", ".jsx", ".ts", ".tsx", ".py", ".go", ".rs", ".java", ".rb", ".cs", ".kt", ".c", ".cpp"):
+        ident_tokens = set(_WORD.findall(src))
+        keywords = {"const", "let", "var", "function", "return", "import", "export",
+                    "default", "from", "class", "interface", "type", "async", "await",
+                    "public", "private", "protected", "if", "else", "for", "while",
+                    "switch", "case", "break", "continue", "try", "catch", "finally",
+                    "throw", "new", "this", "super", "null", "undefined", "true", "false", "void"}
+        valid_idents = [w for w in ident_tokens if w.lower() not in keywords and 3 <= len(w) <= 60]
+        if valid_idents:
+            chunks.append(" ".join(valid_idents))
 
     # Always include the filename tokens — CustomCursor.tsx should be findable
     # by "custom cursor" even if the file body has nothing.
@@ -367,10 +404,14 @@ def find_files_by_name(query: str, files: list[str], top_k: int = 5) -> list[tup
     seen: set = set()
     for c in candidates:
         c_low = c.lower()
+        # Avoid common directory/noise words matching random files
+        if c_low in ("src", "app", "lib", "components", "pages", "util", "utils", "index", "main"):
+            continue
         for f in files:
             base = _os.path.basename(f).lower()
-            # Exact basename match, or match with path separator stripped
-            if base == c_low or base.startswith(c_low + ".") or c_low in base:
+            # Exact match without ext or exact full filename match
+            name_without_ext = _os.path.splitext(base)[0]
+            if base == c_low or name_without_ext == c_low or base.startswith(c_low + "."):
                 if f in seen:
                     continue
                 seen.add(f)
