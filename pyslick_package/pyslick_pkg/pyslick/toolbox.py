@@ -599,20 +599,30 @@ def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int
         if not lines:
             continue
 
-        # Find lines matching the search terms with semantic origin labeling
+        # Find lines matching the search terms with semantic origin labeling using word boundaries
         hit_lines = []
         matched_map = {}
+        compiled_tokens = []
+        for tok in q_tokens:
+            try:
+                compiled_tokens.append((tok, re.compile(r"\b" + re.escape(tok) + r"\b", re.IGNORECASE)))
+            except Exception:
+                compiled_tokens.append((tok, None))
+
         for line_idx, line_text in enumerate(lines):
-            low = line_text.lower()
-            for tok in q_tokens:
-                if tok in low:
+            # Skip massive lines
+            if len(line_text) > 1500:
+                continue
+            for tok, rx in compiled_tokens:
+                matched = rx.search(line_text) if rx else (tok.lower() in line_text.lower())
+                if matched:
                     lineno = line_idx + 1
                     hit_lines.append(lineno)
                     strip_low = line_text.strip().lower()
                     is_docstring = '"""' in strip_low or "'''" in strip_low or "/**" in strip_low or "*/" in strip_low
                     is_comment = strip_low.startswith(("//", "#", "*", "<!--")) or is_docstring
                     is_marker = "pyslick:start" in strip_low or "pyslick:end" in strip_low
-                    is_def = any(strip_low.startswith(kw) for kw in ("def ", "function ", "class ", "interface ", "export function ", "export const ", "export default ", "public ", "private "))
+                    is_def = any(strip_low.startswith(kw) for kw in ("def ", "function ", "class ", "interface ", "export function ", "export const ", "export async function ", "export default ", "public ", "private "))
 
                     if is_marker:
                         origin = "marker"
@@ -638,7 +648,8 @@ def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int
 
         ranges = _function_ranges_for_hits(filepath, hit_lines)
         if ranges:
-            for r_start, r_end, r_hits in ranges:
+            max_ranges_to_show = 3
+            for r_idx, (r_start, r_end, r_hits) in enumerate(ranges[:max_ranges_to_show]):
                 if r_start == r_end:
                     j = r_start
                     if 1 <= j <= len(lines):
@@ -647,6 +658,8 @@ def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int
                     print()
                     continue
                 _print_function_range(lines, r_start, r_end, set(r_hits), matched_map)
+            if len(ranges) > max_ranges_to_show:
+                print(f"  {DIM}... [{len(ranges) - max_ranges_to_show} more matched block(s) omitted in {filepath}]{RST}\n")
         else:
             # Context window fallback
             last_printed = -1

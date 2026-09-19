@@ -179,6 +179,16 @@ def extract_text_for_index(filepath: str) -> str:
 
     # Code identifiers (functions, classes, interfaces, exported symbols, imports)
     if ext in (".js", ".jsx", ".ts", ".tsx", ".py", ".go", ".rs", ".java", ".rb", ".cs", ".kt", ".c", ".cpp"):
+        # Detect exported symbol declarations to boost primary definition files
+        export_defs = re.findall(r'(?:export\s+(?:async\s+)?(?:function|class|const|let|var|type|interface)\s+([a-zA-Z0-9_]+))', src)
+        if export_defs:
+            chunks.append(" ".join(export_defs) + " " + " ".join(export_defs))
+
+        # Extract chained database/API calls: .from('table'), .rpc('proc'), .channel('ch')
+        db_calls = re.findall(r'\.(?:from|rpc|table|channel|storage)\s*\(\s*[\'"`]([^\'"`]+)[\'"`]', src)
+        if db_calls:
+            chunks.append(" ".join(db_calls) + " " + " ".join(db_calls))
+
         ident_tokens = set(_WORD.findall(src))
         keywords = {"const", "let", "var", "function", "return", "import", "export",
                     "default", "from", "class", "interface", "type", "async", "await",
@@ -345,21 +355,6 @@ def format_text_results(results: list[tuple[str, float, list[str]]]) -> None:
     if not results:
         print("  No text matches found.")
         return
-    top = results[0][1] or 1.0
-    for filepath, score, toks in results:
-        pct = (score / top) * 100 if top else 0.0
-        shown = ", ".join(toks[:6])
-        print(f"  [{pct:5.1f}%]  {filepath}  <- matched: {shown}")
-    print()
-def format_text_results(results: list[tuple[str, float, list[str]]]) -> None:
-    """Print results in a shape consistent with find-nearest-nodes output."""
-    print("\n--- Text Index Matches (BM25) ---")
-    if not results:
-        print("  No text matches found.")
-        return
-    # Require at least one real token match per result. Stopword-only
-    # matches ("is", "the") collapse to zero tokens after tokenization,
-    # but belt-and-suspenders in case the fallback stopword set is active.
     results = [r for r in results if r[2]]
     if not results:
         print("  No text matches found.")

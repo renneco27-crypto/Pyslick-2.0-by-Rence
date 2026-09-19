@@ -65,6 +65,16 @@ STATIC_MAP = {
     "notification": ["onesignal", "push", "alert", "message"],
     "apk": ["android", "build", "gradle", "app", "mobile"],
     "qr": ["qrcode", "scan", "code", "barcode"],
+    "supabase": ["database", "postgres", "sql", "client", "createClient", "createBrowserSupabase", "createServerSupabase", "createAdminSupabase", "rpc", "auth"],
+    "postgres": ["supabase", "database", "sql", "table", "schema", "rpc", "migration"],
+    "postgresql": ["supabase", "database", "sql", "table", "schema", "rpc", "migration"],
+    "rpc": ["procedure", "function", "supabase", "postgres", "rpc"],
+    "rls": ["policy", "security", "permission", "row level security", "supabase"],
+    "policy": ["rls", "security", "permission", "supabase", "postgres"],
+    "migration": ["migrations", "schema", "sql", "table", "supabase", "ddl"],
+    "migrations": ["migration", "schema", "sql", "table", "supabase", "ddl"],
+    "client": ["browser", "server", "admin", "createClient", "createBrowserClient", "createServerClient", "instance"],
+    "admin": ["service_role", "createAdminSupabase", "role", "permissions"],
 }
 
 

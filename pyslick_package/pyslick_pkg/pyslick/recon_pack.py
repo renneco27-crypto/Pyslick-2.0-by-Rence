@@ -312,15 +312,18 @@ def _grep_fallback_search(search_terms: list[str], already_found: list[str]) -> 
 def gather_candidate_files(directive: str, expanded: str) -> list[str]:
     """Rank candidate files using BM25 semantic text index + AST graph match + comment blocks."""
     ranked_paths: list[str] = []
-    seen_basenames = set()
+    seen_paths = set()
 
     def _add_path(p: str):
         if not p or not os.path.isfile(p) or is_generated_or_minified_file(p):
             return
-        bn = os.path.basename(p)
-        if bn not in seen_basenames:
-            seen_basenames.add(bn)
-            ranked_paths.append(p)
+        try:
+            rel = os.path.normpath(os.path.relpath(p, "."))
+        except Exception:
+            rel = os.path.normpath(p)
+        if rel not in seen_paths:
+            seen_paths.add(rel)
+            ranked_paths.append(rel)
 
     # 1. BM25 Semantic Text Index (docstrings, comments, code identifiers)
     if _HAS_TEXT_INDEX:
