@@ -13,15 +13,19 @@ _SEP = "[SEP]"
 
 _MARKERS = (
     "where", "what", "who", "when", "why", "how",
-    "find", "show", "locate", "which",
+    "find", "show", "locate", "which", "check", "inspect",
 )
 
 _MARKER_ALT = "|".join(_MARKERS)
 
 _SPLIT_ORDER = (
     re.compile(r"\s*;\s*"),
-    re.compile(r"\s*\?\s*(?=[A-Za-z])"),
+    re.compile(r"\s*\?\s+(?=[A-Za-z0-9])"),
+    re.compile(r"\s+and\s+also\s+", re.IGNORECASE),
+    re.compile(r"\s+as\s+well\s+as\s+", re.IGNORECASE),
+    re.compile(r"\s*,\s*also\s+", re.IGNORECASE),
     re.compile(r"\s+and\s+(?=(?:" + _MARKER_ALT + r")\b)", re.IGNORECASE),
+    re.compile(r"\s+and\s+(?=[a-zA-Z0-9_]{3,}\s+(?:is|are|does|handles|connects|works|caches|calls))", re.IGNORECASE),
     re.compile(r"\s*\n+\s*"),
     re.compile(r"\s+(?=(?:" + _MARKER_ALT + r")\b)", re.IGNORECASE),
 )
@@ -58,17 +62,31 @@ def _looks_compound(query: str) -> bool:
             distinct.add(m)
     if total >= 2 or len(distinct) >= 2:
         return True
-    if " and " in ql and ql.count("?") >= 2:
+    if " and " in ql and (ql.count("?") >= 2 or ";" in ql):
         return True
+    if " as well as " in ql or " and also " in ql or ", also " in ql:
+        return True
+    # "supabase client and cache urls" (two distinct multi-word clauses)
+    if " and " in ql:
+        parts = ql.split(" and ", 1)
+        if len(parts[0].split()) >= 2 and len(parts[1].split()) >= 2:
+            return True
     return False
 
 
 def _regex_split(query: str) -> list[str]:
     for pat in _SPLIT_ORDER:
         parts = [p.strip() for p in pat.split(query)]
-        parts = [p for p in parts if p]
+        parts = [p for p in parts if len(p) > 2]
         if len(parts) >= 2:
             return parts
+    # Fallback: split on ' and ' if both sides have at least 2 words
+    if " and " in query.lower():
+        idx = query.lower().find(" and ")
+        left = query[:idx].strip()
+        right = query[idx + 5:].strip()
+        if len(left.split()) >= 2 and len(right.split()) >= 2:
+            return [left, right]
     return []
 
 

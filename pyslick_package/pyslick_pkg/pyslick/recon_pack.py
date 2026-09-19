@@ -58,7 +58,28 @@ from comment_blocks import (
     scan_project_for_comment_blocks,
     comment_nodes_as_graph_nodes,
 )
+from repomap import (
+    is_overview_query,
+    get_codebase_overview,
+    query_multilang,
+    is_supported as repomap_is_supported,
+    is_generated_or_minified_file,
+)
+from decompose import decompose
+from relations import is_relation_query, resolve_relation
 import llm as local_llm
+
+try:
+    from synonyms import expand as _syn_expand
+    _HAS_SYNONYMS = True
+except ImportError:
+    _HAS_SYNONYMS = False
+
+try:
+    from text_index import build_text_index, search_text_index_auto
+    _HAS_TEXT_INDEX = True
+except ImportError:
+    _HAS_TEXT_INDEX = False
 
 BOLD  = "\033[1m"
 CYAN  = "\033[96m"
@@ -114,31 +135,66 @@ def _merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
     return merged
 
 
-def _find_match_ranges(lines: list[str], terms: list[str], context: int) -> list[tuple[int, int, str]]:
+def _find_match_ranges(lines: list[str], terms: list[str], context: int, file_path: str = "") -> list[tuple[int, int, str]]:
     """Return merged 0-indexed (lo, hi, matched_term) ranges around every
-    line that matches any search term (case-insensitive substring or
-    regex). The matched term is kept so callers can report *why* a snippet
-    was pulled in, not just where."""
+    line that matches any search term. If tree-sitter or AST is available,
+    snaps match lines to their complete enclosing functions."""
     compiled = []
     for t in terms:
+        if len(t) < 3 or t.lower() in _STOPWORDS:
+            continue
         try:
-            compiled.append((t, re.compile(t, re.IGNORECASE)))
+            compiled.append((t, re.compile(r"\b" + re.escape(t) + r"\b", re.IGNORECASE)))
         except re.error:
             compiled.append((t, re.compile(re.escape(t), re.IGNORECASE)))
 
-    hits = []
+    if not compiled:
+        return []
+
+    hit_lines = []
     for i, line in enumerate(lines):
+        # Skip raw base64 or minified lines
+        if len(line) > 1500 or "data:image/" in line or "data:application/" in line:
+            continue
         for term, rx in compiled:
             if rx.search(line):
-                lo = max(0, i - context)
-                hi = min(len(lines) - 1, i + context)
-                hits.append((lo, hi, term))
+                hit_lines.append((i + 1, term))
                 break
 
-    # merge overlapping ranges, keeping the first matched term for each group
-    hits.sort(key=lambda h: h[0])
+
+    if not hit_lines:
+        return []
+
+    # Check for AST function spans if available
+    ast_ranges = []
+    if file_path and repomap_is_supported(file_path):
+        try:
+            from repomap import extract_tags
+            tags = extract_tags(file_path) or []
+            defs = [t for t in tags if t.is_def and t.end_line > t.start_line]
+            for hline, hterm in hit_lines:
+                snapped = False
+                for d in defs:
+                    if d.start_line <= hline <= d.end_line:
+                        ast_ranges.append((max(0, d.start_line - 1), min(len(lines) - 1, d.end_line - 1), hterm))
+                        snapped = True
+                        break
+                if not snapped:
+                    lo = max(0, hline - 1 - context)
+                    hi = min(len(lines) - 1, hline - 1 + context)
+                    ast_ranges.append((lo, hi, hterm))
+        except Exception:
+            ast_ranges = []
+
+    if not ast_ranges:
+        for hline, hterm in hit_lines:
+            lo = max(0, hline - 1 - context)
+            hi = min(len(lines) - 1, hline - 1 + context)
+            ast_ranges.append((lo, hi, hterm))
+
+    ast_ranges.sort(key=lambda h: h[0])
     merged: list[tuple[int, int, str]] = []
-    for lo, hi, term in hits:
+    for lo, hi, term in ast_ranges:
         if merged and lo <= merged[-1][1] + 1:
             prev_lo, prev_hi, prev_term = merged[-1]
             merged[-1] = (prev_lo, max(prev_hi, hi), prev_term)
@@ -149,6 +205,9 @@ def _find_match_ranges(lines: list[str], terms: list[str], context: int) -> list
 
 def pack_file(path: str, terms: list[str], budget: dict) -> dict | None:
     """Decide full-file vs snippet mode for one file and build its entry."""
+    if is_generated_or_minified_file(path):
+        return None
+
     lines = _read_lines(path)
     if lines is None:
         return None
@@ -163,23 +222,25 @@ def pack_file(path: str, terms: list[str], budget: dict) -> dict | None:
             "content": "\n".join(lines),
         }
 
-    ranges = _find_match_ranges(lines, terms, budget["snippet_context_lines"])
+    ranges = _find_match_ranges(lines, terms, budget["snippet_context_lines"], file_path=path)
     if not ranges:
-        # No direct term hits in an oversized file — better to say so
-        # explicitly than to silently omit it or dump the whole thing.
         return {
             "path": path,
             "mode": "skipped_no_match",
             "line_count": total,
             "note": f"File has {total} lines (over the {budget['whole_file_max_lines']}-line "
-                    f"full-include threshold) and no search terms matched directly. "
-                    f"Omitted — was likely only included via fuzzy graph score.",
+                    f"full-include threshold) and no search terms matched directly.",
         }
 
     ranges = ranges[: budget["max_snippets_per_file"]]
     snippets = []
     for lo, hi, matched_term in ranges:
-        snippet_lines = [f"{i+1:5d}: {lines[i]}" for i in range(lo, hi + 1)]
+        snippet_lines = []
+        for i in range(lo, hi + 1):
+            line_str = lines[i]
+            if len(line_str) > 220:
+                line_str = line_str[:217] + "..."
+            snippet_lines.append(f"{i+1:5d}: {line_str}")
         snippets.append({
             "start_line": lo + 1,
             "end_line": hi + 1,
@@ -196,22 +257,21 @@ def pack_file(path: str, terms: list[str], budget: dict) -> dict | None:
     }
 
 
-MIN_GRAPH_MATCH_SCORE = 45  # below this, a fuzzy label match is noise, not signal
+MIN_GRAPH_MATCH_SCORE = 45
 
 FALLBACK_SKIP_DIRS = {
     "node_modules", ".git", ".next", "dist", "build", "__pycache__",
     ".venv", "venv", ".turbo", ".cache", "coverage", "out", "graphify-out",
-    ".pyslick_backups", ".pyslick_context",
+    ".pyslick_backups", ".pyslick_context", ".gradle", "intermediates", "outputs",
 }
 FALLBACK_SKIP_EXTS = {
-    ".css", ".json", ".lock", ".svg", ".png", ".jpg", ".jpeg", ".gif",
+    ".css", ".lock", ".svg", ".png", ".jpg", ".jpeg", ".gif",
     ".pdf", ".ico", ".map", ".bak", ".woff", ".woff2", ".ttf",
 }
 
 _STOPWORDS = {
     "what", "does", "do", "is", "are", "the", "a", "an", "this", "that",
     "these", "those", "how", "why", "when", "where", "which", "who",
-    "code", "codebase", "program", "project", "repo", "repository",
     "work", "works", "use", "used", "using", "make", "makes", "made",
     "get", "gets", "got", "have", "has", "had", "can", "could", "would",
     "should", "will", "be", "been", "being", "or", "and", "but", "if",
@@ -221,12 +281,8 @@ _STOPWORDS = {
 
 
 def _grep_fallback_search(search_terms: list[str], already_found: list[str]) -> list[str]:
-    """Direct file-content grep across the project, used when the AST graph
-    match comes back empty or low-confidence (e.g. the query used concept
-    words like "system prompt formatting" that don't match any function or
-    class name in graph.json). Scores files by how many distinct search
-    terms appear in their content, favoring files with more hits."""
-    terms = [t.lower() for t in search_terms if len(t) > 3 and t.lower() not in _STOPWORDS]
+    """Direct file-content search across the project."""
+    terms = [t.lower() for t in search_terms if len(t) > 2 and t.lower() not in _STOPWORDS]
     if not terms:
         return []
 
@@ -238,7 +294,7 @@ def _grep_fallback_search(search_terms: list[str], already_found: list[str]) -> 
             if fn.startswith(".") or any(fn.endswith(e) for e in FALLBACK_SKIP_EXTS):
                 continue
             fpath = os.path.normpath(os.path.join(dirpath, fn))
-            if fpath in already_found:
+            if fpath in already_found or is_generated_or_minified_file(fpath):
                 continue
             try:
                 with open(fpath, "r", encoding="utf-8", errors="ignore") as fh:
@@ -246,7 +302,7 @@ def _grep_fallback_search(search_terms: list[str], already_found: list[str]) -> 
             except Exception:
                 continue
             hits = sum(1 for t in terms if t in content)
-            if hits >= 2:
+            if hits >= 1:
                 scored.append((hits, fpath))
 
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -254,32 +310,40 @@ def _grep_fallback_search(search_terms: list[str], already_found: list[str]) -> 
 
 
 def gather_candidate_files(directive: str, expanded: str) -> list[str]:
-    """Rank candidate files via fuzzy graph match + comment-block scan first;
-    fall back to direct file-content grep when the graph match is weak or
-    empty. The graph only knows AST symbol names (function/class labels), so
-    a concept-style query ("system prompt formatting") can score a false
-    positive against an unrelated symbol (e.g. a CSS class) — the confidence
-    threshold below filters that out, and the grep fallback catches the case
-    where nothing scored well at all."""
-    nodes = load_graph_nodes() or []
+    """Rank candidate files using BM25 semantic text index + AST graph match + comment blocks."""
+    ranked_paths: list[str] = []
+    seen_basenames = set()
 
+    def _add_path(p: str):
+        if not p or not os.path.isfile(p) or is_generated_or_minified_file(p):
+            return
+        bn = os.path.basename(p)
+        if bn not in seen_basenames:
+            seen_basenames.add(bn)
+            ranked_paths.append(p)
+
+    # 1. BM25 Semantic Text Index (docstrings, comments, code identifiers)
+    if _HAS_TEXT_INDEX:
+        try:
+            t_idx = build_text_index(".")
+            hits, _ = search_text_index_auto(expanded or directive, t_idx)
+            for h in hits:
+                _add_path(h.file)
+        except Exception:
+            pass
+
+    # 2. AST Graph Nodes + Comment Blocks
+    nodes = load_graph_nodes() or []
     comment_nodes_raw = scan_project_for_comment_blocks(os.getcwd())
     comment_nodes = comment_nodes_as_graph_nodes(comment_nodes_raw)
-
     all_nodes = nodes + comment_nodes
-
-    ranked_paths: list[str] = []
 
     if all_nodes:
         from rapidfuzz import process
         from rapidfuzz.fuzz import WRatio
 
-        labels = [n["label"] for n in all_nodes]
-        raw_results = process.extract(expanded, labels, scorer=WRatio, limit=20)
-
-        # token-based filename match: any directive token that matches a
-        # source-file stem pulls that file in at top priority
-        directive_tokens = [t for t in re.split(r"[^a-zA-Z0-9_]+", directive.lower()) if len(t) > 2]
+        # Stem matching: any directive token matching filename stem gets priority
+        directive_tokens = [t for t in re.split(r"[^a-zA-Z0-9_]+", directive.lower()) if len(t) > 2 and t not in _STOPWORDS]
         stems: dict[str, str] = {}
         for n in all_nodes:
             sf = n.get("source_file") or n.get("file") or n.get("path") or ""
@@ -290,10 +354,11 @@ def gather_candidate_files(directive: str, expanded: str) -> list[str]:
         for tok in directive_tokens:
             for stem, sf in stems.items():
                 if tok == stem or tok == stem.replace("_", ""):
-                    if os.path.isfile(sf) and sf not in ranked_paths:
-                        ranked_paths.append(sf)
+                    _add_path(sf)
 
-        seen_basenames = {os.path.basename(p) for p in ranked_paths}
+        labels = [n["label"] for n in all_nodes]
+        raw_results = process.extract(expanded, labels, scorer=WRatio, limit=20)
+
         for match, score, index in raw_results:
             if score < MIN_GRAPH_MATCH_SCORE:
                 continue
@@ -302,48 +367,113 @@ def gather_candidate_files(directive: str, expanded: str) -> list[str]:
                 path = node["_comment_node"].file
             else:
                 path = node.get("source_file") or node.get("file") or node.get("path")
-            if not path or not os.path.isfile(path):
-                continue
-            bn = os.path.basename(path)
-            if bn in seen_basenames:
-                continue
-            seen_basenames.add(bn)
-            ranked_paths.append(path)
+            _add_path(path)
 
-    # ── fallback: graph match found nothing (or too little) worth trusting ──
+    # 3. Fallback direct grep if candidate pool is thin
     if len(ranked_paths) < 2:
         search_terms = list({directive, expanded, *expanded.split(), *directive.split()})
         fallback_paths = _grep_fallback_search(search_terms, ranked_paths)
-        ranked_paths.extend(fallback_paths)
+        for fp in fallback_paths:
+            _add_path(fp)
 
     return ranked_paths
 
 
 def build_pack(directive: str, budget: dict) -> dict:
-    hdr("Phase 1", "Expand — local LLM query expansion")
-    expanded = local_llm.maybe_expand_query(directive)
-    if expanded != directive:
-        ok(f"Expanded: {expanded}")
+    # ── 1. Codebase Overview Intent ───────────────────────────────────────
+    if is_overview_query(directive):
+        hdr("Overview", "Generating App Architecture & God-Node Overview")
+        overview = get_codebase_overview(".")
+        ok("Extracted PageRank top files and project descriptors")
+
+        overview_files = []
+        # Add top connected files to the pack
+        top_paths = [tf["path"] for tf in overview.get("top_files", [])] + overview.get("entry_points", [])
+        seen = set()
+        for tp in top_paths:
+            if tp in seen or not os.path.isfile(tp):
+                continue
+            seen.add(tp)
+            entry = pack_file(tp, ["export", "function", "class", "const"], budget)
+            if entry:
+                overview_files.append(entry)
+                if len(overview_files) >= budget["max_files"]:
+                    break
+
+        return {
+            "directive": directive,
+            "mode": "codebase_overview",
+            "overview_markdown": overview.get("overview_text", ""),
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "budget": budget,
+            "files": overview_files,
+        }
+
+    # ── 2. Compound Query Decomposition ───────────────────────────────────
+    subqueries = decompose(directive)
+    if len(subqueries) > 1:
+        hdr("Decompose", f"Split compound query into {len(subqueries)} parts:")
+        for sq in subqueries:
+            print(f"  {DIM}· {sq}{RST}")
     else:
-        warn("Local model unavailable or made no change — using directive as-is "
-             "(run `pyslick llm-status` to check setup)")
+        subqueries = [directive]
 
-    vocab = load_graphify_vocab()
-    fully_expanded = expand_query_with_vocab(expanded, vocab)
+    # ── 3. Relationship Check ─────────────────────────────────────────────
+    relation_info = None
+    if is_relation_query(directive):
+        hdr("Relation", "Resolving entity connection graph")
+        try:
+            relation_info = resolve_relation(directive)
+            if relation_info.get("confidence") != "none":
+                ok(f"Found connection: {relation_info.get('note')}")
+        except Exception:
+            relation_info = None
 
-    hdr("Phase 2", "Locate — fuzzy graph match + comment-block scan")
-    candidates = gather_candidate_files(directive, fully_expanded)
-    if not candidates:
-        err("No candidate files found. Run: graphify extract . --code-only")
-        return {}
-    ok(f"{len(candidates)} candidate file(s) found")
+    # ── 4. Query Expansion (Synonyms + Local LLM) ─────────────────────────
+    hdr("Phase 1", "Expand — domain synonyms & query expansion")
+    all_expanded_terms = []
+    all_candidates = []
 
-    search_terms = list({directive, expanded, *fully_expanded.split()})
+    for sq in subqueries:
+        exp_terms = [sq]
+        if _HAS_SYNONYMS:
+            try:
+                syn_b = _syn_expand(sq)
+                for t in syn_b.get("terms", []):
+                    if t not in exp_terms:
+                        exp_terms.append(t)
+            except Exception:
+                pass
 
-    hdr("Phase 3", "Pack — deciding full-file vs snippet per budget")
+        try:
+            llm_exp = local_llm.maybe_expand_query(sq)
+            if llm_exp and llm_exp != sq:
+                exp_terms.append(llm_exp)
+        except Exception:
+            pass
+
+        full_exp = " ".join(exp_terms)
+        all_expanded_terms.extend(exp_terms)
+
+        # Gather candidates for this subquery
+        cands = gather_candidate_files(sq, full_exp)
+        for c in cands:
+            if c not in all_candidates:
+                all_candidates.append(c)
+
+    ok(f"{len(all_candidates)} candidate file(s) found across {len(subqueries)} sub-query(s)")
+
+    search_terms = list(dict.fromkeys(
+        [t for t in (all_expanded_terms + directive.split()) if len(t) > 2 and t.lower() not in _STOPWORDS]
+    ))
+
+    # ── 5. Pack Files ─────────────────────────────────────────────────────
+
+    hdr("Phase 2", "Pack — deciding full-file vs snippet per budget")
     packed_files = []
     total_lines_used = 0
-    for path in candidates:
+
+    for path in all_candidates:
         if len(packed_files) >= budget["max_files"]:
             warn(f"max_files ({budget['max_files']}) reached — stopping")
             break
@@ -357,31 +487,32 @@ def build_pack(directive: str, budget: dict) -> dict:
         )
 
         if total_lines_used + entry_lines > budget["max_total_lines"] and packed_files:
-            warn(f"max_total_lines ({budget['max_total_lines']}) reached — "
-                 f"stopping before {path}")
+            warn(f"max_total_lines ({budget['max_total_lines']}) reached — stopping before {path}")
             break
 
         total_lines_used += entry_lines
         packed_files.append(entry)
 
-        mode_label = {"full": "full file", "snippet": f"{entry.get('snippet_count', 0)} snippet(s)",
-                      "skipped_no_match": "skipped (no match, too large)"}[entry["mode"]]
+        mode_label = {
+            "full": "full file",
+            "snippet": f"{entry.get('snippet_count', 0)} snippet(s)",
+            "skipped_no_match": "skipped (no match, too large)",
+        }[entry["mode"]]
         print(f"  {DIM}·{RST} {path}  {DIM}({entry['line_count']} lines){RST} → {mode_label}")
-        # ── show exactly which lines/terms justified pulling this file in,
-        # so you can eyeball relevance before pasting the pack into an LLM ──
         if entry["mode"] == "snippet":
             for s in entry.get("snippets", []):
-                print(f"      {DIM}lines {s['start_line']}-{s['end_line']}: "
-                      f"matched '{s.get('matched_term', '?')}'{RST}")
+                print(f"      {DIM}lines {s['start_line']}-{s['end_line']}: matched '{s.get('matched_term', '?')}'{RST}")
 
-    return {
+    result = {
         "directive": directive,
-        "expanded_query": expanded,
+        "subqueries": subqueries if len(subqueries) > 1 else None,
         "search_terms_used": search_terms,
+        "relation": relation_info,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "budget": budget,
         "files": packed_files,
     }
+    return result
 
 
 def write_pack(pack: dict) -> str:
@@ -399,8 +530,7 @@ def _try_copy_to_clipboard(text: str):
         copy_to_clipboard(text)
         ok("Copied to clipboard — paste into your web AI.")
     except Exception:
-        warn("Could not auto-copy (clipboard module unavailable) — "
-             "open the file and copy it manually.")
+        warn("Could not auto-copy (clipboard module unavailable) — open the file and copy manually.")
 
 
 def _parse_argv(argv: list[str]) -> tuple[str, dict]:
@@ -437,21 +567,23 @@ def main():
         sys.exit(1)
 
     pack = build_pack(directive, budget)
-    if not pack.get("files"):
+    if not pack.get("files") and not pack.get("overview_markdown"):
         err("Nothing packed — no output written.")
         sys.exit(1)
 
-    hdr("Phase 4", "Write")
+    hdr("Phase 3", "Write")
     out_path = write_pack(pack)
     ok(f"Written: {out_path}")
 
     text = json.dumps(pack, indent=2)
     _try_copy_to_clipboard(text)
 
-    print(f"\n{DIM}  {len(pack['files'])} file(s), "
-          f"~{sum(f.get('line_count', 0) for f in pack['files'])} source lines referenced.{RST}")
+    files_count = len(pack.get("files", []))
+    lines_ref = sum(f.get("line_count", 0) for f in pack.get("files", []))
+    print(f"\n{DIM}  {files_count} file(s), ~{lines_ref} source lines referenced.{RST}")
     print(f"{DIM}  Paste this into your web AI along with what you want changed.{RST}")
 
 
 if __name__ == "__main__":
     main()
+

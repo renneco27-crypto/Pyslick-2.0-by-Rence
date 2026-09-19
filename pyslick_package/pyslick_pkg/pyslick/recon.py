@@ -137,53 +137,79 @@ def phase1_orient():
     git_log()
 
 
-def _py_files_from_node_ids(node_ids: list[str]) -> list[str]:
+def _files_from_nodes(nodes: list[dict], directive: str) -> list[str]:
     seen = []
-    for nid in node_ids:
-        parts = nid.split("_")
-        if len(parts) >= 2:
-            module = parts[1]
-            candidate = os.path.join(os.getcwd(), f"{module}.py")
-            if os.path.isfile(candidate) and candidate not in seen:
-                seen.append(candidate)
+    # 1. Direct source_file from graph nodes
+    for n in nodes:
+        sf = n.get("source_file") or n.get("file") or n.get("path")
+        if sf and os.path.isfile(sf) and sf not in seen:
+            seen.append(sf)
+
+    # 2. Try BM25 text index fallback if node list has no valid source files
+    if not seen:
+        try:
+            from text_index import build_text_index, search_text_index_auto
+            t_idx = build_text_index(".")
+            hits, _ = search_text_index_auto(directive, t_idx, top_k=3)
+            for h in hits:
+                if os.path.isfile(h.file) and h.file not in seen:
+                    seen.append(h.file)
+        except Exception:
+            pass
+
+    # 3. Old heuristic fallback
+    if not seen:
+        for n in nodes:
+            nid = n.get("id", "")
+            parts = nid.split("_")
+            if len(parts) >= 2:
+                module = parts[1]
+                candidate = os.path.join(os.getcwd(), f"{module}.py")
+                if os.path.isfile(candidate) and candidate not in seen:
+                    seen.append(candidate)
     return seen
 
 
-def _run_graphify_query(py_file: str, question: str, top_k: int = 3):
-    print(f"\n  {DIM}graphify.query({os.path.basename(py_file)!r}, {question!r}){RST}")
-    try:
-        results = graphify_query(py_file, question, top_k=top_k, depth=2, direction="both")
-        if not results:
-            print(f"  {DIM}  (no matches){RST}")
-            return
-
-        for r in results:
-            sym = r.symbol
-            callees = sorted(sym.get("callees", set()))
-            callers = sorted(sym.get("callers", set()))
-
-            print(f"\n  {BOLD}{CYAN}[{sym['type']}] {sym['name']}{RST}  "
-                  f"L{sym['start_line']}–{sym['end_line']}  "
-                  f"{DIM}score={r.score:.2f}{RST}")
-
-            if sym.get("docstring"):
-                print(f"  {DIM}  \"{sym['docstring'][:100]}\"{RST}")
-            if callees:
-                print(f"  {GREEN}  calls   → {', '.join(callees)}{RST}")
-            if callers:
-                print(f"  {YELL}  called by ← {', '.join(callers)}{RST}")
-
-            if r.connections:
-                print(f"  {DIM}  connected nodes:{RST}")
-                for c in r.connections:
-                    csym = c.symbol
-                    print(f"    {DIM}· [{csym['type']}] {csym['name']} "
-                          f"L{csym['start_line']}–{csym['end_line']}{RST}")
-
-    except FileNotFoundError:
-        warn(f"graphify: file not found — {py_file}")
-    except Exception as e:
-        warn(f"graphify: {e}")
+def _run_module_inspection(file_path: str, question: str, top_k: int = 3):
+    print(f"\n  {DIM}Inspecting AST for {os.path.basename(file_path)!r} ...{RST}")
+    if file_path.endswith(".py"):
+        try:
+            results = graphify_query(file_path, question, top_k=top_k, depth=2, direction="both")
+            if not results:
+                print(f"  {DIM}  (no matches){RST}")
+                return
+            for r in results:
+                sym = r.symbol
+                callees = sorted(sym.get("callees", set()))
+                callers = sorted(sym.get("callers", set()))
+                print(f"\n  {BOLD}{CYAN}[{sym['type']}] {sym['name']}{RST}  "
+                      f"L{sym['start_line']}–{sym['end_line']}  "
+                      f"{DIM}score={r.score:.2f}{RST}")
+                if sym.get("docstring"):
+                    print(f"  {DIM}  \"{sym['docstring'][:100]}\"{RST}")
+                if callees:
+                    print(f"  {GREEN}  calls   → {', '.join(callees)}{RST}")
+                if callers:
+                    print(f"  {YELL}  called by ← {', '.join(callers)}{RST}")
+        except Exception as e:
+            warn(f"graphify: {e}")
+    else:
+        # Multi-language inspection via tree-sitter / repomap
+        try:
+            from repomap import query_multilang, is_supported
+            if is_supported(file_path):
+                results = query_multilang(file_path, question, top_k=top_k)
+                if not results:
+                    print(f"  {DIM}  (no matches){RST}")
+                    return
+                for r in results:
+                    print(f"\n  {BOLD}{CYAN}[{r.kind}] {r.name}{RST}  "
+                          f"L{r.start_line}–{r.end_line}  "
+                          f"{DIM}score={r.score:.2f}{RST}")
+                    if r.calls:
+                        print(f"  {GREEN}  calls   → {', '.join(r.calls)}{RST}")
+        except Exception as e:
+            warn(f"repomap: {e}")
 
 
 def phase2_locate(directive: str) -> list[str] | None:
@@ -197,11 +223,7 @@ def phase2_locate(directive: str) -> list[str] | None:
         warn("No graph nodes loaded (run: graphify extract . --code-only for function-level matches).")
         nodes = []
 
-    # Scan the project for comment-defined blocks (both explicit
-    # pyslick:start/end markers and natural descriptive comments) and
-    # merge them into the same candidate pool as the AST graph nodes, so
-    # a directive can match a comment even when there's no named function
-    # to anchor to (CSS rule groups, HTML sections, config blocks, etc).
+    # Scan the project for comment-defined blocks
     comment_nodes_raw = scan_project_for_comment_blocks(os.getcwd())
     comment_nodes = comment_nodes_as_graph_nodes(comment_nodes_raw)
     if comment_nodes:
@@ -218,7 +240,6 @@ def phase2_locate(directive: str) -> list[str] | None:
     all_nodes = nodes + comment_nodes
     if not all_nodes:
         err("No graph nodes and no comment blocks found — nothing to search.")
-        err("Run: graphify extract . --code-only   (or add some comments/markers)")
         return None
 
     print(f"  Total candidates: {len(all_nodes)}")
@@ -234,7 +255,7 @@ def phase2_locate(directive: str) -> list[str] | None:
     raw_results = process.extract(expanded, labels, scorer=WRatio, limit=8)
 
     print("\n--- Closest Matches (AST nodes + comment blocks) ---")
-    top_node_ids = []
+    top_nodes = []
     for match, score, index in raw_results:
         node = all_nodes[index]
         if node["type"] in ("marker_block", "descriptive_block"):
@@ -243,18 +264,17 @@ def phase2_locate(directive: str) -> list[str] | None:
                   f"-> {cn.file}:{cn.start_line}-{cn.end_line}")
         else:
             print(f"  [{score:5.1f}%]  {node['label']}  ({node['type']})  ->  {node['id']}")
-        top_node_ids.append(node["id"])
+        top_nodes.append(node)
 
-    hdr("Phase 2b", "Connected nodes — graphify.query on matched modules")
+    hdr("Phase 2b", "Connected AST symbols — inspecting matched modules")
 
-    py_files = _py_files_from_node_ids([n for n in top_node_ids if not n.startswith(("marker::", "comment::"))])
+    resolved_files = _files_from_nodes(top_nodes, directive)
 
-    if py_files:
-        for py_file in py_files[:2]:
-            _run_graphify_query(py_file, directive)
+    if resolved_files:
+        for fpath in resolved_files[:3]:
+            _run_module_inspection(fpath, directive)
     else:
-        warn("No .py module files resolved from node ids — skipping graphify query.")
-        warn("(This is normal for frontend/comment-block targets — matches above are enough)")
+        warn("No module files resolved from nodes — proceeding with direct target selection.")
 
     print()
     raw_input_str = input(

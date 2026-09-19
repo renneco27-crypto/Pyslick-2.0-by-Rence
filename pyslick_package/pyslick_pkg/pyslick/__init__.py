@@ -374,162 +374,132 @@ def git_log():
 # ─────────────────────────────────────────────────────────────────────────
 def print_help():
     help_text = """
-PySlick — Local code analysis, search, and AI-assisted patching
+╔══════════════════════════════════════════════════════════════════════════════╗
+║               PySlick 2.0 — Architecture & Developer Guide                   ║
+║  Local Semantic Code Navigation, Call-Graph Comprehension & Context Packing  ║
+╚══════════════════════════════════════════════════════════════════════════════╝
 
 Usage:
     pyslick <command> [args]
+    pyslick "<natural language query>"
 
 Tip: reference an exact file with a leading slash, e.g. "/server.js" or
-"/relay/server.js" — this skips fuzzy file-guessing entirely and goes
-straight to that file. Combine multiple: "compare /a.js and /b.js".
+"/relay/server.js" — this skips fuzzy guessing and inspects that exact file.
 
-━━  AI Commands  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━  Core AI & Recon Workflows  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  agent <directive>
-      Full agentic AI session (Claude). Autonomously scans your project
-      using a vocabulary of tool calls (get-file, scan-lines, grep,
-      find-blocks, ast-query, jsx-check …), synthesises a patch proposal,
-      shows a diff, then waits for ONE confirmation before writing.
-      Example:  pyslick agent "make the mic button 40% larger"
-      Example:  pyslick agent "remove the extra padding at the bottom of flashcards"
+  recon-pack "<directive>" [--max-files N] [--max-lines N]
+      Zero-API local context packer for DeepSeek, Claude Web & ChatGPT.
+      Decomposes compound queries, uses BM25 semantic text index + AST graph
+      to find relevant files, snaps matches to complete enclosing functions,
+      and writes a curated JSON bundle to .pyslick_context/<timestamp>.json
+      and auto-copies to Windows clipboard.
+      When asked "what does this codebase do", generates an Architecture Overview
+      with PageRank top connected files and opening docstrings.
+      Example:  pyslick recon-pack "what does this codebase do"
+      Example:  pyslick recon-pack "where is supabase client and how is cache handled"
 
-  <directive>            (no subcommand)
-      Rule-based router. Broad Q&A goes to universal recon: ranked files,
-      per-file snippets, and (if the directive names two entities) a
-      RELATION block showing the graph path between them.
-      Snippets auto-snap to the enclosing function's full extent â€” a
-      mid-body grep hit still shows the whole function, never a truncated
-      ±8-line window. Stopword-stripped, so "what does X do" doesn't
-      match every docstring containing the word "do".
-      Overview questions ("what does this codebase do", "app overview",
-      "describe the project", â€¦) route to the App Overview panel:
-      god-node files by in-degree + their opening comments.
+  recon "<directive>" [--auto-fix] [--test-cmd "<cmd>"] [--max-attempts N]
+      Guided interactive inspection & patch pipeline:
+      Phase 1: Orient (git log)
+      Phase 2: Multi-language AST inspection & symbol caller/callee resolution
+      Phase 3: Diff preview & one human confirmation gate
+      Phase 4: Patch application & safety checkpoint
+      Example:  pyslick recon "make the microphone button larger"
+      Example:  pyslick recon "fix padding" --auto-fix --test-cmd "pnpm build"
 
-  recon <directive>
-      Guided interactive pipeline: find → inspect → patch → checkpoint.
-      Asks you to confirm the target file and the exact find/replace before
-      anything is written. Add --auto-fix --test-cmd "pytest -q" to enable
-      a Claude-assisted retry loop on test failures.
-      Example:  pyslick recon "flashcard has too much space at the bottom"
-      Example:  pyslick recon "resize mic" --auto-fix --test-cmd "pnpm build"
+  agent "<directive>"
+      Full autonomous tool-calling session (Anthropic/Claude API).
+      Plans tool calls, inspects files, synthesizes patch proposal, shows diff,
+      and waits for one human confirmation before writing.
 
-  recon-pack <directive>
-      Local context packer (no API key). Uses local LLM for query expansion,
-      fuzzy graph match + comment-block scan to find relevant files, then
-      writes a curated JSON bundle of file content to paste into a web AI.
-      Options: --max-files N, --max-lines N, --whole-file-max-lines N, --context-lines N
-      Example:  pyslick recon-pack "connect bing extension websocket to electron main"
-      Example:  pyslick recon-pack "resize mic button" --max-files 4 --max-lines 800
+  ask "<question>" [--auto]
+      Interactive browser-relay loop via Miamico Edge extension (Claude).
+      Executes commands turn-by-turn with live feedback until findings complete.
 
-  ask <question> [--auto]
-      Recon loop via browser relay (Miamico extension). Sends your question
-      to Claude in Edge, then Claude responds one pyslick command at a time.
-      Each command is shown with a y/n prompt before running (skip with --auto).
-      Results feed back to Claude automatically. Stops when Claude outputs
-      "I have enough information." and prints its findings summary.
-      Requires: Miamico extension installed + relay server running.
-      Example:  pyslick ask "how does the mic button get its size"
-      Example:  pyslick ask "what calls ensure_running" --auto
+━━  Search, Grep & Overview Commands  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-━━  Read / Search Commands  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  ls [root] [--full-path]
-      List source files recursively, skipping node_modules / dist / .git.
-      Default: filename only.  --full-path: relative path from root.
-
-  lines <file>
-    text-search "<query>"
-        BM25 search over comments, strings, CSS classes, JSX attrs.
-      Print a file with 3-digit line numbers (great for pasting into LLMs).
+  grep "<natural language query>"
+      Universal 2-stage hybrid semantic search:
+      1. BM25 text index over boosted comments (2.5x), docstrings, and identifiers
+      2. Tree-Sitter AST scope snapping (matches expand to full enclosing functions)
+      3. Automatically handles compound questions via query decomposition
+      4. Automatically resolves relationship queries ("how does X connect to Y")
+      5. Automatically renders Architecture Overview for "what does this codebase do"
+      Example:  pyslick grep "where is supabase client and how is cache registered"
+      Example:  pyslick grep "what does this codebase do"
+      Example:  pyslick grep "how does useOfflineCache connect to sw"
 
   grep <file> <pattern> [<pattern> …] [--context N]
-  grep "<natural language query>"
-      Search a file or semantic-search across the repository.
-      When tree-sitter is available, matches automatically expand to the full
-      enclosing function end-to-end (--context is used as fallback).
+      Targeted in-file pattern search with function enclosure expansion.
+      Example:  pyslick grep src/sw.ts CACHE_URLS --context 3
+
+  deps [target] / imports [target]
+      Scan all project manifests (package.json, pyproject.toml, etc.) and
+      source code to list declared dependencies and all file import locations.
+      Example:  pyslick deps
+      Example:  pyslick deps supabase
+      Example:  pyslick imports serwist
+
+  query "<directive>"
+      Fast non-LLM AST symbol, caller/callee, and multi-language dependency lookup.
+      Example:  pyslick query "createBrowserSupabase"
+
+  text-search "<query>"
+      Direct BM25 search over comments, docstrings, strings, and JSX attributes.
 
   comment-scan [path]
-      Scan a file or whole project for named comment blocks
-      (# pyslick:start / # pyslick:end markers) and descriptive comments
-      that sit above code regions. Useful for CSS, HTML, config files.
+      Scan project or file for named comment blocks (# pyslick:start/end)
+      and descriptive header comments that describe architectural regions.
 
-━━  Code Analysis Commands  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━  Read & Navigate Commands  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  graphify-query <file.py> <question>
-      AST call-graph query on a Python file: returns matched
-      functions/classes + callers/callees scored by relevance.
-      Options: --top-k, --min-score, --depth, --direction
+  ls [root] [--full-path]
+      Clean grouped directory listing (skipping dependencies, cache & build artifacts).
 
-  graphify-sitter <query>
-      Tree-sitter parser for TypeScript/TSX files.
-      Requires: tree-sitter, tree-sitter-typescript
+  lines <file> [range | --head N | --tail N]
+      View file with line numbers (e.g. `pyslick lines src/app/page.tsx 10-50`).
 
-  find-nearest-nodes <query>
-      Fuzzy search across a pre-built graphify graph (graphify-out/graph.json).
-      Auto-generates the graph if missing.
+━━  Code Analysis & Linting  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  find-nearest-nodes "<query>"
+      Fuzzy search across pre-built graphify symbol graph (graphify-out/graph.json).
 
   find-stray-symbols <file_or_dir>
-      Scan a .tsx/.jsx file or directory for unmatched JSX tags and stray symbols.
+      Scan a single .tsx/.jsx file or entire directory for unclosed/mismatched JSX tags.
 
   indentation <file>
-      Analyse indentation scopes and brace matching.
+      Validate scope alignment and brace balance.
 
   jsx-check <file>
-      Validate JSX/HTML tag matching. Run before patching .tsx/.html files.
+      Validate JSX/HTML tag hierarchy and matching.
 
-━━  Edit Commands  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  graphify-query <file.py> <question>
+      AST call-graph query on Python files (callers, callees, depth).
 
-  patchit <file> [options]
-      Manual file editor with git-style diff preview and safety backup.
-        -l / --lines      show file with line numbers (read-only)
-        -f / --find       interactive find-and-replace
-        -r / --regex      regex find-and-replace
-        -i / --insert     insert lines at a given line number
+━━  Edit, Git & Clipboard  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-━━  Clipboard  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  patchit <file> [-l | -f | -r | -i]
+      Manual file editor with diff preview and automatic safety backups.
 
   copy [--show]
-      Copy the last pyslick session output to the clipboard — paste
-      straight into your LLM chat box.
-      --show also prints the saved text to the terminal.
-      Tip: after ANY command, press Ctrl+C within ~2 s to copy instantly.
+      Copy the last pyslick output to clipboard (or press Ctrl+C within 2s of any command).
 
-━━  Git Operations  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  checkpoint [message]
+      Create a comment-driven smart git commit snapshot.
 
-  checkpoint   commit all changes as a named pyslick safety snapshot
-  stash        git stash current changes
-  rollback     git reset --hard HEAD (undo all uncommitted changes)
-  status       git status
-  log          last 10 commits (one-line)
+  status / log / stash / rollback
+      Standard git status, last 10 commits, stash, or hard rollback.
 
-━━  Local LLM  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  llm-status
-      Check whether llama-cpp-python and a GGUF model are installed.
-      The local LLM (~90 MB) expands vague directives into better search
-      terms before fuzzy matching runs. Optional — everything works without it.
-
-━━  Watch Mode  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  watch [--root .] [--auto-apply]
-      Watch the project for a saved file containing a marker comment
-      (// pyslick? <directive>  or  # pyslick? <directive>) and detect it
-      automatically. Without --auto-apply, a detected marker just prints
-      what to run next — it never invokes the agent on its own. With
-      --auto-apply, it invokes the agent for you on save, which still
-      shows a diff and asks before writing anything (same as running
-      `pyslick agent` yourself — this flag does not skip that step).
-      Requires: watchdog (pip install watchdog). Ctrl+C to stop.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Quick start:
-    pyslick "show me packagejson"                # inspect/scan files directly
-    pyslick "make the mic button bigger"         # let AI propose the fix
-    pyslick query "mic button size"              # fast non-LLM fuzzy lookup
-    pyslick ls                                   # see what files exist
-    pyslick copy                                 # paste output into your LLM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Quick Start:
+    pyslick recon-pack "what does this codebase do"
+    pyslick grep "where is supabase client and how is cache registered"
+    pyslick deps supabase
+    pyslick copy
 """
     print(help_text)
+
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -700,13 +670,58 @@ def main():
                     print(f"Error: {e}")
                     sys.exit(1)
 
+            elif command in ("deps", "imports", "dependencies"):
+                try:
+                    from repomap import scan_imports_and_dependencies
+                    target_pkg = args[0] if args and not args[0].startswith("-") else None
+                    root_dir = "."
+                    if "--root" in args:
+                        ri = args.index("--root")
+                        if ri + 1 < len(args):
+                            root_dir = args[ri + 1]
+                    res = scan_imports_and_dependencies(root=root_dir, target=target_pkg)
+                    BOLD  = "\033[1m"
+                    CYAN  = "\033[96m"
+                    GREEN = "\033[92m"
+                    DIM   = "\033[2m"
+                    RST   = "\033[0m"
+                    print(f"\n{BOLD}{CYAN}━━  Dependency & Import Scanner  {RST}")
+                    if target_pkg:
+                        print(f"{DIM}Target: '{target_pkg}' | Files scanned: {res['files_scanned']}{RST}")
+                    else:
+                        print(f"{DIM}Files scanned: {res['files_scanned']}{RST}")
+                    print(f"{DIM}{'─' * 60}{RST}")
+
+                    if res.get("manifest_dependencies"):
+                        print(f"\n{BOLD}Manifest Declared Packages:{RST}")
+                        for dep, info in sorted(res["manifest_dependencies"].items()):
+                            if not target_pkg or target_pkg.lower() in dep.lower():
+                                print(f"  {GREEN}· {dep}{RST} {DIM}({info.get('version', '*')}) [{info.get('manifest', '')}]{RST}")
+
+                    if res.get("imports_by_package"):
+                        print(f"\n{BOLD}Imported Packages & Codebase Usages:{RST}")
+                        for pkg, usages in sorted(res["imports_by_package"].items()):
+                            print(f"\n  {BOLD}{CYAN}Package: {pkg}{RST} {DIM}({len(usages)} reference(s)){RST}")
+                            for u in usages[:8]:
+                                print(f"    {GREEN}→{RST} {u['file']}:{u['line']}  {DIM}{u['statement']}{RST}")
+                            if len(usages) > 8:
+                                print(f"    {DIM}... [{len(usages) - 8} more references omitted]{RST}")
+                    else:
+                        print(f"\n{DIM}No imports found matching criteria.{RST}")
+                    print()
+                except Exception as e:
+                    print(f"Error: {e}")
+                    sys.exit(1)
+
             elif command == "graphify":
                 print("'graphify' isn't a pyslick subcommand by itself — did you mean one of:")
                 print("  pyslick query \"<directive>\"           (fast, no-LLM smart lookup)")
                 print("  pyslick graphify-query <file> <question>  (raw AST call-graph query)")
                 print("  pyslick graphify-sitter \"<query>\"      (TS/TSX lookup, needs tree-sitter)")
+                print("  pyslick deps                          (scan dependencies & imports)")
                 print("(If you're thinking of a separate 'graphify extract .' CLI tool for building")
                 print(" graphify-out/graph.json, that's a different tool, not part of this package.)")
+
 
             elif command == "query":
                 if not args:

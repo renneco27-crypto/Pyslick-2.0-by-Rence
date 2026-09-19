@@ -461,9 +461,12 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
 def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int = 1):
     """Semantic grep across the repository using BM25 index + AST function snapping.
     
-    When given a vague natural language query (e.g. 'powerpoint wipe animation'),
-    finds the nearest relevant code, locates candidate lines, and expands them
-    to full enclosing functions end-to-end.
+    Interconnects with:
+    - repomap (Codebase Overview for 'what does this codebase do')
+    - relations (Entity graph path for 'how does A connect to B')
+    - decompose (Multi-query splitting for compound questions)
+    - synonyms (Domain vocabulary expansion)
+    - text_index (Boosted docstrings & identifiers)
     """
     try:
         from text_index import build_text_index, search_text_index_auto
@@ -471,29 +474,101 @@ def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int
         print(f"{RED}Error: text_index module not available for semantic grep.{RST}")
         return
 
-    # Expand query with domain synonyms (e.g. cache -> offline, prefetch, storage)
-    search_query = query
-    syn_terms = []
+    # ── 1. Overview Query Check ───────────────────────────────────────────
     try:
-        from synonyms import expand as _syn_expand
-        exp = _syn_expand(query)
-        if exp and exp.get("terms"):
-            syn_terms = [t for t in exp["terms"] if t.lower() not in query.lower() and len(t) > 2]
+        from repomap import is_overview_query, get_codebase_overview
+        if is_overview_query(query):
+            overview = get_codebase_overview(root)
+            print(f"\n{BOLD}{CYAN}━━  Codebase Overview  {RST}{BOLD}'{query}'{RST}")
+            print(f"{DIM}{'─' * 60}{RST}")
+            meta = overview.get("metadata", {})
+            if meta.get("name"):
+                print(f"  {BOLD}Project:{RST} {meta['name']}  {DIM}({meta.get('type', 'Codebase')}){RST}")
+            if meta.get("description"):
+                print(f"  {DIM}Description:{RST} {meta['description']}")
+
+            if overview.get("entry_points"):
+                print(f"\n  {BOLD}Key Entry Points:{RST}")
+                for ep in overview["entry_points"]:
+                    print(f"    {CYAN}· {ep}{RST}")
+
+            if overview.get("top_files"):
+                print(f"\n  {BOLD}Most Connected Core Files (PageRank):{RST}")
+                for tf in overview["top_files"]:
+                    print(f"    {GREEN}★ {tf['path']}{RST} {DIM}(score: {tf['pagerank']}){RST}")
+                    if tf.get("summary"):
+                        print(f"      {DIM}{tf['summary'][:120]}{RST}")
+            print()
+            return
     except Exception:
         pass
 
-    if syn_terms:
-        search_query = f"{query} {' '.join(syn_terms[:4])}"
+    # ── 2. Relation Query Check ───────────────────────────────────────────
+    try:
+        from relations import is_relation_query, resolve_relation
+        if is_relation_query(query):
+            rel = resolve_relation(query)
+            if rel.get("confidence") != "none" and rel.get("paths"):
+                print(f"\n{BOLD}{CYAN}━━  Entity Relation  {RST}{BOLD}'{query}'{RST}")
+                print(f"{DIM}{'─' * 60}{RST}")
+                print(f"  {GREEN}✔ {rel.get('note')}{RST}  {DIM}(confidence: {rel.get('confidence')}){RST}\n")
+                for ev in rel.get("evidence", []):
+                    rel_type = ev.get("relation") or "connects to"
+                    print(f"  {DIM}Step {ev['step']}:{RST} {CYAN}{ev['from']}{RST} ──[{rel_type}]──> {CYAN}{ev['to']}{RST}")
+                    if ev.get("file"):
+                        print(f"    {DIM}at {ev['file']}:{ev.get('loc', '')}{RST}")
+                print()
+    except Exception:
+        pass
 
-    print(f"\n{BOLD}{CYAN}━━  Semantic Grep  {RST}{BOLD}'{query}'{RST}")
+    # ── 3. Compound Query Decomposition ───────────────────────────────────
+    try:
+        from decompose import decompose
+        subqueries = decompose(query)
+    except Exception:
+        subqueries = [query]
+
+    if len(subqueries) > 1:
+        print(f"\n{BOLD}{CYAN}━━  Semantic Grep (Decomposed into {len(subqueries)} queries)  {RST}")
+        for sq in subqueries:
+            print(f"  {DIM}· {sq}{RST}")
+    else:
+        print(f"\n{BOLD}{CYAN}━━  Semantic Grep  {RST}{BOLD}'{query}'{RST}")
+
     if root and root != ".":
         print(f"{DIM}Scope: {root}{RST}")
-    if syn_terms:
-        print(f"{DIM}Synonyms expanded: {', '.join(syn_terms[:4])}{RST}")
     print(f"{DIM}{'─' * 60}{RST}")
 
+    # ── 4. Retrieve & Merge BM25 Results ───────────────────────────────────
     idx = build_text_index(root)
-    results, keywords = search_text_index_auto(search_query, idx, top_k=top_k)
+    merged_results = []
+    all_keywords = []
+    all_syn_terms = []
+
+    for sq in subqueries:
+        search_query = sq
+        syn_terms = []
+        try:
+            from synonyms import expand as _syn_expand
+            exp = _syn_expand(sq)
+            if exp and exp.get("terms"):
+                syn_terms = [t for t in exp["terms"] if t.lower() not in sq.lower() and len(t) > 2]
+                all_syn_terms.extend(syn_terms)
+        except Exception:
+            pass
+
+        if syn_terms:
+            search_query = f"{sq} {' '.join(syn_terms[:4])}"
+
+        sub_res, keywords = search_text_index_auto(search_query, idx, top_k=top_k)
+        all_keywords.extend(keywords)
+        for r in sub_res:
+            if not any(mr[0] == r[0] for mr in merged_results):
+                merged_results.append(r)
+
+    results = merged_results[:top_k]
+    keywords = list(dict.fromkeys(all_keywords))
+    syn_terms = list(dict.fromkeys(all_syn_terms))
 
     if not results:
         print(f"{DIM}No semantic matches found for '{query}'.{RST}")
@@ -508,6 +583,7 @@ def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int
     if syn_terms:
         q_tokens.extend([s.lower() for s in syn_terms[:4] if s.lower() not in STOP_WORDS])
     q_tokens = list(dict.fromkeys(q_tokens))
+
 
     total_shown = 0
     for filepath, score, matched_tokens in results:

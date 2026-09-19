@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: miamico-pyslick
-Version: 0.3.3
+Version: 0.3.4
 Summary: Local, no-LLM smart code query/patch agent (fuzzy match + AST call-graph)
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
@@ -20,9 +20,9 @@ Provides-Extra: llm
 Requires-Dist: llama-cpp-python>=0.2; extra == "llm"
 Requires-Dist: sentence-transformers>=2.0; extra == "llm"
 
-﻿# Pyslick 2.0 — Architecture & Developer Guide
+# Pyslick 2.0 — Architecture & Developer Guide
 
-> **Core Philosophy:** High-accuracy local semantic code navigation, call-graph comprehension, and context packing for potato PCs (Ryzen 3 / 8GB RAM CPU). Local operations find and extract exact functions with zero hallucinations, while complex reasoning & editing are packed for web LLMs (DeepSeek, Claude Web) or opened directly in VS Code (`code -g`).
+> **Core Philosophy:** High-accuracy local semantic code navigation, call-graph comprehension, compound query decomposition, and context packing for potato PCs (Ryzen 3 / 8GB RAM CPU). Local operations find and extract exact functions with zero hallucinations, while complex reasoning & editing are packed for web LLMs (DeepSeek, Claude Web) or opened directly in VS Code (`code -g`).
 
 ---
 
@@ -30,6 +30,13 @@ Requires-Dist: sentence-transformers>=2.0; extra == "llm"
 
 ```
                                   [ User Query in PowerShell ]
+                                               │
+                                               ▼
+                              ┌──────────────────────────────────┐
+                              │  Compound Query Decomposition    │
+                              │  (decompose.py splits on 'and',  │
+                              │   'also', ';', '?' into clauses) │
+                              └────────────────┬─────────────────┘
                                                │
                                                ▼
                               ┌──────────────────────────────────┐
@@ -43,7 +50,8 @@ Requires-Dist: sentence-transformers>=2.0; extra == "llm"
                         │   Stage 1: Fast Candidate Retriever (Top 20) │
                         ├──────────────────────────────────────────────┤
                         │ • Custom BM25 Index (text_index.py)          │
-                        │ • AST Symbol Graph & God-Nodes (graphify.py) │
+                        │ • PageRank God-Nodes & Repomap (repomap.py)  │
+                        │ • AST Symbol Graph (graphify.py)             │
                         │ • RapidFuzz String & Token Matching          │
                         └──────────────────────┬───────────────────────┘
                                                │
@@ -61,7 +69,8 @@ Requires-Dist: sentence-transformers>=2.0; extra == "llm"
                         │       Tree-Sitter AST Scope Snapper          │
                         ├──────────────────────────────────────────────┤
                         │ • Expands hit line to full enclosing function│
-                        │ • Never outputs truncated snippet windows    │
+                        │ • Multi-language AST: TS, TSX, JS, PY, RS    │
+                        │ • Never outputs arbitrary 8-line cutoffs     │
                         └──────────────────────┬───────────────────────┘
                                                │
                                                ▼
@@ -72,6 +81,7 @@ Requires-Dist: sentence-transformers>=2.0; extra == "llm"
                         │ 2. VS Code: `code -g filepath:line`          │
                         │ 3. Clipboard: Hierarchical DeepSeek/Web LLM  │
                         │    Context Bundle (.pyslick_context/)        │
+                        │ 4. BFS Paths: Connection paths for relations │
                         └──────────────────────────────────────────────┘
 ```
 
@@ -82,22 +92,24 @@ Requires-Dist: sentence-transformers>=2.0; extra == "llm"
 ```
 pyslick_package/pyslick_pkg/pyslick/
 │
-├── __init__.py            ← CLI entry point, argument parsing & dispatch (927 lines)
-├── agent.py               ← Agentic workflow & fallback router (6030 lines)
-├── recon.py               ← Guided recon & investigation pipeline (631 lines)
-├── recon_semantic.py      ← 2-stage hybrid semantic search engine (936 lines)
-├── recon_pack.py          ← Context bundler for DeepSeek / Claude Web (458 lines)
-├── query.py               ← Fast AST symbol & dependency lookup (387 lines)
-├── toolbox.py             ← mode_ls, mode_lines, mode_grep & code launcher (462 lines)
-├── text_index.py          ← In-memory BM25 indexer over comments/strings/JSX (502 lines)
-├── graphify.py            ← Local Python AST caller/callee graph builder (447 lines)
-├── graphify_sitter.py     ← Tree-sitter AST extraction for TS/TSX (159 lines)
-├── find_nearest_nodes.py  ← Fuzzy & graph traversal across graphify-out (277 lines)
-├── find_stray_symbols.py  ← Unmatched JSX/TSX tag scanner (68 lines)
-├── indentation.py         ← Scope & brace balance validator (96 lines)
-├── jsx_tag_checker.py     ← Deep JSX/HTML tag hierarchy checker (171 lines)
-├── repomap.py             ← Multi-language AST tag extractor via tree-sitter
-├── synonyms.py            ← Semantic domain vocabulary & query expansion (133 lines)
+├── __init__.py            ← CLI entry point, argument parsing & dispatch
+├── agent.py               ← Agentic workflow & fallback router
+├── recon.py               ← Guided recon & multi-language module inspector
+├── recon_semantic.py      ← 2-stage hybrid semantic search engine
+├── recon_pack.py          ← Multi-clause context bundler for DeepSeek / Claude Web
+├── query.py               ← Fast AST symbol & dependency lookup
+├── repomap.py             ← PageRank repo overview, import scanner & AST tag extractor
+├── decompose.py           ← Multi-clause NLP decomposition ('A and B', 'A; B')
+├── relations.py           ← Graph BFS pathfinder between files/symbols
+├── toolbox.py             ← mode_ls, mode_lines, mode_grep & code launcher
+├── text_index.py          ← In-memory BM25 indexer over comments/strings/JSX
+├── graphify.py            ← Local Python AST caller/callee graph builder
+├── graphify_sitter.py     ← Tree-sitter AST extraction for TS/TSX
+├── find_nearest_nodes.py  ← Fuzzy & graph traversal across graphify-out
+├── find_stray_symbols.py  ← Unmatched JSX/TSX tag scanner
+├── indentation.py         ← Scope & brace balance validator
+├── jsx_tag_checker.py     ← Deep JSX/HTML tag hierarchy checker
+├── synonyms.py            ← Semantic domain vocabulary & query expansion
 ├── autoloop.py            ← Command testing & auto-verification loop
 ├── clipboard.py           ← Instant stdout capture & clipboard synchronization
 └── watch.py               ← Project watcher for `# pyslick?` review tags
@@ -105,26 +117,33 @@ pyslick_package/pyslick_pkg/pyslick/
 
 ---
 
-## 3. Key Upgrades & Improvements
+## 3. Key Upgrades & Features (v0.3.4)
 
-### A. 2-Stage Hybrid Semantic Search (`pyslick grep "<concept>"`)
-- **Stage 1 (Filter)**: In-memory BM25 + AST node labels collect top 20 candidate code regions and comments.
+### A. Compound Query Decomposition (`decompose.py`)
+- Automatically breaks complex multi-part queries like `"where is supabase client and how is cache registered"` into subqueries:
+  1. `where is supabase client`
+  2. `how is cache registered`
+- Executes candidate searches across each subquery and unions results with ranked AST function blocks.
+
+### B. Codebase Architecture Overview
+- Queries like `"what does this codebase do"`, `"architecture overview"`, or `"explain repo"` trigger PageRank God-Node analysis.
+- Extracts top connected files, entry points (`src/app/page.tsx`, `src/sw.ts`, `main.py`), and opening file docstrings to provide an instant architectural summary.
+
+### C. Dependency & Import Scanning (`pyslick deps [target]`)
+- Scans `package.json`, `pyproject.toml`, `Cargo.toml`, etc., along with all source code imports (`.ts`, `.tsx`, `.js`, `.py`, `.go`, `.rs`).
+- Pinpoints exactly where dependencies (e.g. `serwist`, `supabase`, `next`) are imported across the codebase with line numbers.
+
+### D. 2-Stage Hybrid Semantic Search (`pyslick grep "<concept>"`)
+- **Stage 1 (Filter)**: In-memory BM25 (with 2.5x boosted docstrings/comments) + AST node labels collect candidate code regions.
 - **Stage 2 (Rerank)**: Fast ONNX Cross-Encoder evaluates query semantics against candidate docstrings, comments, and signatures.
-- **AST Enclosure**: Every match automatically snaps to its enclosing function end-to-end via `repomap.py` / `graphify.py`.
+- **AST Enclosure**: Every match automatically snaps to its enclosing function end-to-end via Tree-Sitter (`repomap.py`).
 
-### B. Universal Auto-Graphify
+### E. Relationship Resolution (`relations.py`)
+- Queries like `"how does auth connect to database"` compute BFS connection paths through imports and call graphs.
+
+### F. Universal Auto-Graphify
 - Running any command in a fresh repository automatically verifies if `graphify-out/graph.json` exists.
-- If missing, it transparently triggers `graphify extract . --code-only` once with status feedback, ensuring rich graph awareness for all commands.
-
-### C. Deprecation of `patchit` → Direct VS Code & DeepSeek Web Pack
-- Manual patching via `patchit` is replaced by:
-  1. `code -g <filepath>:<line>` to open and navigate immediately in VS Code.
-  2. `pyslick recon-pack` / clipboard capture to export a clean Hierarchical Context bundle (Overview + Call Graph + Complete Functions) ready for 1-click paste into DeepSeek or Claude Web.
-
-### D. Unified File & Directory Scanners
-- `pyslick indentation <file>` — checks brace & indentation drift on a single file.
-- `pyslick jsx-check <file>` — checks unclosed/mismatched JSX tags on a single file.
-- `pyslick find-stray-symbols <file_or_dir>` — supports both individual `.tsx`/`.jsx` files and recursive project directories.
+- If missing, it transparently triggers `graphify extract . --code-only` once with status feedback.
 
 ---
 
@@ -132,11 +151,12 @@ pyslick_package/pyslick_pkg/pyslick/
 
 | Command | Description |
 |---|---|
-| `pyslick "what does this codebase do"` | Universal overview: God nodes, connectivity degree, opening architectural comments |
-| `pyslick grep "<natural language query>"` | Semantic hybrid search finding nearest functions end-to-end |
+| `pyslick "what does this codebase do"` | Architecture overview: God-nodes, connectivity degree, opening architectural comments |
+| `pyslick grep "<query>"` | Semantic hybrid search finding nearest functions end-to-end (supports compound `and` queries) |
 | `pyslick grep <file> <pattern> [--context N]` | Exact pattern/regex search inside a file with AST function expansion |
 | `pyslick recon "<directive>"` | Guided code inspection & component isolation pipeline |
 | `pyslick recon-pack "<directive>"` | Pack complete context into `.pyslick_context/` and clipboard for DeepSeek Web |
+| `pyslick deps [target]` / `pyslick imports` | Scan manifests and source files for imported external libraries and usage lines |
 | `pyslick query "<directive>"` | Fast non-LLM symbol & caller/callee lookup |
 | `pyslick ls [root]` | Clean grouped directory listing (skipping dependencies & build artifacts) |
 | `pyslick lines <file> [range]` | View file with line numbers (e.g. `10-50` or `--head 20`) |

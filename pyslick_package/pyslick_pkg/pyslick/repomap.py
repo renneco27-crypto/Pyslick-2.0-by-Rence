@@ -471,3 +471,238 @@ def dependency_status() -> dict:
         "tree_sitter_language_pack": _HAS_TREE_SITTER,
         "networkx": _HAS_NETWORKX,
     }
+
+
+# ---------------------------------------------------------------------------
+# 5. Codebase Overview Engine (answers "what does this codebase do")
+# ---------------------------------------------------------------------------
+
+_OVERVIEW_PATTERNS = [
+    r"\bwhat\s+(?:does\s+)?(?:this\s+)?(?:codebase|repo|repository|project|app)\s+do\b",
+    r"\bexplain\s+(?:this\s+)?(?:codebase|repo|repository|project|app|architecture)\b",
+    r"\b(?:codebase|repo|project|app)\s+overview\b",
+    r"\bdescribe\s+(?:this\s+)?(?:codebase|repo|project|app)\b",
+    r"\barchitecture\s+overview\b",
+    r"\bhow\s+(?:is\s+)?(?:this\s+)?(?:project|repo|app|codebase)\s+structured\b",
+    r"\bwhat\s+is\s+this\s+(?:project|repo|app|codebase)\b",
+    r"^overview$",
+    r"^architecture$",
+]
+
+
+def is_overview_query(directive: str) -> bool:
+    """Detect if a query is asking for a global codebase overview / architecture explanation."""
+    d = (directive or "").strip().lower()
+    return any(re.search(p, d) for p in _OVERVIEW_PATTERNS)
+
+
+def get_codebase_overview(root: str = ".") -> dict:
+    """Extract a rich, factual overview of the codebase using PageRank, project manifests,
+    and opening docstrings / comments. 100% deterministic and hallucination-free.
+    """
+    import json as _json
+    abs_root = os.path.abspath(root)
+
+    # 1. Project metadata
+    project_meta = {}
+    pkg_json = os.path.join(abs_root, "package.json")
+    if os.path.isfile(pkg_json):
+        try:
+            with open(pkg_json, "r", encoding="utf-8", errors="ignore") as fh:
+                pj = _json.load(fh)
+            project_meta["name"] = pj.get("name", "")
+            project_meta["description"] = pj.get("description", "")
+            project_meta["scripts"] = list(pj.get("scripts", {}).keys())
+            project_meta["dependencies"] = list(pj.get("dependencies", {}).keys())[:15]
+            project_meta["type"] = "Node / TypeScript / JavaScript"
+        except Exception:
+            pass
+
+    pyproj = os.path.join(abs_root, "pyproject.toml")
+    if os.path.isfile(pyproj):
+        try:
+            with open(pyproj, "r", encoding="utf-8", errors="ignore") as fh:
+                txt = fh.read()
+            name_m = re.search(r'name\s*=\s*["\']([^"\']+)["\']', txt)
+            desc_m = re.search(r'description\s*=\s*["\']([^"\']+)["\']', txt)
+            if name_m: project_meta["name"] = name_m.group(1)
+            if desc_m: project_meta["description"] = desc_m.group(1)
+            project_meta["type"] = "Python"
+        except Exception:
+            pass
+
+    # 2. Top connected files via PageRank
+    top_files_ranked = rank_top_files(abs_root, top_n=8)
+    top_files = []
+    for fpath, score in top_files_ranked:
+        rel = os.path.relpath(fpath, abs_root)
+        # Read first comments / docstrings
+        first_comment = ""
+        try:
+            with open(fpath, "r", encoding="utf-8", errors="ignore") as fh:
+                head_lines = [fh.readline() for _ in range(25)]
+            for line in head_lines:
+                cl = line.strip()
+                if cl.startswith(("#", "//", "/*", "*", '"""', "'''")):
+                    clean = re.sub(r'^[#/*\s─\-=•"\']+', "", cl).strip()
+                    if len(clean) > 15 and not clean.startswith(("import ", "from ", "export ", "<")):
+                        first_comment = clean
+                        break
+        except Exception:
+            pass
+        top_files.append({
+            "path": rel,
+            "pagerank": round(score, 4),
+            "summary": first_comment or f"Core connected module ({rel})",
+        })
+
+    # 3. Detect key entry points
+    entry_candidates = [
+        "src/app/page.tsx", "src/app/layout.tsx", "src/pages/index.tsx",
+        "src/index.ts", "src/index.js", "src/main.ts", "src/main.py",
+        "app.py", "main.py", "__init__.py", "src/sw.ts", "public/sw.js",
+    ]
+    entry_points = []
+    for cand in entry_candidates:
+        full_p = os.path.join(abs_root, cand)
+        if os.path.isfile(full_p):
+            entry_points.append(cand)
+
+    # 4. Format structured markdown
+    md_lines = ["# Codebase Architecture Overview\n"]
+    if project_meta.get("name"):
+        md_lines.append(f"**Project**: {project_meta['name']}  ({project_meta.get('type', 'Codebase')})")
+    if project_meta.get("description"):
+        md_lines.append(f"**Description**: {project_meta['description']}\n")
+
+    if entry_points:
+        md_lines.append("## Key Entry Points")
+        for ep in entry_points:
+            md_lines.append(f"- `{ep}`")
+        md_lines.append("")
+
+    if top_files:
+        md_lines.append("## Most Connected Core Files (PageRank)")
+        for tf in top_files:
+            md_lines.append(f"- **`{tf['path']}`** (score: {tf['pagerank']}): {tf['summary']}")
+        md_lines.append("")
+
+    return {
+        "metadata": project_meta,
+        "entry_points": entry_points,
+        "top_files": top_files,
+        "overview_text": "\n".join(md_lines),
+    }
+
+
+# ---------------------------------------------------------------------------
+# 6. Universal Dependency & Import Scanner
+# ---------------------------------------------------------------------------
+
+_JS_IMPORT_RE = re.compile(r"""(?:import\s+(?:(?:[\w*\s{},$]+)\s+from\s+)?|import\s*\(|require\s*\()\s*['"]([^'"]+)['"]""", re.MULTILINE)
+_PY_IMPORT_RE = re.compile(r"""^\s*(?:from\s+([a-zA-Z0-9_\.]+)\s+import|import\s+([a-zA-Z0-9_\.,\s]+))""", re.MULTILINE)
+_JAVA_IMPORT_RE = re.compile(r"""^\s*import\s+(?:static\s+)?([a-zA-Z0-9_\.]+);""", re.MULTILINE)
+_GO_IMPORT_RE = re.compile(r"""^\s*(?:import\s+['"]([^'"]+)['"]|['"]([^'"]+)['"])""", re.MULTILINE)
+_RS_USE_RE = re.compile(r"""^\s*use\s+([a-zA-Z0-9_:]+)""", re.MULTILINE)
+
+
+def scan_imports_and_dependencies(root: str = ".", target: str | None = None) -> dict:
+    """Scan all project manifests and source files for imported libraries and dependencies."""
+    abs_root = os.path.abspath(root)
+    manifest_deps = {}
+
+    # 1. Read manifests
+    pkg_json = os.path.join(abs_root, "package.json")
+    if os.path.isfile(pkg_json):
+        try:
+            with open(pkg_json, "r", encoding="utf-8", errors="ignore") as fh:
+                pj = json.load(fh)
+            for k in ("dependencies", "devDependencies", "peerDependencies"):
+                for dep, ver in pj.get(k, {}).items():
+                    manifest_deps[dep] = {"version": ver, "type": k, "manifest": "package.json"}
+        except Exception:
+            pass
+
+    pyproj = os.path.join(abs_root, "pyproject.toml")
+    if os.path.isfile(pyproj):
+        try:
+            with open(pyproj, "r", encoding="utf-8", errors="ignore") as fh:
+                txt = fh.read()
+            for m in re.finditer(r'["\']([a-zA-Z0-9_\-]+)(?:[><=~^!][^"\']*)?["\']', txt):
+                name = m.group(1).lower()
+                if name not in ("build-system", "setuptools", "project", "pyslick"):
+                    manifest_deps[name] = {"version": "*", "type": "pyproject", "manifest": "pyproject.toml"}
+        except Exception:
+            pass
+
+    # 2. Walk source files and extract imports
+    imports_by_pkg: dict[str, list[dict]] = defaultdict(list)
+    total_scanned = 0
+
+    for fpath in collect_files(abs_root):
+        if is_generated_or_minified_file(fpath):
+            continue
+        rel = os.path.relpath(fpath, abs_root)
+        ext = os.path.splitext(fpath)[1].lower()
+        total_scanned += 1
+
+        try:
+            with open(fpath, "r", encoding="utf-8", errors="ignore") as fh:
+                lines = fh.readlines()
+        except OSError:
+            continue
+
+        for idx, line in enumerate(lines):
+            lineno = idx + 1
+            matched_pkgs = []
+
+            if ext in (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"):
+                for m in _JS_IMPORT_RE.finditer(line):
+                    raw = m.group(1).strip()
+                    # Filter relative imports unless user specifically asked
+                    if not raw.startswith("."):
+                        pkg = raw.split("/")[0] if not raw.startswith("@") else "/".join(raw.split("/")[:2])
+                        matched_pkgs.append((pkg, raw))
+                    elif target and target in raw:
+                        matched_pkgs.append((raw, raw))
+
+            elif ext == ".py":
+                for m in _PY_IMPORT_RE.finditer(line):
+                    g1, g2 = m.group(1), m.group(2)
+                    raw = (g1 or g2 or "").strip()
+                    if raw:
+                        pkg = raw.split(".")[0].split()[0].strip(",")
+                        matched_pkgs.append((pkg, raw))
+
+            elif ext in (".java", ".kt"):
+                for m in _JAVA_IMPORT_RE.finditer(line):
+                    raw = m.group(1).strip()
+                    parts = raw.split(".")
+                    pkg = ".".join(parts[:2]) if len(parts) >= 2 else raw
+                    matched_pkgs.append((pkg, raw))
+
+            elif ext == ".rs":
+                for m in _RS_USE_RE.finditer(line):
+                    raw = m.group(1).strip()
+                    pkg = raw.split("::")[0]
+                    matched_pkgs.append((pkg, raw))
+
+            for pkg_name, raw_stmt in matched_pkgs:
+                if target and target.lower() not in pkg_name.lower() and target.lower() not in raw_stmt.lower():
+                    continue
+                imports_by_pkg[pkg_name].append({
+                    "file": rel,
+                    "line": lineno,
+                    "statement": line.strip()[:140],
+                    "raw": raw_stmt,
+                })
+
+    return {
+        "root": abs_root,
+        "target": target,
+        "files_scanned": total_scanned,
+        "manifest_dependencies": manifest_deps,
+        "imports_by_package": dict(imports_by_pkg),
+    }
+
+
