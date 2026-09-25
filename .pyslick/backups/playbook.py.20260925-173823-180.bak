@@ -1,0 +1,26 @@
+"""
+Verbatim debugging directives. Source of truth. Do not edit, summarize, or
+paraphrase â€” if the source changes, re-copy verbatim.
+
+Source files (as of 2026-09-25):
+  # Debugging Skill Directive â€” Portable Rules from a Real Session.txt
+  # Debugging Handoff â€” Tools & Techniques.txt
+"""
+from pathlib import Path
+
+THIS_DIR = Path(__file__).resolve().parent
+
+PLAYBOOK_TEXT = r"""PLACEHOLDER â€” replace with the verbatim playbook text."""
+
+HANDOFF_TEXT = r"""PLACEHOLDER â€” replace with the verbatim handoff text."""
+
+
+def print_playbook(which: str = "main") -> None:
+    if which == "handoff":
+        print(HANDOFF_TEXT)
+    elif which == "all":
+        print(PLAYBOOK_TEXT)
+        print("\n" + "=" * 78 + "\n")
+        print(HANDOFF_TEXT)
+    else:
+        print(PLAYBOOK_TEXT)

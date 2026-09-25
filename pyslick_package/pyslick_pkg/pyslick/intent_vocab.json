@@ -569,6 +569,39 @@
       ],
       "exclude_if": []
     },
+    "playbook": {
+      "require_any": [
+        "show me the playbook", "debugging playbook", "debug playbook",
+        "how do i debug", "debugging rules", "the rules",
+        "read the playbook", "debugging handoff", "debug technique"
+      ],
+      "exclude_if": []
+    },
+    "pre_work": {
+      "require_any": [
+        "has anyone fixed", "already fixed", "already been done",
+        "check if done", "is this already fixed", "before i start",
+        "check branches for", "check main for", "check pr for",
+        "pre-work", "preexisting fix", "existing fix"
+      ],
+      "exclude_if": []
+    },
+    "orphans": {
+      "require_any": [
+        "orphan functions", "dead code", "unused functions",
+        "functions not called", "find dead functions", "orphaned functions",
+        "code that's never called", "what functions are unused",
+        "find unused", "dead functions"
+      ],
+      "exclude_if": []
+    },
+    "oneshot": {
+      "require_any": [
+        "oneshot search", "fast search", "quick search", "stream search",
+        "fast grep", "search fast"
+      ],
+      "exclude_if": []
+    },
     "smoketest": {
       "weight": 1.10,
       "require_any": [

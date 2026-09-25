@@ -58,7 +58,7 @@ BLOCK_COMMENT = {
 }
 
 MARKER_START_RE = re.compile(r"^\s*(?:#|//|--|;)\s*pyslick:start\s+(\S+)")
-MARKER_END_RE = re.compile(r"^\s*(?:#|//|--|;)\s*pyslick:end\s+(\S+)")
+MARKER_END_RE = re.compile(r"pyslick:end\s+(\S+)")
 
 SCANNABLE_EXTS = set(LINE_COMMENT) | set(BLOCK_COMMENT)
 

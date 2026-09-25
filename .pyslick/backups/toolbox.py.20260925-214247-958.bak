@@ -458,7 +458,7 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
         print()
 
 
-def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int = 1, exact: bool = False, stream: bool = False):
+def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int = 1):
     """Semantic grep across the repository using BM25 index + AST function snapping.
     
     Interconnects with:
@@ -468,12 +468,6 @@ def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int
     - synonyms (Domain vocabulary expansion)
     - text_index (Boosted docstrings & identifiers)
     """
-    if exact:
-        # Literal fast path -- skip BM25 and use oneshot's streaming scanner.
-        from oneshot import run_oneshot
-        run_oneshot(query, root=root, use_json=False)
-        return
-
     try:
         from text_index import build_text_index, search_text_index_auto
     except ImportError:

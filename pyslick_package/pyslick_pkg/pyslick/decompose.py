@@ -42,8 +42,8 @@ def _load():
     _load_attempted = True
     try:
         from transformers import T5ForConditionalGeneration, AutoTokenizer
-        _tokenizer = AutoTokenizer.from_pretrained(_MODEL_NAME)
-        _model = T5ForConditionalGeneration.from_pretrained(_MODEL_NAME)
+        _tokenizer = AutoTokenizer.from_pretrained(_MODEL_NAME, local_files_only=True)
+        _model = T5ForConditionalGeneration.from_pretrained(_MODEL_NAME, local_files_only=True)
         _model.eval()
     except Exception:
         _model = None

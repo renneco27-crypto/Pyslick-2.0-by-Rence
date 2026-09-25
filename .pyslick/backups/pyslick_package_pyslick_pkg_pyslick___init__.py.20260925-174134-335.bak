@@ -750,20 +750,12 @@ def main():
                 try:
                     _, _, mode_grep, mode_semantic_grep = import_toolbox()
                     context = 1
-                    exact = False
-                    stream = False
                     cleaned_args = []
                     i = 0
                     while i < len(args):
                         if args[i] == "--context" and i + 1 < len(args):
                             context = int(args[i + 1])
                             i += 2
-                        elif args[i] == "--exact":
-                            exact = True
-                            i += 1
-                        elif args[i] == "--stream":
-                            stream = True
-                            i += 1
                         else:
                             cleaned_args.append(args[i])
                             i += 1
@@ -791,7 +783,7 @@ def main():
                     else:
                         # Semantic grep across repository or target dir using BM25 and AST expansion
                         query_str = " ".join(query_tokens) if query_tokens else " ".join(cleaned_args)
-                        mode_semantic_grep(query_str, root=target_dir, context=context, exact=exact, stream=stream)
+                        mode_semantic_grep(query_str, root=target_dir, context=context)
                 except Exception as e:
                     print(f"Error: {e}")
                     sys.exit(1)
@@ -991,16 +983,6 @@ def main():
                     else:
                         nodes = scan_project(target)
                     print_report(nodes)
-                except Exception as e:
-                    print(f"Error: {e}")
-                    sys.exit(1)
-
-            elif command == "orphans":
-                try:
-                    from .orphans import find_orphans, format_report
-                    root = args[0] if args and not args[0].startswith("-") else "."
-                    result = find_orphans(root)
-                    format_report(result, json_out="--json" in args)
                 except Exception as e:
                     print(f"Error: {e}")
                     sys.exit(1)

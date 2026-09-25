@@ -1,0 +1,284 @@
+{
+  "pyslick_package/debugger.py": {
+    "mtime": 1789358003.790983,
+    "seen": 1790159064.7157419,
+    "ast_hash": "41870831fc761383382efa4d5f13569e",
+    "semantic_hash": "41870831fc761383382efa4d5f13569e"
+  },
+  "pyslick_package/pyslick_pkg/pyproject.toml": {
+    "mtime": 1789776319.7318091,
+    "seen": 1790159064.7157419,
+    "ast_hash": "2a96d61c508e53babbc1513cfe6b9015",
+    "semantic_hash": "2a96d61c508e53babbc1513cfe6b9015"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/__init__.py": {
+    "mtime": 1789846312.0121553,
+    "seen": 1790159064.7157419,
+    "ast_hash": "a60d01f1bd4f50653535c72caf376354",
+    "semantic_hash": "a60d01f1bd4f50653535c72caf376354"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/__main__.py": {
+    "mtime": 1789339007.9912992,
+    "seen": 1790159064.7157419,
+    "ast_hash": "ca225b60c9873802968ab9c0e4c7660a",
+    "semantic_hash": "ca225b60c9873802968ab9c0e4c7660a"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/agent.py": {
+    "mtime": 1789755526.5233552,
+    "seen": 1790159064.7157419,
+    "ast_hash": "d244082633d608ef639195db3a367475",
+    "semantic_hash": "d244082633d608ef639195db3a367475"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/ask.py": {
+    "mtime": 1789338186.9541225,
+    "seen": 1790159064.7157419,
+    "ast_hash": "350163cea3015444947ae8b08265bf54",
+    "semantic_hash": "350163cea3015444947ae8b08265bf54"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/autoloop.py": {
+    "mtime": 1789338186.9541225,
+    "seen": 1790159064.7157419,
+    "ast_hash": "dd0f250c7e139d0692d80487f533500f",
+    "semantic_hash": "dd0f250c7e139d0692d80487f533500f"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/clipboard.py": {
+    "mtime": 1789362069.4412313,
+    "seen": 1790159064.7157419,
+    "ast_hash": "18f44dc9f19356212ec7ffce57920309",
+    "semantic_hash": "18f44dc9f19356212ec7ffce57920309"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/comment_blocks.py": {
+    "mtime": 1789338186.9541225,
+    "seen": 1790159064.7157419,
+    "ast_hash": "b64eb041373b64055ef8150534e66ee3",
+    "semantic_hash": "b64eb041373b64055ef8150534e66ee3"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/decompose.py": {
+    "mtime": 1789846484.8726945,
+    "seen": 1790159064.7157419,
+    "ast_hash": "f4eeca30f9b16a114e36276b1b8cc1dc",
+    "semantic_hash": "f4eeca30f9b16a114e36276b1b8cc1dc"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/explore.py": {
+    "mtime": 1789405598.1852517,
+    "seen": 1790159064.7157419,
+    "ast_hash": "f55018fa91793d791e3137df42fc6e1c",
+    "semantic_hash": "f55018fa91793d791e3137df42fc6e1c"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/find_nearest_nodes.py": {
+    "mtime": 1789846318.1583774,
+    "seen": 1790159064.7157419,
+    "ast_hash": "680a1a61e3b57f0ede1767d04c896d73",
+    "semantic_hash": "680a1a61e3b57f0ede1767d04c896d73"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/find_stray_symbols.py": {
+    "mtime": 1789755502.0707579,
+    "seen": 1790159064.7157419,
+    "ast_hash": "be06565ef66c5192bd2c352c47caa9c4",
+    "semantic_hash": "be06565ef66c5192bd2c352c47caa9c4"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/frustration_vocab.json": {
+    "mtime": 1789338186.9666016,
+    "seen": 1790159064.7157419,
+    "ast_hash": "9c87c50df6dcc99cec64b52532e8c4f7",
+    "semantic_hash": "9c87c50df6dcc99cec64b52532e8c4f7"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/go_nav.py": {
+    "mtime": 1789514166.1135383,
+    "seen": 1790159064.7157419,
+    "ast_hash": "e1fa3bda99886b8b3a0712c674567791",
+    "semantic_hash": "e1fa3bda99886b8b3a0712c674567791"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/graphify.py": {
+    "mtime": 1789871929.8983476,
+    "seen": 1790159064.7157419,
+    "ast_hash": "b12966d6544cbc54ec4c62968001eb2c",
+    "semantic_hash": "b12966d6544cbc54ec4c62968001eb2c"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/graphify_sitter.py": {
+    "mtime": 1789338186.970775,
+    "seen": 1790159064.7157419,
+    "ast_hash": "c3df553d8c9f88c5be75c905e77e86f5",
+    "semantic_hash": "c3df553d8c9f88c5be75c905e77e86f5"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/indentation.py": {
+    "mtime": 1789338186.970775,
+    "seen": 1790159064.7157419,
+    "ast_hash": "eeedd475d40154b5c2f26b9075c634d5",
+    "semantic_hash": "eeedd475d40154b5c2f26b9075c634d5"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/install_profile.py": {
+    "mtime": 1789505193.3178945,
+    "seen": 1790159064.7157419,
+    "ast_hash": "9e9ca5dfbc30e9f4089f65a4d8e1ecc2",
+    "semantic_hash": "9e9ca5dfbc30e9f4089f65a4d8e1ecc2"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/install_pyslick_deps.py": {
+    "mtime": 1789338186.9727824,
+    "seen": 1790159064.7157419,
+    "ast_hash": "8fdd6ef36e1d0f1b6417cbbbf1636bd4",
+    "semantic_hash": "8fdd6ef36e1d0f1b6417cbbbf1636bd4"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/intent_vocab.json": {
+    "mtime": 1789354413.6253157,
+    "seen": 1790159064.7157419,
+    "ast_hash": "d94478ece7ed46e257997a4068e15318",
+    "semantic_hash": "d94478ece7ed46e257997a4068e15318"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/jsx_tag_checker.py": {
+    "mtime": 1789338186.9727824,
+    "seen": 1790159064.7157419,
+    "ast_hash": "6b2beaf017e96e0ed566d8e7816949ba",
+    "semantic_hash": "6b2beaf017e96e0ed566d8e7816949ba"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/learned_intents.json": {
+    "mtime": 1789407652.3011534,
+    "seen": 1790159064.7157419,
+    "ast_hash": "fe4c9644a8efe36f3fe445750de31b20",
+    "semantic_hash": "fe4c9644a8efe36f3fe445750de31b20"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/llm.py": {
+    "mtime": 1789360281.8438172,
+    "seen": 1790159064.7157419,
+    "ast_hash": "bad2a73a4ccb9c878f94699a3fe26373",
+    "semantic_hash": "bad2a73a4ccb9c878f94699a3fe26373"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/miamico/background.js": {
+    "mtime": 1789358003.8602948,
+    "seen": 1790159064.7157419,
+    "ast_hash": "25aa81dc9a798118a518b11620f2c355",
+    "semantic_hash": "25aa81dc9a798118a518b11620f2c355"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/miamico/content.js": {
+    "mtime": 1789358003.8602948,
+    "seen": 1790159064.7157419,
+    "ast_hash": "8ff9cc484deb8e88ca1f6424fb5b2b6d",
+    "semantic_hash": "8ff9cc484deb8e88ca1f6424fb5b2b6d"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/miamico/manifest.json": {
+    "mtime": 1789358003.8602948,
+    "seen": 1790159064.7157419,
+    "ast_hash": "e931150ed5a351a5181e9e2e51924e56",
+    "semantic_hash": "e931150ed5a351a5181e9e2e51924e56"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/miamico/popup.js": {
+    "mtime": 1789358003.867559,
+    "seen": 1790159064.7157419,
+    "ast_hash": "0bd1da762246a8deeb060019f078108c",
+    "semantic_hash": "0bd1da762246a8deeb060019f078108c"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/patchit.py": {
+    "mtime": 1789435107.0194335,
+    "seen": 1790159064.7157419,
+    "ast_hash": "3cad42f29a26326d9da96f59f5387c7a",
+    "semantic_hash": "3cad42f29a26326d9da96f59f5387c7a"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/patchit_vocab.json": {
+    "mtime": 1789338188.022733,
+    "seen": 1790159064.7157419,
+    "ast_hash": "98e854b1711fa0066a06b5469ab7a2e2",
+    "semantic_hash": "98e854b1711fa0066a06b5469ab7a2e2"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/query.py": {
+    "mtime": 1789354415.2143738,
+    "seen": 1790159064.7157419,
+    "ast_hash": "f9c090eab80ecf107d3f334cdab37238",
+    "semantic_hash": "f9c090eab80ecf107d3f334cdab37238"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/recon.py": {
+    "mtime": 1789776315.958987,
+    "seen": 1790159064.7157419,
+    "ast_hash": "a74845193227510eec85059b949db61a",
+    "semantic_hash": "a74845193227510eec85059b949db61a"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/recon_pack.py": {
+    "mtime": 1789776886.8478603,
+    "seen": 1790159064.7157419,
+    "ast_hash": "325fd2189213a584024364508956b93e",
+    "semantic_hash": "325fd2189213a584024364508956b93e"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/recon_semantic.py": {
+    "mtime": 1789755514.8950062,
+    "seen": 1790159064.7157419,
+    "ast_hash": "68c0d911f44144b9e72b06f823bc8472",
+    "semantic_hash": "68c0d911f44144b9e72b06f823bc8472"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/relations.py": {
+    "mtime": 1789846323.623718,
+    "seen": 1790159064.7157419,
+    "ast_hash": "e5ec67bddaf88c52ae5a68f345dc0006",
+    "semantic_hash": "e5ec67bddaf88c52ae5a68f345dc0006"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/relay_server.py": {
+    "mtime": 1789338188.0310261,
+    "seen": 1790159064.7157419,
+    "ast_hash": "ba8c22bbfac4a1302eece95f25ab9882",
+    "semantic_hash": "ba8c22bbfac4a1302eece95f25ab9882"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/repomap.py": {
+    "mtime": 1789776537.3034065,
+    "seen": 1790159064.7157419,
+    "ast_hash": "ce61513588ba01cb97ebad72770aeb24",
+    "semantic_hash": "ce61513588ba01cb97ebad72770aeb24"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/response_watcher.py": {
+    "mtime": 1789338188.0362446,
+    "seen": 1790159064.7157419,
+    "ast_hash": "23ac2ad4c549e60d23d3d095b473ba6e",
+    "semantic_hash": "23ac2ad4c549e60d23d3d095b473ba6e"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/router.py": {
+    "mtime": 1789433508.5264866,
+    "seen": 1790159064.7157419,
+    "ast_hash": "d47b7927fdd7683d977a976efd17efaf",
+    "semantic_hash": "d47b7927fdd7683d977a976efd17efaf"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/synonyms.py": {
+    "mtime": 1789776860.863804,
+    "seen": 1790159064.7157419,
+    "ast_hash": "074f57f2e5d4395aff959f265b5fedbd",
+    "semantic_hash": "074f57f2e5d4395aff959f265b5fedbd"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/text_index.py": {
+    "mtime": 1789776877.2001684,
+    "seen": 1790159064.7157419,
+    "ast_hash": "afcf91c7f424a90c91832016fb8147e4",
+    "semantic_hash": "afcf91c7f424a90c91832016fb8147e4"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/toolbox.py": {
+    "mtime": 1789776894.8595452,
+    "seen": 1790159064.7157419,
+    "ast_hash": "d96b1e1b38deb8e88c057c2640cdb2bc",
+    "semantic_hash": "d96b1e1b38deb8e88c057c2640cdb2bc"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/user_weights.json": {
+    "mtime": 1789338188.0362446,
+    "seen": 1790159064.7157419,
+    "ast_hash": "1027d758c721d2a99ac0e889eab35d42",
+    "semantic_hash": "1027d758c721d2a99ac0e889eab35d42"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/watch.py": {
+    "mtime": 1789338188.0362446,
+    "seen": 1790159064.7157419,
+    "ast_hash": "90c20fc09ef363db4e6ca63c9ced22ea",
+    "semantic_hash": "90c20fc09ef363db4e6ca63c9ced22ea"
+  },
+  "pyslick_package/pyslick_pkg/pyslick/webdesign.py": {
+    "mtime": 1789338188.0443726,
+    "seen": 1790159064.7157419,
+    "ast_hash": "0f0dbc8fd23c18eb08e2a7c1e16769e0",
+    "semantic_hash": "0f0dbc8fd23c18eb08e2a7c1e16769e0"
+  },
+  "pyslick_package/smoke.py": {
+    "mtime": 1789358003.872519,
+    "seen": 1790159064.7157419,
+    "ast_hash": "dbf53f896d80d62e5f11ec8e7b7ac6aa",
+    "semantic_hash": "dbf53f896d80d62e5f11ec8e7b7ac6aa"
+  },
+  "pyslick_package/test_confidence.py": {
+    "mtime": 1789358003.874526,
+    "seen": 1790159064.7157419,
+    "ast_hash": "caca4d482bf548dbf9779a93810d7850",
+    "semantic_hash": "caca4d482bf548dbf9779a93810d7850"
+  }
+}

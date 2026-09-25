@@ -119,9 +119,17 @@ pyslick_package/pyslick_pkg/pyslick/
 ### E. Relationship Resolution (`relations.py`)
 - Queries like `"how does auth connect to database"` compute BFS connection paths through imports and call graphs.
 
-### F. Universal Auto-Graphify
-- Running any command in a fresh repository automatically verifies if `graphify-out/graph.json` exists.
-- If missing, it transparently triggers `graphify extract . --code-only` once with status feedback.
+### F. Native AST Call-Graph & Data-Flow Engine (`pyslick graphify`)
+> ⚠ **CRITICAL RULE FOR AI AGENTS & DEVELOPERS:**
+> **NEVER EVER scan the entire codebase line-by-line!** Use `pyslick graphify` to instantly know how data flows and which function calls which function across multi-language codebases (.py, .ts, .tsx, .js, .go, .rs, .java) with zero hallucinations.
+
+- `pyslick graphify extract [path]`: Index/refresh the entire codebase call-graph to `graphify-out/graph.json`.
+- `pyslick graphify query "<symbol>"`: Cross-file search displaying signatures, exact line bounds, source code, callers (`who calls it`), and callees (`what it calls`).
+- `pyslick graphify <file> [query]`: Single-file AST symbol map & caller/callee resolution.
+- `pyslick graphify flow <from_func> <to_func>`: Step-by-step BFS call-chain and data-flow path between two functions or components.
+- `pyslick graphify callers <func>`: All functions and files calling `<func>`.
+- `pyslick graphify callees <func>`: All downstream functions called by `<func>`.
+- `pyslick graphify stats`: Codebase graph metrics (total functions, call edges, top God-Node hubs).
 
 ---
 
@@ -129,6 +137,13 @@ pyslick_package/pyslick_pkg/pyslick/
 
 | Command | Description |
 |---|---|
+| `pyslick graphify extract [dir]` | Build/refresh full AST call-graph index into `graphify-out/graph.json` |
+| `pyslick graphify query "<symbol>"` | Search codebase functions with caller/callee links & code |
+| `pyslick graphify <file> [query]` | Inspect functions and caller/callee connections inside a specific file |
+| `pyslick graphify flow <from> <to>` | Trace exact data-flow & call-chain path between components |
+| `pyslick graphify callers <func>` | List all callers (who calls this function) across the repository |
+| `pyslick graphify callees <func>` | List all callees (what this function calls) across the repository |
+| `pyslick graphify stats` | Display call-graph statistics and top God-Node hub functions |
 | `pyslick "what does this codebase do"` | Architecture overview: God-nodes, connectivity degree, opening architectural comments |
 | `pyslick grep "<query>"` | Semantic hybrid search finding nearest functions end-to-end (supports compound `and` queries) |
 | `pyslick grep <file> <pattern> [--context N]` | Exact pattern/regex search inside a file with AST function expansion |

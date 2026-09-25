@@ -1,0 +1,147 @@
+"""
+Dead-code detection: find functions/classes whose name appears only at its
+own definition â€” no calls, imports, or references anywhere in the project.
+"""
+from collections import Counter, defaultdict
+from pathlib import Path
+import ast
+import re
+import sys
+
+SKIP_DIRS = {
+    "node_modules", ".git", "dist", "build", "__pycache__", ".next",
+    ".venv", "venv", "graphify-out", ".pyslick", ".pyslick_context",
+    "coverage", ".cache", ".turbo", "models",
+}
+PY_EXTS = {".py"}
+JS_EXTS = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
+
+
+def collect_files(root="."):
+    out = []
+    for p in Path(root).rglob("*"):
+        if not p.is_file():
+            continue
+        if any(part in SKIP_DIRS for part in p.parts):
+            continue
+        if p.suffix.lower() in PY_EXTS | JS_EXTS:
+            out.append(p)
+    return out
+
+
+def _read(p):
+    try:
+        return p.read_text(encoding="utf-8-sig", errors="strict")
+    except Exception:
+        return ""
+
+
+def _strip_for_counting(text):
+    t = re.sub(r'""".*?"""', "", text, flags=re.DOTALL)
+    t = re.sub(r"'''.*?'''", "", t, flags=re.DOTALL)
+    t = re.sub(r"/\*.*?\*/", "", t, flags=re.DOTALL)
+    t = re.sub(r"#.*", "", t)
+    t = re.sub(r"//.*", "", t)
+    t = re.sub(r'"(?:[^"\\]|\\.)*"', '""', t)
+    t = re.sub(r"'(?:[^'\\]|\\.)*'", "''", t)
+    return t
+
+
+def extract_python_defs(path, text):
+    try:
+        tree = ast.parse(text, filename=str(path))
+    except Exception:
+        return []
+    defs = []
+    exported = set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for tgt in node.targets:
+                if isinstance(tgt, ast.Name) and tgt.id == "__all__":
+                    try:
+                        exported |= set(ast.literal_eval(node.value))
+                    except Exception:
+                        pass
+
+    def walk(node):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                defs.append((child.name, child.lineno,
+                             child.name in exported))
+            elif isinstance(child, ast.ClassDef):
+                walk(child)
+
+    walk(tree)
+    return defs
+
+
+def extract_js_defs(text):
+    patterns = [
+        (r"^\s*export\s+(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)", True),
+        (r"^\s*export\s+(?:default\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)", True),
+        (r"^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)", False),
+        (r"^\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(", False),
+    ]
+    defs = []
+    for i, line in enumerate(text.splitlines(), 1):
+        for pat, is_export in patterns:
+            m = re.match(pat, line)
+            if m:
+                defs.append((m.group(1), i, is_export))
+                break
+    return defs
+
+
+def find_orphans(root="."):
+    files = collect_files(root)
+    counts = defaultdict(Counter)
+    for f in files:
+        stripped = _strip_for_counting(_read(f))
+        for name in re.findall(r"[A-Za-z_$][\w$]*", stripped):
+            counts[name][f] += 1
+
+    orphans = []
+    for f in files:
+        text = _read(f)
+        defs = (extract_python_defs(f, text) if f.suffix == ".py"
+                else extract_js_defs(text))
+        for name, lineno, exported in defs:
+            total = sum(counts[name].values())
+            if total <= 1:
+                orphans.append({
+                    "file": str(f), "name": name, "line": lineno,
+                    "exported": exported,
+                    "private": name.startswith("_") or name.startswith("#"),
+                })
+
+    DUNDER = re.compile(r"^__.*__$")
+    orphans = [o for o in orphans
+               if not DUNDER.match(o["name"])
+               and not o["name"].startswith("test_")]
+    orphans.sort(key=lambda o: (o["file"], o["line"]))
+    return orphans
+
+
+def format_report(orphans, json_out=False):
+    import json as _json
+    if json_out:
+        print(_json.dumps(orphans, indent=2))
+        return
+    print("=" * 72)
+    print(f"ORPHANED FUNCTIONS: {len(orphans)}")
+    print("(name appears exactly once â€” at its own definition)")
+    print("=" * 72)
+    cur = None
+    for o in orphans:
+        if o["file"] != cur:
+            cur = o["file"]
+            print(f"\n-- {cur} --")
+        flags = []
+        if o["exported"]:
+            flags.append("EXPORTED")
+        if o["private"]:
+            flags.append("private")
+        tag = f"   [{', '.join(flags)}]" if flags else ""
+        print(f"  L{o['line']:<5} {o['name']}{tag}")

@@ -58,23 +58,25 @@ def _discover_workspace_dirs(root="."):
 
 
 def _run_graphify_extract(target_dir, quiet=True):
-    """Runs `graphify extract <target_dir> --code-only` (no LLM key required)."""
+    """Runs native AST graph extraction or fallback to `graphify extract <target_dir> --code-only`."""
     try:
-        result = subprocess.run(
-            ["graphify", "extract", target_dir, "--code-only"],
-            capture_output=True, text=True, timeout=120,
-        )
-        if not quiet:
-            print(result.stdout)
-            if result.returncode != 0:
-                print(result.stderr)
-        return result.returncode == 0
-    except FileNotFoundError:
-        print("  [auto-graphify] 'graphify' command not found on PATH — skipping auto-repair.")
-        return False
+        from graphify import extract_codebase_graph
+        extract_codebase_graph(target_dir, quiet=quiet)
+        return True
     except Exception as e:
-        print(f"  [auto-graphify] extract failed: {e}")
-        return False
+        try:
+            result = subprocess.run(
+                ["graphify", "extract", target_dir, "--code-only"],
+                capture_output=True, text=True, timeout=120,
+            )
+            if not quiet:
+                print(result.stdout)
+                if result.returncode != 0:
+                    print(result.stderr)
+            return result.returncode == 0
+        except Exception:
+            print(f"  [auto-graphify] extract failed: {e}")
+            return False
 
 
 def _graph_path_for(target_dir):

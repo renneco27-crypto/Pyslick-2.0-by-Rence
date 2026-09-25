@@ -57,8 +57,8 @@ BLOCK_COMMENT = {
     ".html": ("<!--", "-->"),
 }
 
-MARKER_START_RE = re.compile(r"^\s*(?:#|//|--|;)\s*pyslick:start\s+(\S+)")
-MARKER_END_RE = re.compile(r"^\s*(?:#|//|--|;)\s*pyslick:end\s+(\S+)")
+MARKER_START_RE = re.compile(r"pyslick:start\s+(\S+)")
+MARKER_END_RE = re.compile(r"pyslick:end\s+(\S+)")
 
 SCANNABLE_EXTS = set(LINE_COMMENT) | set(BLOCK_COMMENT)
 
@@ -304,7 +304,7 @@ def scan_file_for_comment_blocks(filepath: str) -> list[CommentNode]:
         return []
 
     try:
-        with open(filepath, "r", encoding="utf-8-sig", errors="strict") as f:
+        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
     except (OSError, UnicodeDecodeError):
         return []

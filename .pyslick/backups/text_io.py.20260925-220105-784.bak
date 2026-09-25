@@ -1,0 +1,147 @@
+"""
+text_io.py -- safe UTF-8 reads, writes, and prints.
+
+Never produces BOM. Never produces mojibake. Every module that reads or
+prints user-facing text should import from here instead of calling open()
+directly.
+
+Matches the docstring + section-marker convention of text_index.py.
+
+Why this module exists:
+  - Python's default open() on Windows decodes with cp1252 and silently
+    produces mojibake like "â†’" instead of "->" or "—" instead of "-".
+  - errors="replace" hides corruption instead of surfacing it.
+  - A BOM at the top of a UTF-8 file crashes ast.parse.
+
+This module fixes all three: utf-8-sig strips BOMs transparently,
+errors="strict" throws on genuinely corrupt bytes, and print helpers
+refuse to emit lines containing the replacement character.
+
+# ---- Section 1: constants ----
+
+BOM         = "\ufeff"     # U+FEFF -- leading byte-order mark
+REPLACEMENT = "\ufffd"     # U+FFFD -- Unicode replacement character
+
+
+# ---- Section 2: reading ----
+
+def safe_read(path):
+    """BOM-tolerant UTF-8 strict reader.
+
+    - utf-8-sig strips a leading BOM if present.
+    - errors='strict' throws on genuinely corrupt bytes rather than
+      silently producing mojibake.
+
+    Returns (text, error_str_or_None).
+    """
+    from pathlib import Path
+    try:
+        text = Path(path).read_text(encoding="utf-8-sig", errors="strict")
+        return text, None
+    except UnicodeDecodeError as e:
+        return "", f"non-UTF-8 bytes at offset {e.start}: {e.reason}"
+    except Exception as e:
+        return "", str(e)
+
+
+def safe_read_lines(path):
+    """Same as safe_read but returns a list of lines (no newline chars).
+
+    Returns (lines, error_str_or_None).
+    """
+    text, err = safe_read(path)
+    if err:
+        return [], err
+    return text.splitlines(), None
+
+
+# ---- Section 3: verification ----
+
+def verify_printable(line):
+    """True if the line has no mojibake or stray BOM.
+
+    A line containing U+FFFD is the visible symptom of a bad decode.
+    A line containing U+FEFF mid-file is a BOM that got decoded wrong.
+
+    Either one means the source wasn't read as UTF-8, and printing it
+    would spread the corruption. Reject the line.
+    """
+    return REPLACEMENT not in line and BOM not in line
+
+
+def verify_file(path):
+    """Read a file and return (ok, message).
+
+    ok=True  -> file is UTF-8, no BOM, no replacement char.
+    ok=False -> message describes what was found.
+    """
+    text, err = safe_read(path)
+    if err:
+        return False, err
+    if BOM in text:
+        return False, "BOM found mid-file (should have been stripped)"
+    if REPLACEMENT in text:
+        return False, "replacement character U+FFFD present -- mojibake"
+    return True, "ok"
+
+
+# ---- Section 4: printing ----
+
+def safe_print(*args, **kwargs):
+    """print() that refuses to emit lines containing mojibake.
+
+    If any argument contains U+FFFD or U+FEFF, the line is dropped
+    instead of printed. Same signature as print().
+    """
+    text = " ".join(str(a) for a in args)
+    if not verify_printable(text):
+        return
+    print(*args, **kwargs)
+
+
+def safe_print_lines(lines):
+    """Print each line in `lines`, skipping any that contain mojibake."""
+    for line in lines:
+        if verify_printable(line):
+            print(line)
+
+
+# ---- Section 5: comment anchors ----
+
+def enclosing_comment(lines, hit_idx, max_lookback=5):
+    """Walk upward from a hit to find the nearest comment block.
+
+    Comment blocks are usually 2-5 lines above the relevant code, not
+    immediately adjacent. This returns the contiguous comment lines
+    within max_lookback of the hit, so grep output can show context.
+
+    Args:
+        lines:        list of file lines (str, no newline chars)
+        hit_idx:      0-indexed line number of the hit
+        max_lookback: how many lines up to search
+
+    Returns:
+        list of comment lines (strings), or [] if none found.
+    """
+    buf = []
+    for i in range(hit_idx - 1, max(0, hit_idx - max_lookback) - 1, -1):
+        s = lines[i].strip()
+        if not s:
+            continue
+        if s.startswith(("#", "//", "/*", "*", '"""', "'''")):
+            buf.insert(0, lines[i])
+        else:
+            break
+    return buf
+
+
+# ---- Section 6: writing ----
+
+def safe_write(path, text):
+    """Write text as UTF-8 with no BOM.
+
+    Never use Set-Content, Out-File, or open(..., 'w') -- they either
+    inject a BOM or guess encoding wrong. This is the only writer.
+    """
+    from pathlib import Path
+    Path(path).write_text(text, encoding="utf-8")

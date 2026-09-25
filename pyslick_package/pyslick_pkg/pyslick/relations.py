@@ -1,4 +1,4 @@
-﻿"""relations.py — resolve relationship queries between two named entities
+"""relations.py — resolve relationship queries between two named entities
 using the pre-built graphify graph. Pure stdlib, no API, no LLM.
 
 Usage:
@@ -65,6 +65,14 @@ def extract_entities(directive: str) -> list[str]:
 
 
 def _load_graph(path: str = GRAPH_PATH) -> tuple[dict, list[dict]]:
+    if not os.path.exists(path):
+        try:
+            from graphify import extract_codebase_graph
+            extract_codebase_graph(".", quiet=True)
+        except Exception:
+            pass
+    if not os.path.exists(path):
+        return [], []
     with open(path, "r", encoding="utf-8") as f:
         g = json.load(f)
     return g.get("nodes", []), g.get("links", [])
