@@ -1,11 +1,21 @@
 
 try:
-    from .text_io import safe_read as __safe_read
+    from .text_io import safe_read as _safe_read_tuple
 except ImportError:
     try:
-        from text_io import safe_read as __safe_read
+        from text_io import safe_read as _safe_read_tuple
     except ImportError:
-        __safe_read = None
+        _safe_read_tuple = None
+
+
+def __safe_read(path):
+    if _safe_read_tuple is None:
+        with open(path, 'r', encoding='utf-8-sig', errors='strict') as f:
+            return f.read()
+    text, err = _safe_read_tuple(path)
+    if err:
+        raise OSError(err)
+    return text
 #!/usr/bin/env python3
 """
 toolbox.py — small PowerShell-equivalent read-only commands, bundled so you
@@ -184,8 +194,7 @@ def mode_lines(filepath: str, start: int | None = None, end: int | None = None):
     if not os.path.exists(filepath):
         print(f"{RED}Error: File '{filepath}' does not exist.{RST}")
         sys.exit(1)
-    with __safe_read(filepath) as f:
-        all_lines = f.readlines()
+    all_lines = __safe_read(filepath).splitlines(keepends=True)
 
     total = len(all_lines)
     lo = 1 if start is None else max(1, start)
@@ -386,8 +395,7 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
         hit_lines = [h[0] + 1 for h in rg_hits]
         matched_patterns = {h[0] + 1: h[1] for h in rg_hits}
         try:
-            with __safe_read(filepath) as _f:
-                src_lines = _f.readlines()
+            src_lines = __safe_read(filepath).splitlines(keepends=True)
         except OSError:
             src_lines = []
         ranges = _function_ranges_for_hits(filepath, hit_lines) if src_lines else None
@@ -419,8 +427,7 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
             print()
         return
 
-    with __safe_read(filepath) as f:
-        lines = f.readlines()
+    all_lines = __safe_read(filepath).splitlines(keepends=True)
 
     compiled = [re.compile(p) for p in patterns]
     hits = []
@@ -605,8 +612,7 @@ def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int
             continue
 
         try:
-            with __safe_read(filepath) as f:
-                lines = f.readlines()
+            all_lines = __safe_read(filepath).splitlines(keepends=True)
         except OSError:
             continue
 
@@ -729,8 +735,8 @@ def main():
             start = 1
             end = args.head
         elif args.tail is not None:
-            with __safe_read(args.file) as _f:
-                _total = len(_f.readlines())
+            _lines_tmp = __safe_read(args.file).splitlines(keepends=True)
+            _total = len(_lines_tmp)
             start = max(1, _total - args.tail + 1)
             end = _total
         elif args.range:
