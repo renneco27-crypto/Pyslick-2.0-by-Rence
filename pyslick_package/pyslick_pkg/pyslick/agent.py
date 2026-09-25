@@ -141,15 +141,15 @@ DIM   = "\033[2m"
 RST   = "\033[0m"
 
 def hdr(phase: str, title: str):
-    print(f"\n{BOLD}{CYAN}â”â”  {phase}  {RST}{BOLD}{title}{RST}")
+    print(f"\n{BOLD}{CYAN}──  {phase}  {RST}{BOLD}{title}{RST}")
     print(f"{DIM}{'─' * 60}{RST}")
     if "--show-cwd" in (title or "") or os.environ.get("PYSLICK_SHOW_CWD") == "1":
         print(f"{DIM}  cwd: {os.getcwd()}{RST}")
     print(f"{DIM}{'─' * 60}{RST}")
 
 def ok(msg):   print(f"{GREEN}  ✔ {msg}{RST}")
-def warn(msg): print(f"{YELL}  âš  {msg}{RST}")
-def err(msg):  print(f"{RED}  âœ– {msg}{RST}")
+def warn(msg): print(f"{YELL}  ⚠ {msg}{RST}")
+def err(msg):  print(f"{RED}  ✖ {msg}{RST}")
 
 # ── API providers ───────────────────────────────────────────────────────────
 PROVIDERS = {
@@ -207,9 +207,9 @@ CODE_EXTS = {
 }
 
 
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ═════════════════════════════════════════════════════════════════════════
 # LOCAL TOOL IMPLEMENTATIONS
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ═════════════════════════════════════════════════════════════════════════
 
 def tool_get_file(path: str) -> str:
     """Read a file's full content."""
@@ -386,7 +386,7 @@ def tool_find_blocks(path: str) -> str:
                 f"label=\"{n.label[:70]}\"  id={n.id}"
             )
             if n.code_preview:
-                preview = n.code_preview[:120].replace("\n", " â†µ ")
+                preview = n.code_preview[:120].replace("\n", " ↵ ")
                 lines.append(f"    code: {preview}")
         return f"Comment blocks in {path}:\n" + "\n".join(lines)
     except ImportError:
@@ -418,7 +418,7 @@ def tool_ast_query(path: str, question: str) -> str:
             if callees:
                 out.append(f"    calls → {', '.join(callees)}")
             if callers:
-                out.append(f"    called by â† {', '.join(callers)}")
+                out.append(f"    called by ← {', '.join(callers)}")
             # First 20 lines of source
             src_lines = sym.get("code", "").splitlines()[:20]
             if src_lines:
@@ -806,9 +806,9 @@ def dispatch_tool(name: str, args: dict) -> str:
         return f"ERROR executing {name}: {e}"
 
 
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ═════════════════════════════════════════════════════════════════════════
 # ANTHROPIC API  (tool-use / function-calling)
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ═════════════════════════════════════════════════════════════════════════
 
 # Schema sent to the API so Claude knows what tools exist
 TOOL_SCHEMA = [
@@ -1203,9 +1203,9 @@ def _extract_tool_uses(content: list[dict]) -> list[dict]:
     return [b for b in content if b.get("type") == "tool_use"]
 
 
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ═════════════════════════════════════════════════════════════════════════
 # INTENT VOCAB — loads intent_vocab.json once at import time
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ═════════════════════════════════════════════════════════════════════════
 
 def _load_vocab() -> dict:
     """Load intent_vocab.json from the same directory as this file."""
@@ -1417,7 +1417,7 @@ def summarize_intent_keywords(directive: str, intent: str, target_file: str | No
         parts.append(os.path.basename(target_file))
     if line_range:
         parts.append(line_range)
-    return " â€¢ ".join(parts)
+    return " • ".join(parts)
 
 
 def _load_learned() -> dict:
@@ -2048,7 +2048,7 @@ def _first_comment_lines(filepath: str, max_lines: int = 5) -> list[str]:
                 if len(out) >= max_lines:
                     break
                 continue
-            if len(s) >= 5 and not all(c in "-=_/*~#â”‚─" for c in s):
+            if len(s) >= 5 and not all(c in "-=_/*~#│─" for c in s):
                 out.append(s)
                 if len(out) >= max_lines:
                     break
@@ -2082,7 +2082,7 @@ def _first_comment_lines(filepath: str, max_lines: int = 5) -> list[str]:
             cleaned = s.lstrip("/*#<>-= ").strip()
             if len(cleaned) < 5:
                 continue
-            if all(c in "-=_/*~#â”‚─" for c in cleaned):
+            if all(c in "-=_/*~#│─" for c in cleaned):
                 continue
             out.append(cleaned)
             if len(out) >= max_lines:
@@ -2796,9 +2796,9 @@ def _print_encapsulated_node_view(
             line = raw[ln_idx]
             stripped = line.strip()
             if stripped.startswith("#") or stripped.startswith("//"):
-                print(f"  {DIM}{ln:4d}â”‚{RST} {CYAN}{line}{RST}")
+                print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
             else:
-                print(f"  {DIM}{ln:4d}â”‚{RST} {line}")
+                print(f"  {DIM}{ln:4d}│{RST} {line}")
     else:
         # Compact mode for > 20 lines
         for ln_idx in range(max(0, s_line - 1), min(s_line + 4, actual_end)):
@@ -2806,18 +2806,18 @@ def _print_encapsulated_node_view(
             line = raw[ln_idx]
             stripped = line.strip()
             if stripped.startswith("#") or stripped.startswith("//"):
-                print(f"  {DIM}{ln:4d}â”‚{RST} {CYAN}{line}{RST}")
+                print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
             else:
-                print(f"  {DIM}{ln:4d}â”‚{RST} {line}")
+                print(f"  {DIM}{ln:4d}│{RST} {line}")
 
         hidden_count = max(0, total_lines_in_scope - 7)
-        print(f"  {DIM}      â”‚ ... [{hidden_count} lines omitted — run with 'end to end' to view all] ...{RST}")
+        print(f"  {DIM}      │ ... [{hidden_count} lines omitted — run with 'end to end' to view all] ...{RST}")
 
         # Show last 2 lines
         for ln_idx in range(max(s_line + 4, actual_end - 2), actual_end):
             ln = ln_idx + 1
             line = raw[ln_idx]
-            print(f"  {DIM}{ln:4d}â”‚{RST} {line}")
+            print(f"  {DIM}{ln:4d}│{RST} {line}")
 
     # Display callers end-to-end with line numbers
     callers = _find_symbol_callers(s_name or label, fp, all_files)
@@ -2829,7 +2829,7 @@ def _print_encapsulated_node_view(
             c_line = c["call_line"]
             c_start = c["start_line"]
             c_end = c["end_line"]
-            print(f"    â† {CYAN}{c_name}{RST} in {BOLD}{c_file}{RST} {DIM}(called at L{c_line}, function scope L{c_start}-L{c_end}){RST}")
+            print(f"    ← {CYAN}{c_name}{RST} in {BOLD}{c_file}{RST} {DIM}(called at L{c_line}, function scope L{c_start}-L{c_end}){RST}")
 
 
 
@@ -2989,7 +2989,7 @@ def _print_file_cat_and_snippet(
         skip = s - 1
         ps_cmd = f"Get-Content '{filepath}' | Select-Object -Skip {skip} -First {count}"
 
-        print(f"  {DIM}Lines: {total_lines}  â”‚  Showing: L{s}-L{e}{RST}")
+        print(f"  {DIM}Lines: {total_lines}  │  Showing: L{s}-L{e}{RST}")
         print(f"  {CYAN}PowerShell:{RST} {BOLD}{ps_cmd}{RST}\n")
 
         for idx in range(s - 1, e):
@@ -2997,9 +2997,9 @@ def _print_file_cat_and_snippet(
             line = raw_lines[idx]
             stripped = line.strip()
             if stripped.startswith("#") or stripped.startswith("//"):
-                print(f"  {DIM}{ln:4d}â”‚{RST} {CYAN}{line}{RST}")
+                print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
             else:
-                print(f"  {DIM}{ln:4d}â”‚{RST} {line}")
+                print(f"  {DIM}{ln:4d}│{RST} {line}")
         return
 
     # 2. General file cat scan
@@ -3017,9 +3017,9 @@ def _print_file_cat_and_snippet(
             line = raw_lines[idx]
             stripped = line.strip()
             if stripped.startswith("#") or stripped.startswith("//"):
-                print(f"  {DIM}{ln:4d}â”‚{RST} {CYAN}{line}{RST}")
+                print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
             else:
-                print(f"  {DIM}{ln:4d}â”‚{RST} {line}")
+                print(f"  {DIM}{ln:4d}│{RST} {line}")
 
         if total_lines > max_show:
             print(f"\n  {DIM}... ({total_lines - max_show} more lines. Run: Get-Content '{filepath}' or pyslick lines '{filepath}'){RST}")
@@ -3032,9 +3032,9 @@ def _print_file_cat_and_snippet(
 def _print_file_summary(filepath: str, directive_lower: str = "") -> None:
     """
     Print a structured summary of one file:
-      â€¢ total lines
-      â€¢ key functions/classes with first 3 lines of body + inline comments
-      â€¢ relevant comment blocks (filtered by directive words)
+      • total lines
+      • key functions/classes with first 3 lines of body + inline comments
+      • relevant comment blocks (filtered by directive words)
     """
     content = tool_get_file(filepath)
     if content.startswith("ERROR"):
@@ -3052,7 +3052,7 @@ def _print_file_summary(filepath: str, directive_lower: str = "") -> None:
     god_deg = sem_idx.get("god_nodes", {}).get(base_f, 0)
     if comms or god_deg:
         comm_tag = f"{CYAN}{comms[0]}{RST}" if comms else ""
-        god_tag = f"  {BOLD}â˜… God Node ({god_deg} refs){RST}" if god_deg else ""
+        god_tag = f"  {BOLD}★ God Node ({god_deg} refs){RST}" if god_deg else ""
         print(f"  {DIM}Graph Topology:{RST} {comm_tag}{god_tag}")
 
     # ── functions and classes ──────────────────────────────────────────
@@ -3104,7 +3104,7 @@ def _print_file_summary(filepath: str, directive_lower: str = "") -> None:
 
             if fn["docstring"]:
                 doc_preview = fn["docstring"].splitlines()[0][:80]
-                print(f"      {DIM}Â» {doc_preview}{RST}")
+                print(f"      {DIM}» {doc_preview}{RST}")
 
             body_start = lnum
             body_lines = raw_lines[body_start : body_start + 3]
@@ -3116,7 +3116,7 @@ def _print_file_summary(filepath: str, directive_lower: str = "") -> None:
         # If no functions/classes found, show the first 30 lines
         print(f"\n  {BOLD}Preview:{RST}")
         for idx in range(min(30, len(raw_lines))):
-            print(f"  {DIM}{idx+1:4d}â”‚{RST} {raw_lines[idx]}")
+            print(f"  {DIM}{idx+1:4d}│{RST} {raw_lines[idx]}")
 
 
 def _print_all_comments(
@@ -3146,7 +3146,7 @@ def _print_all_comments(
         e = min(total, end_line)
         print(
             f"\n{BOLD}Comments in {filepath}{RST}  "
-            f"{DIM}({total} lines total  â”‚  Showing L{s}-L{e}){RST}\n"
+            f"{DIM}({total} lines total  │  Showing L{s}-L{e}){RST}\n"
         )
         print(
             f"  {DIM}PowerShell: Get-Content '{filepath}' | "
@@ -3252,7 +3252,7 @@ def _ask_did_you_mean(directive: str, intent: str, confidence: float, top3: list
     Returns the confirmed intent name.
     """
     label = INTENT_LABELS.get(intent, intent)
-    print(f"\n{YELL}  âš¡ Did you mean: {BOLD}{label}{RST}{YELL}? ({intent}, {confidence:.0f}% confident){RST}")
+    print(f"\n{YELL}  ⚡ Did you mean: {BOLD}{label}{RST}{YELL}? ({intent}, {confidence:.0f}% confident){RST}")
     answer = input(f"  {DIM}(y/n): {RST}").strip().lower()
 
     if answer in ("y", "yes", ""):
@@ -3280,9 +3280,9 @@ def _ask_did_you_mean(directive: str, intent: str, confidence: float, top3: list
         print(f"  {YELL}Enter a number between 0 and {len(choices)}.{RST}")
 
 
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ═════════════════════════════════════════════════════════════════════════
 # LOCAL LLM AGENT (no API key required)
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ═════════════════════════════════════════════════════════════════════════
 
 def _run_relay_agent(directive: str) -> None:
     """
@@ -3309,13 +3309,13 @@ def _run_relay_agent(directive: str) -> None:
 
     payload = {"directive": directive, "files": blocks}
     RELAY_FILE.write_text(_json.dumps(payload, indent=2), encoding="utf-8")
-    print(f"{DIM}  [relay] Context written Ã¢â€ ' waiting for extension to POST responseâ€¦{RST}")
+    print(f"{DIM}  [relay] Context written â†' waiting for extension to POST response…{RST}")
 
     # Clear any stale response
     if RESPONSE_FILE.exists():
         RESPONSE_FILE.unlink()
 
-    # Poll for response (extension POSTs to /claude-response Ã¢â€ ' relay_server saves it)
+    # Poll for response (extension POSTs to /claude-response â†' relay_server saves it)
     timeout, interval = 120, 1
     for _ in range(timeout):
         _time.sleep(interval)
@@ -4080,7 +4080,7 @@ def _run_local_agent(directive: str) -> None:
                 print(f"\n  Files that would change:\n{diff_res.stdout}")
 
             confirm = input(
-                f"\n{BOLD}  â¸  Rollback to {commit_hash[:10]} \"{commit_msg[:60]}\"? "
+                f"\n{BOLD}  ⏸  Rollback to {commit_hash[:10]} \"{commit_msg[:60]}\"? "
                 f"This discards {len(lost_lines)} commit(s) above it. (yes/no): {RST}"
             ).strip().lower()
             if confirm not in ("y", "yes"):
@@ -4158,7 +4158,7 @@ def _run_local_agent(directive: str) -> None:
                 except Exception:
                     commit_msg = directive
             confirm = input(
-                f"\n{BOLD}  â¸  Create checkpoint '{commit_msg[:70]}'? (yes/no): {RST}"
+                f"\n{BOLD}  ⏸  Create checkpoint '{commit_msg[:70]}'? (yes/no): {RST}"
             ).strip().lower()
             if confirm in ("y", "yes"):
                 result = tool_pyslick_checkpoint(commit_msg)
@@ -4698,16 +4698,16 @@ def _run_local_agent(directive: str) -> None:
             ext = Path(target_f).suffix.lower()
             print(f"  {BOLD}How to run {target_f}:{RST}")
             if ext == ".py":
-                print(f"    â€¢ Direct: {BOLD}python {target_f}{RST}")
-                print(f"    â€¢ Module: {BOLD}python -m {Path(target_f).stem}{RST}")
+                print(f"    • Direct: {BOLD}python {target_f}{RST}")
+                print(f"    • Module: {BOLD}python -m {Path(target_f).stem}{RST}")
             elif ext in (".js", ".mjs", ".cjs"):
                 if "electron" in target_f.lower() or os.path.exists("electron-main.js"):
-                    print(f"    â€¢ Electron: {BOLD}npx electron {target_f}{RST} (or {BOLD}{pm} start{RST})")
-                print(f"    â€¢ Node:     {BOLD}node {target_f}{RST}")
+                    print(f"    • Electron: {BOLD}npx electron {target_f}{RST} (or {BOLD}{pm} start{RST})")
+                print(f"    • Node:     {BOLD}node {target_f}{RST}")
             elif ext in (".ts", ".tsx"):
-                print(f"    â€¢ TypeScript: {BOLD}npx ts-node {target_f}{RST}")
+                print(f"    • TypeScript: {BOLD}npx ts-node {target_f}{RST}")
             elif ext == ".html":
-                print(f"    â€¢ Open in browser or local server: {BOLD}npx serve .{RST}")
+                print(f"    • Open in browser or local server: {BOLD}npx serve .{RST}")
             print()
             found_info = True
 
@@ -4737,15 +4737,15 @@ def _run_local_agent(directive: str) -> None:
         if os.path.exists("pyproject.toml") or os.path.exists("setup.py") or os.path.exists("requirements.txt") or py_files:
             print(f"\n  {BOLD}Python Environment:{RST}")
             if os.path.exists("requirements.txt"):
-                print(f"    â€¢ Install deps: {BOLD}pip install -r requirements.txt{RST}")
+                print(f"    • Install deps: {BOLD}pip install -r requirements.txt{RST}")
             if os.path.exists("setup_and_install.py"):
-                print(f"    â€¢ One-shot setup: {BOLD}python setup_and_install.py{RST}")
+                print(f"    • One-shot setup: {BOLD}python setup_and_install.py{RST}")
             for main_cand in ["main.py", "app.py", "cli.py", "server.py", "index.py", "electron-main.js"]:
                 if os.path.exists(main_cand):
                     cmd = f"python {main_cand}" if main_cand.endswith(".py") else f"node {main_cand}"
-                    print(f"    â€¢ Run entry point: {BOLD}{cmd}{RST}")
+                    print(f"    • Run entry point: {BOLD}{cmd}{RST}")
             if os.path.exists("pytest.ini") or os.path.exists("tests"):
-                print(f"    â€¢ Run tests: {BOLD}pytest{RST}")
+                print(f"    • Run tests: {BOLD}pytest{RST}")
             found_info = True
 
         # Check README.md for Run / Getting Started / Usage sections
@@ -4900,7 +4900,7 @@ def _run_local_agent(directive: str) -> None:
             except Exception:
                 line_info = ""
 
-            print(f"  {BOLD}â€¢ {fp}{RST}  {line_info}")
+            print(f"  {BOLD}• {fp}{RST}  {line_info}")
 
             if wants_symbols:
                 content = tool_get_file(fp)
@@ -5031,7 +5031,7 @@ def _run_local_agent(directive: str) -> None:
         if matched_files:
             print(f"\n  {CYAN}Nearest File Names:{RST}")
             for fp in matched_files[:6]:
-                print(f"    â€¢ {BOLD}{fp}{RST}")
+                print(f"    • {BOLD}{fp}{RST}")
 
         # ── Concept-lookup fallback ──────────────────────────────────────
         # Nothing matched by graph symbol OR filename — e.g. "what's the
@@ -5139,9 +5139,9 @@ def _run_local_agent(directive: str) -> None:
                 line = raw_lines[ln_idx]
                 stripped = line.strip()
                 if stripped.startswith("#") or stripped.startswith("//"):
-                    print(f"  {DIM}{ln:4d}â”‚{RST} {CYAN}{line}{RST}")
+                    print(f"  {DIM}{ln:4d}│{RST} {CYAN}{line}{RST}")
                 else:
-                    print(f"  {DIM}{ln:4d}â”‚{RST} {line}")
+                    print(f"  {DIM}{ln:4d}│{RST} {line}")
             return
 
         # Fallback to Broad Recon Mode when single function match fails
@@ -5156,7 +5156,7 @@ def _run_local_agent(directive: str) -> None:
         if matched_files:
             print(f"\n  {CYAN}Nearest Matched Files:{RST}")
             for fp in matched_files[:5]:
-                print(f"    â€¢ {BOLD}{fp}{RST}")
+                print(f"    • {BOLD}{fp}{RST}")
 
         if not enriched_nodes and not matched_files:
             warn(f"Could not locate function or files matching '{query_term}'. Try specifying the function name or file.")
@@ -5281,8 +5281,8 @@ def _run_local_agent(directive: str) -> None:
             Path(out_path).write_text("\n".join(lines), encoding="utf-8")
             size_kb = Path(out_path).stat().st_size // 1024
             ok(f"Written: {out_path}  ({size_kb or '<1'} KB)  —  ready for AI webapp / Claude")
-            print(f"  {DIM}Communities: {len(communities)}  â”‚  God nodes: {len(gods)}  â”‚  Bridge questions: {len(questions)}{RST}\n")
-            print(f"  {CYAN}ðŸ’¡ Semantic Search Tip:{RST} Parse {BOLD}graphify.md{RST} with an AI (Claude / ChatGPT).")
+            print(f"  {DIM}Communities: {len(communities)}  │  God nodes: {len(gods)}  │  Bridge questions: {len(questions)}{RST}\n")
+            print(f"  {CYAN}💡 Semantic Search Tip:{RST} Parse {BOLD}graphify.md{RST} with an AI (Claude / ChatGPT).")
             print(f"     pyslick uses this extracted graph topology and community semantics for smarter searching!\n")
             return
 
@@ -5318,7 +5318,7 @@ def _run_local_agent(directive: str) -> None:
                             if node:
                                 ntype = node.type.upper()
                                 nfile = os.path.basename(node.file)
-                                print(f"    â€¢ {DIM}[{ntype}]{RST} {BOLD}{node.name}{RST} {DIM}({nfile} L{node.line}){RST}")
+                                print(f"    • {DIM}[{ntype}]{RST} {BOLD}{node.name}{RST} {DIM}({nfile} L{node.line}){RST}")
                     ran_webdesign = True
             except Exception:
                 pass
@@ -5363,12 +5363,12 @@ def _run_local_agent(directive: str) -> None:
         enriched_nodes = _find_nearest_nodes_with_encapsulation(active_directive, all_files, top_k=3)
 
         if enriched_nodes:
-            hdr("Connections â€¢ Node & Scope Encapsulation", active_directive)
+            hdr("Connections • Node & Scope Encapsulation", active_directive)
             for item in enriched_nodes:
                 _print_encapsulated_node_view(item, all_files, dl, max_compact_lines=20)
 
         elif matched:
-            hdr("Connections", " â†” ".join(os.path.basename(f) for f in matched[:3]))
+            hdr("Connections", " ↔ ".join(os.path.basename(f) for f in matched[:3]))
             for fp in matched[:4]:
                 print(f"\n{BOLD}{fp}{RST}")
                 _print_file_summary(fp, dl)
@@ -5390,7 +5390,7 @@ def _run_local_agent(directive: str) -> None:
                     if not f1.endswith(".py"):
                         continue
                     try:
-                        print(f"\n  {BOLD}{os.path.basename(f1)} â†” {os.path.basename(f2)}{RST}")
+                        print(f"\n  {BOLD}{os.path.basename(f1)} ↔ {os.path.basename(f2)}{RST}")
                         results = graphify_query(
                             f1,
                             f"functions that call or are called by {f2}",
@@ -5407,7 +5407,7 @@ def _run_local_agent(directive: str) -> None:
                                 if callees:
                                     print(f"      calls → {', '.join(callees[:4])}")
                                 if callers:
-                                    print(f"      called by â† {', '.join(callers[:4])}")
+                                    print(f"      called by ← {', '.join(callers[:4])}")
                         else:
                             print(f"    {DIM}(no direct connections found){RST}")
                     except Exception:
@@ -5599,7 +5599,7 @@ def _run_local_agent(directive: str) -> None:
             for iss in issues:
                 line_no = iss.get("line", "?")
                 sym = iss.get("symbol", iss.get("message", str(iss)))
-                print(f"  {YELLOW}âš {RST}  {os.path.basename(fp)}:{BOLD}{line_no}{RST}  {sym}")
+                print(f"  {YELLOW}⚠{RST}  {os.path.basename(fp)}:{BOLD}{line_no}{RST}  {sym}")
                 total_issues += 1
         if total_issues == 0:
             print(f"  {GREEN}✔{RST}  No stray symbols found.")
@@ -5625,7 +5625,7 @@ def _run_local_agent(directive: str) -> None:
                 for err in errors:
                     line_no = err.get("line", "?")
                     msg = err.get("message", str(err))
-                    print(f"  {RED}âœ–{RST}  {os.path.basename(fp)}:{BOLD}{line_no}{RST}  {msg}")
+                    print(f"  {RED}✖{RST}  {os.path.basename(fp)}:{BOLD}{line_no}{RST}  {msg}")
                     total_errors += 1
             elif ext == ".py":
                 try:
@@ -5633,7 +5633,7 @@ def _run_local_agent(directive: str) -> None:
                         src = _f.read()
                     _ast.parse(src, filename=fp)
                 except SyntaxError as se:
-                    print(f"  {RED}âœ–{RST}  {os.path.basename(fp)}:{BOLD}{se.lineno}{RST}  {se.msg}")
+                    print(f"  {RED}✖{RST}  {os.path.basename(fp)}:{BOLD}{se.lineno}{RST}  {se.msg}")
                     total_errors += 1
                 except Exception:
                     pass
@@ -5661,7 +5661,7 @@ def _run_local_agent(directive: str) -> None:
             for iss in issues:
                 line_no = iss.get("line", iss.get("lineno", "?"))
                 msg = iss.get("message", iss.get("issue", str(iss)))
-                print(f"  {YELLOW}âš {RST}  {os.path.basename(fp)}:{BOLD}{line_no}{RST}  {msg}")
+                print(f"  {YELLOW}⚠{RST}  {os.path.basename(fp)}:{BOLD}{line_no}{RST}  {msg}")
                 total_issues += 1
         if total_issues == 0:
             print(f"  {GREEN}✔{RST}  No indentation issues found.")
@@ -5730,7 +5730,7 @@ def _run_local_agent(directive: str) -> None:
         warn(f"Missing dependency: {ie}. Run: pip install pyslick[local]")
         return
 
-    print(f"{DIM}Scanning projectâ€¦{RST}")
+    print(f"{DIM}Scanning project…{RST}")
     nodes = load_graph_nodes() or []
 
     if not nodes:
@@ -5835,9 +5835,9 @@ def _run_local_agent(directive: str) -> None:
     _present_and_apply_patch(patch, directive)
 
 
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ═════════════════════════════════════════════════════════════════════════
 # AGENTIC LOOP  (Anthropic / NVIDIA API path)
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ═════════════════════════════════════════════════════════════════════════
 
 def run_agent(directive: str, root: str = ".") -> None:
     os.chdir(root) if root != "." else None
@@ -5877,7 +5877,7 @@ def run_agent(directive: str, root: str = ".") -> None:
 
     # ── Agentic tool loop ──────────────────────────────────────────────
     for round_num in range(1, MAX_TOOL_ROUNDS + 1):
-        hdr(f"Round {round_num}/{MAX_TOOL_ROUNDS}", "Thinkingâ€¦")
+        hdr(f"Round {round_num}/{MAX_TOOL_ROUNDS}", "Thinking…")
 
         try:
             response = _call_api(messages, use_tools=True)
@@ -5929,7 +5929,7 @@ def run_agent(directive: str, root: str = ".") -> None:
         messages.append({"role": "user", "content": tool_results})
 
     # ── Max rounds reached → ask for final answer without tools ────────
-    warn(f"Reached {MAX_TOOL_ROUNDS} tool rounds. Asking for final proposalâ€¦")
+    warn(f"Reached {MAX_TOOL_ROUNDS} tool rounds. Asking for final proposal…")
     messages.append({
         "role": "user",
         "content": (
@@ -5955,7 +5955,7 @@ def _fmt_args(args: dict) -> str:
     for k, v in args.items():
         val = repr(v) if isinstance(v, str) else str(v)
         if len(val) > 50:
-            val = val[:47] + "â€¦'"
+            val = val[:47] + "…'"
         parts.append(f"{k}={val}")
     return ", ".join(parts)
 
@@ -6039,7 +6039,7 @@ def _present_and_apply_patch(patch: dict, directive: str) -> None:
     print(f"{DIM}{'─'*60}{RST}")
 
     confirm = input(
-        f"\n{BOLD}  â¸  Apply this patch? (yes/no): {RST}"
+        f"\n{BOLD}  ⏸  Apply this patch? (yes/no): {RST}"
     ).strip().lower()
 
     if confirm not in ("yes", "y"):
@@ -6055,9 +6055,9 @@ def _present_and_apply_patch(patch: dict, directive: str) -> None:
         err("Write blocked (possible syntax error). File unchanged.")
 
 
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ═════════════════════════════════════════════════════════════════════════
 # ENTRY POINT
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ═════════════════════════════════════════════════════════════════════════
 
 def main():
     parser = argparse.ArgumentParser(

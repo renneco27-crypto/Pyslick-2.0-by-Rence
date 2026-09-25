@@ -385,6 +385,19 @@ def print_help():
   calls which function across the codebase with exact caller/callee links and
   zero hallucinations.
 
+READ FIRST:
+  Run `pyslick playbook` for the full debugging playbook.
+  Run `pyslick playbook --handoff` for the session handoff.
+  Run `pyslick playbook --all` for both.
+
+OPERATING DIRECTIVES:
+  1. NEVER exit on code 0. No ceremonial success exit. Scripts fall
+     through, or exit non-zero on failure only.
+  2. STOP YAPPING. No preamble. No postscript. No narration. Code plus
+     the minimum prose needed to use it. One question max if blocked.
+  3. PLAIN ENGLISH. I know tech, I do not want jargon. Explain like I
+     am smart but new to this. Short sentences. No acronym soup.
+
 Usage:
     pyslick <command> [args]
     pyslick "<natural language query>"
@@ -729,7 +742,7 @@ def main():
                     elif "--tail" in rest:
                         i = rest.index("--tail")
                         if i + 1 < len(rest) and rest[i+1].isdigit():
-                            with open(file_path, "r", encoding="utf-8", errors="replace") as _f:
+                            with open(file_path, "r", encoding="utf-8-sig", errors="strict") as _f:
                                 _total = len(_f.readlines())
                             start = max(1, _total - int(rest[i+1]) + 1)
                             end = _total
@@ -797,74 +810,51 @@ def main():
                     sys.exit(1)
 
             elif command == "oneshot":
+
+                # oneshot merged into grep --exact
+
                 try:
-                    from .oneshot import run_oneshot
-                    query = " ".join(a for a in args if not a.startswith("-"))
-                    file_scope = None
+
+                    from .toolbox import mode_semantic_grep as _grep_exact
+
+                    _query = " ".join(a for a in args if not a.startswith("-"))
+
+                    _file_scope = None
+
                     if "--file" in args:
-                        i = args.index("--file")
-                        if i + 1 < len(args):
-                            file_scope = args[i + 1]
-                    jobs = None
+
+                        _i = args.index("--file")
+
+                        if _i + 1 < len(args):
+
+                            _file_scope = args[_i + 1]
+
+                    _jobs = None
+
                     if "--jobs" in args:
-                        i = args.index("--jobs")
-                        if i + 1 < len(args):
+
+                        _i = args.index("--jobs")
+
+                        if _i + 1 < len(args):
+
                             try:
-                                jobs = int(args[i + 1])
+
+                                _jobs = int(args[_i + 1])
+
                             except ValueError:
+
                                 pass
-                    run_oneshot(
-                        query,
-                        use_json="--json" in args,
-                        do_verify="--verify" in args,
-                        jobs=jobs,
-                        file_scope=file_scope,
-                    )
-                except Exception as e:
-                    print(f"Error: {e}")
-                    sys.exit(1)
 
-            elif command in ("deps", "imports", "dependencies"):
-                try:
-                    from repomap import scan_imports_and_dependencies
-                    target_pkg = args[0] if args and not args[0].startswith("-") else None
-                    root_dir = "."
-                    if "--root" in args:
-                        ri = args.index("--root")
-                        if ri + 1 < len(args):
-                            root_dir = args[ri + 1]
-                    res = scan_imports_and_dependencies(root=root_dir, target=target_pkg)
-                    BOLD  = "\033[1m"
-                    CYAN  = "\033[96m"
-                    GREEN = "\033[92m"
-                    DIM   = "\033[2m"
-                    RST   = "\033[0m"
-                    print(f"\n{BOLD}{CYAN}━━  Dependency & Import Scanner  {RST}")
-                    if target_pkg:
-                        print(f"{DIM}Target: '{target_pkg}' | Files scanned: {res['files_scanned']}{RST}")
-                    else:
-                        print(f"{DIM}Files scanned: {res['files_scanned']}{RST}")
-                    print(f"{DIM}{'─' * 60}{RST}")
+                    _root = _file_scope if _file_scope else "."
 
-                    if res.get("manifest_dependencies"):
-                        print(f"\n{BOLD}Manifest Declared Packages:{RST}")
-                        for dep, info in sorted(res["manifest_dependencies"].items()):
-                            if not target_pkg or target_pkg.lower() in dep.lower():
-                                print(f"  {GREEN}· {dep}{RST} {DIM}({info.get('version', '*')}) [{info.get('manifest', '')}]{RST}")
+                    _grep_exact(_query, root=_root, context=1,
 
-                    if res.get("imports_by_package"):
-                        print(f"\n{BOLD}Imported Packages & Codebase Usages:{RST}")
-                        for pkg, usages in sorted(res["imports_by_package"].items()):
-                            print(f"\n  {BOLD}{CYAN}Package: {pkg}{RST} {DIM}({len(usages)} reference(s)){RST}")
-                            for u in usages[:8]:
-                                print(f"    {GREEN}→{RST} {u['file']}:{u['line']}  {DIM}{u['statement']}{RST}")
-                            if len(usages) > 8:
-                                print(f"    {DIM}... [{len(usages) - 8} more references omitted]{RST}")
-                    else:
-                        print(f"\n{DIM}No imports found matching criteria.{RST}")
-                    print()
-                except Exception as e:
-                    print(f"Error: {e}")
+                                       exact=True, stream=True)
+
+                except Exception as _e:
+
+                    print("Error: {}".format(_e))
+
                     sys.exit(1)
 
             elif command == "graphify":

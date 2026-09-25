@@ -1,6 +1,6 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
-clipboard.py â€” PySlick output capture + clipboard copy
+clipboard.py — PySlick output capture + clipboard copy
 ========================================================
 
 Wraps any pyslick command so that its terminal output is:
@@ -14,7 +14,7 @@ macOS:                  uses pbcopy
 Linux:                  tries xclip, then xsel, then pyperclip
 
 HOW IT WORKS
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+─────────────
 main() in __init__.py wraps itself with capture_and_offer():
 
     from .clipboard import capture_and_offer
@@ -26,22 +26,22 @@ to both the real terminal and an in-memory StringIO. When the command
 finishes (or errors), the buffer is saved to a temp file and the footer
 is printed:
 
-    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    âœ” Output saved  |  Press Ctrl+C to copy to clipboard
-    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    ────────────────────────────────────────────
+    ✔ Output saved  |  Press Ctrl+C to copy to clipboard
+    ────────────────────────────────────────────
 
 If the user presses Ctrl+C (KeyboardInterrupt) inside the 2-second wait
 window, the buffer goes straight to the clipboard. If they don't press
-anything, pyslick exits normally â€” no interruption.
+anything, pyslick exits normally — no interruption.
 
 The last session output is also written to ~/.pyslick/last_output.txt
 so the user can always run:
 
-    pyslick copy          â† re-copies last session output
-    pyslick copy --show   â† also prints it
+    pyslick copy          ← re-copies last session output
+    pyslick copy --show   ← also prints it
 
 STRIP ANSI
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+─────────────
 ANSI colour codes are stripped before copying so the pasted text is
 clean plain text for your LLM chat box.
 """
@@ -58,18 +58,18 @@ import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 
-# â”€â”€ paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── paths ─────────────────────────────────────────────────────────────────
 PYSLICK_STATE_DIR = Path.home() / ".pyslick"
 LAST_OUTPUT_FILE  = PYSLICK_STATE_DIR / "last_output.txt"
 
-# â”€â”€ ANSI stripper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── ANSI stripper ─────────────────────────────────────────────────────────
 _ANSI_RE = re.compile(r"\033\[[0-9;]*[mABCDEFGHJKSTfnsu]")
 
 def strip_ansi(text: str) -> str:
     return _ANSI_RE.sub("", text)
 
 
-# â”€â”€ Tee: write to real stdout AND a buffer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Tee: write to real stdout AND a buffer ────────────────────────────────
 class _Tee(io.TextIOBase):
     """Proxy that forwards every write() to both `real` and `buf`."""
 
@@ -101,10 +101,10 @@ class _Tee(io.TextIOBase):
         return self._real.isatty()
 
 
-# â”€â”€ clipboard backends â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── clipboard backends ────────────────────────────────────────────────────
 
 def _copy_windows(text: str) -> bool:
-    """PowerShell Set-Clipboard â€” always available on Win 10+."""
+    """PowerShell Set-Clipboard — always available on Win 10+."""
     try:
         proc = subprocess.run(
             ["powershell", "-NoProfile", "-Command",
@@ -161,7 +161,7 @@ def copy_to_clipboard(text: str) -> bool:
         return _copy_linux(clean)
 
 
-# â”€â”€ persist last output â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── persist last output ───────────────────────────────────────────────────
 
 def save_last_output(text: str) -> None:
     try:
@@ -180,7 +180,7 @@ def load_last_output() -> str | None:
     return None
 
 
-# â”€â”€ colours (minimal â€” this module is imported before colour setup) â”€â”€â”€â”€â”€â”€â”€â”€
+# ── colours (minimal — this module is imported before colour setup) ────────
 _BOLD  = "\033[1m"
 _GREEN = "\033[92m"
 _CYAN  = "\033[96m"
@@ -221,7 +221,7 @@ def _wait_for_ctrl_c(timeout: float = 0.3) -> bool:
         return True
 
 
-# â”€â”€ main context manager â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── main context manager ──────────────────────────────────────────────────
 
 @contextmanager
 def capture_and_offer(skip_commands: set[str] | None = None):
@@ -241,7 +241,7 @@ def capture_and_offer(skip_commands: set[str] | None = None):
     try:
         yield
     except SystemExit as exc:
-        # Command called sys.exit() â€” restore stdout before we continue
+        # Command called sys.exit() — restore stdout before we continue
         sys.stdout = real_out
         captured = buf.getvalue()
         if captured.strip():
@@ -266,20 +266,20 @@ def capture_and_offer(skip_commands: set[str] | None = None):
 def _do_copy(text: str, real_out) -> None:
     ok = copy_to_clipboard(text)
     if ok:
-        real_out.write(f"\n  {_GREEN}âœ” Copied to clipboard!{_RST}  "
+        real_out.write(f"\n  {_GREEN}✔ Copied to clipboard!{_RST}  "
                        f"{_DIM}Paste into your LLM chat.{_RST}\n")
     else:
-        real_out.write(f"\n  {_YELL}âš  Clipboard copy failed.{_RST}  "
+        real_out.write(f"\n  {_YELL}⚠ Clipboard copy failed.{_RST}  "
                        f"Output is in: {LAST_OUTPUT_FILE}\n")
     real_out.flush()
 
 
-# â”€â”€ pyslick copy command â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── pyslick copy command ──────────────────────────────────────────────────
 
 def cmd_copy(show: bool = False) -> None:
     """
-    `pyslick copy` â€” re-copy the last session output to clipboard.
-    `pyslick copy --show` â€” also print the saved text.
+    `pyslick copy` — re-copy the last session output to clipboard.
+    `pyslick copy --show` — also print the saved text.
     """
     text = load_last_output()
     if not text:
@@ -293,10 +293,10 @@ def cmd_copy(show: bool = False) -> None:
     ok = copy_to_clipboard(text)
     if ok:
         lines = len(text.splitlines())
-        print(f"{_GREEN}  âœ” Copied {len(text):,} chars ({lines} lines) to clipboard.{_RST}")
+        print(f"{_GREEN}  ✔ Copied {len(text):,} chars ({lines} lines) to clipboard.{_RST}")
         print(f"  {_DIM}Paste into your LLM chat box.{_RST}")
     else:
-        print(f"{_YELL}  âš  Could not copy automatically.{_RST}")
+        print(f"{_YELL}  ⚠ Could not copy automatically.{_RST}")
         print(f"  {_DIM}File is at: {LAST_OUTPUT_FILE}{_RST}")
         print(f"  {_DIM}Open it and copy manually, or install xclip (Linux) / pbcopy (macOS).{_RST}")
 

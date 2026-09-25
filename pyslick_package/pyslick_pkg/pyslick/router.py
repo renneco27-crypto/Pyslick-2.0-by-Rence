@@ -1,6 +1,6 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
-router.py â€” LLM-based directive router for pyslick.
+router.py — LLM-based directive router for pyslick.
 
 Loads a local Qwen GGUF via llama_cpp and returns one of the valid
 pyslick intents. Falls back to rule-based routing if the model is
@@ -199,7 +199,7 @@ def _rule_route(directive: str) -> str:
     if re.search(r"\bcomments?\s+(?:on|in|of)\s+\S", d):
         return "comments"
 
-    # Query / lookup â€” route to recon (never "query": agent has no handler for it)
+    # Query / lookup — route to recon (never "query": agent has no handler for it)
     if re.search(r"\bwhat\s+(?:columns?|fields?|keys?)\s+(?:does|do|has)\b", d):
         return "what_columns"
     if re.search(r"\bwhat\s+columns?\s+(?:are\s+)?in\b", d):

@@ -1,3 +1,11 @@
+
+try:
+    from .text_io import safe_read as __safe_read
+except ImportError:
+    try:
+        from text_io import safe_read as __safe_read
+    except ImportError:
+        __safe_read = None
 #!/usr/bin/env python3
 """
 toolbox.py — small PowerShell-equivalent read-only commands, bundled so you
@@ -176,7 +184,7 @@ def mode_lines(filepath: str, start: int | None = None, end: int | None = None):
     if not os.path.exists(filepath):
         print(f"{RED}Error: File '{filepath}' does not exist.{RST}")
         sys.exit(1)
-    with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+    with __safe_read(filepath) as f:
         all_lines = f.readlines()
 
     total = len(all_lines)
@@ -378,7 +386,7 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
         hit_lines = [h[0] + 1 for h in rg_hits]
         matched_patterns = {h[0] + 1: h[1] for h in rg_hits}
         try:
-            with open(filepath, "r", encoding="utf-8", errors="replace") as _f:
+            with __safe_read(filepath) as _f:
                 src_lines = _f.readlines()
         except OSError:
             src_lines = []
@@ -411,7 +419,7 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
             print()
         return
 
-    with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+    with __safe_read(filepath) as f:
         lines = f.readlines()
 
     compiled = [re.compile(p) for p in patterns]
@@ -597,7 +605,7 @@ def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int
             continue
 
         try:
-            with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+            with __safe_read(filepath) as f:
                 lines = f.readlines()
         except OSError:
             continue
@@ -721,7 +729,7 @@ def main():
             start = 1
             end = args.head
         elif args.tail is not None:
-            with open(args.file, "r", encoding="utf-8", errors="replace") as _f:
+            with __safe_read(args.file) as _f:
                 _total = len(_f.readlines())
             start = max(1, _total - args.tail + 1)
             end = _total

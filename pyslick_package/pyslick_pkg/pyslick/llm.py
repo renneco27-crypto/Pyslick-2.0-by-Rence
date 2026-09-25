@@ -1,27 +1,27 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
-llm.py â€” optional, tiny local LLM assist for pyslick query.
+llm.py — optional, tiny local LLM assist for pyslick query.
 
 This is NOT required. Everything in pyslick works without it (fuzzy match +
 AST call-graph + design communities). If present, it's used for exactly one
 thing: rewording/expanding your directive into extra search terms before
 the fuzzy match runs, e.g. "make the mic bigger" -> also try
-"microphone button size scale enlarge". That's it â€” it never writes files,
+"microphone button size scale enlarge". That's it — it never writes files,
 never sees your whole codebase, and a bad/missing model just means pyslick
 falls back to the directive as-is.
 
-Setup (one-time, entirely manual â€” no auto-download, no account/API key):
+Setup (one-time, entirely manual — no auto-download, no account/API key):
 
     1. pip install llama-cpp-python
     2. Download a small instruct GGUF model, e.g. SmolLM2-135M-Instruct
-       (Q4 quant is roughly 90MB â€” genuinely the honest floor for "small
+       (Q4 quant is roughly 90MB — genuinely the honest floor for "small
        LLM that still follows instructions at all"; if you want noticeably
        better rewording at the cost of size, Qwen2.5-0.5B-Instruct-GGUF
        (~350MB, Q4) is a good next step up).
     3. Put the .gguf file in: ~/.pyslick/models/  (any filename, .gguf ext)
-    4. Run: pyslick llm-status   â€” confirms it's wired up correctly.
+    4. Run: pyslick llm-status   — confirms it's wired up correctly.
 
-Runs entirely on CPU, fine on a Ryzen 3 â€” it's ~135M params and we cap
+Runs entirely on CPU, fine on a Ryzen 3 — it's ~135M params and we cap
 output at ~30 tokens, so a call takes well under a second.
 """
 
@@ -33,7 +33,7 @@ MODEL_DIR = os.path.join(os.path.expanduser("~"), ".pyslick", "models")
 _llm_singleton = None
 _load_attempted = False
 
-# â”€â”€ Semantic (embedding) search config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Semantic (embedding) search config ──────────────────────────────────
 # Independent of the llama_cpp causal-model path above. Overridable via env
 # var so users can trade the default's quality for size, e.g.:
 #   export PYSLICK_EMBED_MODEL="codesage/codesage-small-v2"
@@ -81,7 +81,7 @@ def _load():
 
 
 def maybe_expand_query(directive: str) -> str:
-    """Best-effort query expansion. Always safe to call â€” on any failure
+    """Best-effort query expansion. Always safe to call — on any failure
     (no model, load error, generation error) it just returns `directive`
     unchanged, silently."""
     llm = _load()
@@ -103,7 +103,7 @@ def maybe_expand_query(directive: str) -> str:
         text = result["choices"][0]["text"].strip()
         if not text:
             return directive
-        # keep it bounded â€” this is an assist, not a rewrite
+        # keep it bounded — this is an assist, not a rewrite
         extra_terms = [t.strip() for t in text.split(",") if t.strip()][:8]
         if not extra_terms:
             return directive
@@ -123,7 +123,7 @@ def maybe_extract_find_replace(directive: str, code_context: str) -> tuple[str |
         return None, None
 
     # Truncate code context to fit within the 512-token context window
-    # Rough estimate: 1 token â‰ˆ 4 characters, so ~2000 chars max for code
+    # Rough estimate: 1 token ≈ 4 characters, so ~2000 chars max for code
     max_code_len = 1500
     if len(code_context) > max_code_len:
         code_context = code_context[:max_code_len] + "\n... (truncated)"
@@ -191,7 +191,7 @@ def maybe_classify_intent(directive: str, intent_examples: dict) -> tuple | None
     if llm is None:
         return None
 
-    # Build a compact examples block â€” one line per intent, first 3 phrases only
+    # Build a compact examples block — one line per intent, first 3 phrases only
     examples_text = "\n".join(
         f"  {name}: {', '.join(phrases[:3])}"
         for name, phrases in intent_examples.items()
@@ -209,7 +209,7 @@ def maybe_classify_intent(directive: str, intent_examples: dict) -> tuple | None
         result = llm(
             prompt,
             max_tokens=20,
-            temperature=0.0,   # deterministic â€” this is classification not generation
+            temperature=0.0,   # deterministic — this is classification not generation
             stop=["\n"],
         )
         text = result["choices"][0]["text"].strip()
@@ -262,19 +262,19 @@ _semantic_available_cache = None  # memoized across calls in one process
 
 def is_semantic_available(timeout_seconds: float = 5.0) -> bool:
     """Whether sentence-transformers (and its torch dependency) actually
-    imports cleanly and quickly. Independent of the llama_cpp/GGUF path â€”
+    imports cleanly and quickly. Independent of the llama_cpp/GGUF path —
     no model needs to be manually placed anywhere; the embedding model
     downloads once (from Hugging Face) and caches itself the first time
     it's used.
 
     Runs the import in a worker thread with a timeout, because on some
-    machines a broken/slow torch install doesn't raise ImportError â€” it
+    machines a broken/slow torch install doesn't raise ImportError — it
     just hangs partway through import (seen in practice: get_data() on a
     corrupted/incomplete torch install stalls indefinitely). Previously
     this function only guarded against a clean ImportError, so that kind
     of hang propagated all the way up through query.py's semantic
     fallback with a raw traceback the user had to Ctrl+C out of. Now any
-    failure mode â€” ImportError, timeout, or any other exception â€” is
+    failure mode — ImportError, timeout, or any other exception — is
     treated the same way: semantic search is unavailable, fall back
     silently to plain fuzzy/AST matching.
     """
@@ -300,7 +300,7 @@ def is_semantic_available(timeout_seconds: float = 5.0) -> bool:
         print(
             f"  [pyslick] semantic search skipped: sentence-transformers/torch "
             f"import took longer than {timeout_seconds:.0f}s (likely a slow or "
-            f"broken torch install) â€” continuing with fuzzy/AST matching only."
+            f"broken torch install) — continuing with fuzzy/AST matching only."
         )
         result = False
     except Exception:
@@ -330,7 +330,7 @@ def _load_embedder():
 def semantic_rank(directive: str, candidates: list[str], top_k: int = 5) -> list[tuple[int, float]]:
     """Rank candidate strings (symbol name + signature + docstring, etc.)
     against a natural-language directive using local code-embedding cosine
-    similarity â€” no LLM call, fully offline once the model is cached.
+    similarity — no LLM call, fully offline once the model is cached.
 
     This is what lets "resize mic button bigger" match a function like
     `handleMicScale()` with zero shared words: token/fuzzy matching (in
@@ -364,7 +364,7 @@ def _semantic_status_lines() -> str:
         return "\n".join(lines)
     lines.append("sentence-transformers: installed")
     lines.append(f"embedding model: {_embed_model_name()}")
-    lines.append("  (downloads + caches automatically on first semantic query â€” needs")
+    lines.append("  (downloads + caches automatically on first semantic query — needs")
     lines.append("   internet access to huggingface.co the very first time only)")
     return "\n".join(lines)
 
@@ -387,10 +387,10 @@ def status_report() -> str:
         lines.append("     ~90MB) and place the .gguf file in that folder")
 
     lines.append("")
-    lines.append(f"Active: {'YES â€” pyslick query will use it to expand your directive' if is_available() else 'NO â€” pyslick query works fine without it, just less fuzzy on odd phrasing'}")
+    lines.append(f"Active: {'YES — pyslick query will use it to expand your directive' if is_available() else 'NO — pyslick query works fine without it, just less fuzzy on odd phrasing'}")
 
     lines.append("")
-    lines.append("â”€â”€ Semantic search (sentence-transformers, no LLM call) â”€â”€")
+    lines.append("── Semantic search (sentence-transformers, no LLM call) ──")
     lines.append(_semantic_status_lines())
     return "\n".join(lines)
 

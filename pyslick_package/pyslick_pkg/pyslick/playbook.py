@@ -1,5 +1,5 @@
 """
-PySlick Debugging Playbook â€” verbatim. Do not summarize, do not paraphrase.
+PySlick Debugging Playbook — verbatim. Do not summarize, do not paraphrase.
 This is the source of truth for how to debug. If the source changes, re-copy.
 """
 
@@ -9,7 +9,7 @@ PLAYBOOK_TEXT = r"""# PySlick Debugging Playbook
 
 ---
 
-## 0. Before you start â€” two questions
+## 0. Before you start — two questions
 
 1. **What bugs are we fixing?** Ask. Don't drift.
 2. **Has this already been fixed?** Check git history across all branches before writing a line.
@@ -20,9 +20,9 @@ PLAYBOOK_TEXT = r"""# PySlick Debugging Playbook
 
 **The data is the truth. The code is a claim.**
 
-Every non-trivial bug lives in the *data* â€” the CSV, the IndexedDB record, the Supabase row, the CSV column alignment. Reading more source code never finds it. Dumping the data finds it in seconds.
+Every non-trivial bug lives in the *data* — the CSV, the IndexedDB record, the Supabase row, the CSV column alignment. Reading more source code never finds it. Dumping the data finds it in seconds.
 
-When the symptom is "wrong text appears," "field is empty," "values are reversed," or "one thing dropped" â€” go to the data first. Not the code.
+When the symptom is "wrong text appears," "field is empty," "values are reversed," or "one thing dropped" — go to the data first. Not the code.
 
 ---
 
@@ -34,7 +34,7 @@ When the symptom is "wrong text appears," "field is empty," "values are reversed
 | **Data** | CSV, IndexedDB, Supabase row, request body | Dump it and look |
 | **Render** | JSX, CSS, formatting | Inspect element, screenshot |
 
-**Never fix the wrong layer.** The definition reversal was not a render bug â€” the renderer faithfully showed what it was given. It was a *data* bug (AI wrote label into `front`). Patching the renderer would have looked like a fix and made the next bug harder.
+**Never fix the wrong layer.** The definition reversal was not a render bug — the renderer faithfully showed what it was given. It was a *data* bug (AI wrote label into `front`). Patching the renderer would have looked like a fix and made the next bug harder.
 
 **Workflow:**
 1. Screenshot the symptom
@@ -46,29 +46,29 @@ When the symptom is "wrong text appears," "field is empty," "values are reversed
 
 ---
 
-## 3. Probe order â€” ask the system, don't guess
+## 3. Probe order — ask the system, don't guess
 
 | Probe | Tool | Answers |
 |---|---|---|
 | **Pre-work** | `pyslick pre-work "<task>" --file <file>` | Has someone already fixed this? |
-| **Screenshot** | â€” | What does the user actually see? |
+| **Screenshot** | — | What does the user actually see? |
 | **curl** | `curl.exe <url>` | What's actually deployed? |
 | **adb / Chrome console** | `adb logcat`, `chrome://inspect` | What does the runtime say? |
 | **Dump the data** | IndexedDB, Supabase, CSV, request body | Is the value wrong, or just rendered wrong? |
 | **graphify** | `pyslick graphify callers <fn>` | Who writes this value? |
 | **git history** | `git log --all --grep="<keyword>"` | When did this change? |
 | **git show** | `git show <sha> -- <file>` | Did the commit do what its message claims? |
-| **Fix the writer** | â€” | â€” |
+| **Fix the writer** | — | — |
 | **Round-trip verify** | re-grep + `git diff` | Did the edit actually land? |
 
 **Three tools, three jobs:**
-- **graphify** â€” data flow, function-to-function relationships
-- **pyslick** â€” semantic function grep, AST-level navigation
-- **PowerShell** â€” exact lines, byte-level inspection
+- **graphify** — data flow, function-to-function relationships
+- **pyslick** — semantic function grep, AST-level navigation
+- **PowerShell** — exact lines, byte-level inspection
 
 ---
 
-## 4. Pre-work â€” check git before you start
+## 4. Pre-work — check git before you start
 
 **Never start a fix without checking whether the fix already exists somewhere.**
 
@@ -123,7 +123,7 @@ Every session bug went through all eight. Every time we skipped a step, we lost 
 
 ---
 
-## 7. Tools â€” three per job
+## 7. Tools — three per job
 
 ### pyslick
 
@@ -152,10 +152,10 @@ Point PySlick at the standalone graph:
 
 1. Stream results as discovered. Don't wait for a full scan.
 2. Scan filenames first, then grep contents.
-3. Use comment blocks as contextual anchors â€” 2-3 lines above the code.
+3. Use comment blocks as contextual anchors — 2-3 lines above the code.
 4. Exclude: node_modules, .git, dist, build, __pycache__, graphify-out, .pyslick, coverage.
-5. Small files first â€” sort by size ascending.
-6. All CPU cores â€” ProcessPoolExecutor(max_workers=os.cpu_count()).
+5. Small files first — sort by size ascending.
+6. All CPU cores — ProcessPoolExecutor(max_workers=os.cpu_count()).
 7. Shell out to `rg` (ripgrep) when available.
 8. C++ core later if profiling shows it matters.
 
@@ -298,7 +298,7 @@ Everything else is detail.
 The rule underneath all of it: every one of these is a way to ask the system a direct question. Ask the system. Don't ask yourself what the code probably does.
 """
 
-HANDOFF_TEXT = r"""# Debugging Handoff â€” Tools & Techniques
+HANDOFF_TEXT = r"""# Debugging Handoff — Tools & Techniques
 
 What we actually did, how we used each tool, and the techniques worth keeping.
 This is the "how" companion to the "rules." Read this when you already know
@@ -310,10 +310,10 @@ Probe externally. Localize the layer. Then edit.
 
 We never found a bug by reading more source. We found it by dumping data,
 curling the site, inspecting the phone, checking git history, or querying
-the DB directly. Every technique is a probe â€” a way to get ground truth
+the DB directly. Every technique is a probe — a way to get ground truth
 without guessing.
 
-## 1. graphify â€” pinpoint before you read
+## 1. graphify — pinpoint before you read
 
     pyslick graphify "getDeck"
     pyslick graphify callers getDeck
@@ -322,14 +322,14 @@ without guessing.
 Turns "where does front get written?" from a 20-minute grep hunt into a
 5-second answer. Use it to find the writer, not read the file.
 
-## 2. PowerShell â€” the ground-truth workhorse
+## 2. PowerShell — the ground-truth workhorse
 
     Get-ChildItem src -Recurse -Include *.ts,*.tsx |
       Select-String -Pattern "Why this step works"
 
     [System.IO.File]::ReadAllBytes("public\manifest.json")[0..3]
 
-Read/write without corrupting encoding â€” see the playbook's PowerShell rules.
+Read/write without corrupting encoding — see the playbook's PowerShell rules.
 
 The one rule that saves hours: grep -> replace -> re-grep -> git diff.
 
@@ -345,39 +345,39 @@ Rule: iterate on localhost, verify on prod.
 
     navigator.serviceWorker.getRegistrations().then(r => console.log(r.length, r))
 
-IndexedDB dump â€” the technique that found the "Cell Theory True False" bug
+IndexedDB dump — the technique that found the "Cell Theory True False" bug
 after an hour of source reading.
 
-## 5. adb â€” drive and observe the real app
+## 5. adb — drive and observe the real app
 
     adb logcat -s chromium:* | Select-String 'studyup|api|ERR_'
     adb shell dumpsys connectivity | Select-String 'VALIDATED|Transports'
 
 NET_CAPABILITY_VALIDATED, not transport.
 
-## 6. git â€” history is a probe
+## 6. git — history is a probe
 
     git log --all --grep='offline' --grep='serwist' -i
     git blame -L 140,160 -- src/components/MathFormattedText.tsx
 
 The T/F text bug looked like a code change. git show proved the commit was
-CSS-only â€” which pushed us to the data layer.
+CSS-only — which pushed us to the data layer.
 
-## 7. Supabase â€” query the DB, don't trust the code
+## 7. Supabase — query the DB, don't trust the code
 
     SELECT column_name, data_type FROM information_schema.columns
     WHERE table_name = 'decks' ORDER BY ordinal_position;
 
 When schema and code disagree, the DB wins.
 
-## 8. The composite technique â€” layer localization
+## 8. The composite technique — layer localization
 
 1. Screenshot the symptom
 2. curl the deployed asset
 3. adb logcat or Chrome console
-4. Dump the data â€” is the value wrong, or just rendered wrong?
-5. graphify callers / flow â€” find the writer
-6. git show / log â€” when did it change?
+4. Dump the data — is the value wrong, or just rendered wrong?
+5. graphify callers / flow — find the writer
+6. git show / log — when did it change?
 7. Fix the writer, re-grep, git diff, round-trip
 
 Each probe eliminates a layer.
@@ -413,3 +413,18 @@ def print_playbook(which: str = "main") -> None:
         print(HANDOFF_TEXT)
     else:
         print(PLAYBOOK_TEXT)
+
+# ---------------------------------------------------------------------------
+# Operating directives (appended by fix_batch1.py)
+# ---------------------------------------------------------------------------
+OPERATING_DIRECTIVES_APPENDED = True
+
+OPERATING_DIRECTIVES = """
+OPERATING DIRECTIVES:
+  1. NEVER exit on code 0. No ceremonial success exit. Scripts fall
+     through, or exit non-zero on failure only.
+  2. STOP YAPPING. No preamble. No postscript. No narration. Code plus
+     the minimum prose needed to use it. One question max if blocked.
+  3. PLAIN ENGLISH. I know tech, I do not want jargon. Explain like I
+     am smart but new to this. Short sentences. No acronym soup.
+"""

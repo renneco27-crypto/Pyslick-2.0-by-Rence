@@ -1,6 +1,6 @@
 """
 Dead-code detection: find functions/classes whose name appears only at its
-own definition â€” no calls, imports, or references anywhere in the project.
+own definition — no calls, imports, or references anywhere in the project.
 """
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -173,10 +173,25 @@ def _graph_pass(root="."):
     }
 
 def _graph_has(container, name):
-    """True if name appears in container, trying both bare and name() forms."""
+    """True if name appears in container, trying bare, name(), and lowercase forms."""
     if not name:
         return False
-    return (name in container) or ((name + "()") in container)
+    if (name in container) or ((name + "()") in container):
+        return True
+    lower = name.lower()
+    if lower == name:
+        return False
+    for entry in container:
+        if not isinstance(entry, str):
+            continue
+        e = entry.lower()
+        if e == lower or e == lower + "()":
+            return True
+    return False
+
+def _is_framework_name(name):
+    """True if name is a known framework callback."""
+    return bool(name) and name in FRAMEWORK_ALLOWLIST
 
 
 def find_orphans(root="."):

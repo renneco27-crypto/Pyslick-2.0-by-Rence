@@ -455,7 +455,10 @@ import json
 from pathlib import Path
 from collections import defaultdict, deque
 
-GRAPH_PATH = os.path.join("graphify-out", "graph.json")
+GRAPH_PATH = os.environ.get(
+    "GRAPHIFY_GRAPH",
+    os.path.join("graphify-out", "graph.json"),
+)
 
 
 def _get_clean_code_snippet(file_path: str, start_line: int, end_line: int) -> str:
@@ -1111,7 +1114,7 @@ def cli_main(args: list[str] | None = None):
     if not args or args[0] in ("--help", "-h", "help"):
         print(f"""
 {BOLD}{CYAN}╔══════════════════════════════════════════════════════════════════════════════╗
-║                   pyslick graphify — AST Call-Graph Engine                   ║
+║                   pyslick graphify — Function-to-Function Flow Mapper                   ║
 ║    Comprehend data flows, function hierarchies & caller/callee relations     ║
 ╚══════════════════════════════════════════════════════════════════════════════╝{RST}
 
