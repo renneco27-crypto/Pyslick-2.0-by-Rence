@@ -1,0 +1,23 @@
+# PySlick runtime state
+.pyslick/
+.pyslick_context/
+graphify-out/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Test and scratch
+test_*.py
+fix_*.py
+fix_*.log
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Session handoff (personal)
+PySlick Session Handoff.txt
+HANDOFF-NEXT.md
