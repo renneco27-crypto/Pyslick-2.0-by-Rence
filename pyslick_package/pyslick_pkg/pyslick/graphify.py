@@ -996,6 +996,41 @@ def trace_data_flow(source_term: str, target_term: str, root: str = ".", max_dep
     }
 
 
+def _build_id_index(nodes):
+    """Map node id -> node dict for quick lookup."""
+    idx = {}
+    for n in nodes:
+        nid = n.get("id")
+        if nid:
+            idx[nid] = n
+    return idx
+
+
+def _edges_of(graph, node_id, direction):
+    """Return list of (other_node_id, source_file, source_location) for calls edges."""
+    out = []
+    for l in graph.get("links", []) or []:
+        if l.get("relation") != "calls":
+            continue
+        if direction == "in" and l.get("target") == node_id:
+            out.append((l.get("source"), l.get("source_file"), l.get("source_location")))
+        elif direction == "out" and l.get("source") == node_id:
+            out.append((l.get("target"), l.get("source_file"), l.get("source_location")))
+    return out
+
+
+def _label_for(node_id, id_index):
+    n = id_index.get(node_id)
+    if n:
+        return n.get("label") or node_id
+    return node_id
+
+
+def _sanitize_mermaid(name):
+    return "".join(c if c.isalnum() or c == "_" else "_" for c in name)
+
+
+
 def show_callers(symbol_name: str, root: str = "."):
     """Display all functions that call symbol_name."""
     BOLD = "\033[1m"
@@ -1006,28 +1041,33 @@ def show_callers(symbol_name: str, root: str = "."):
 
     graph = load_codebase_graph(root)
     nodes = graph.get("nodes", [])
+    idx = _build_id_index(nodes)
 
-    matched = [n for n in nodes if n.get("label", "").lower() == symbol_name.lower()]
+    matched = [n for n in nodes if (n.get("label") or "").lower() == symbol_name.lower()]
     if not matched:
-        matched = [n for n in nodes if symbol_name.lower() in n.get("label", "").lower()]
-
+        matched = [n for n in nodes if symbol_name.lower() in (n.get("label") or "").lower()]
     if not matched:
-        print(f"\n{DIM}No symbol matching '{symbol_name}' found in call graph.{RST}\n")
+        print("\n%sNo symbol matching '%s' found in call graph.%s\n" % (DIM, symbol_name, RST))
         return
 
-    print(f"\n{BOLD}{CYAN}━━  Callers of '{symbol_name}' (Who calls this function)  {RST}")
+    print("\n%s%s== Callers of '%s' (Who calls this function) ==%s" % (BOLD, CYAN, symbol_name, RST))
     for node in matched:
-        print(f"\n{BOLD}[{node.get('type', 'func')}] {node.get('label')}{RST} {DIM}({node.get('source_file')}:{node.get('source_location')}){RST}")
-        callers = node.get("callers", [])
-        if not callers:
-            print(f"  {DIM}No callers found in codebase (possibly root entry point, exported API, or dynamic caller).{RST}")
+        nid = node.get("id")
+        print("\n%s[%s] %s%s %s(%s:%s)%s" % (
+            BOLD, node.get("type", "func"), node.get("label"),
+            RST, DIM, node.get("source_file"), node.get("source_location"), RST))
+        incoming = _edges_of(graph, nid, "in")
+        if not incoming:
+            print("  %sNo callers found in call graph.%s" % (DIM, RST))
         else:
-            print(f"  Called by ({len(callers)} function(s)):")
-            for c in callers:
-                c_fn = c.split("::")[-1]
-                c_file = c.split("::")[0]
-                print(f"    {GREEN}←{RST} {BOLD}{c_fn}(){RST} {DIM}in {c_file}{RST}")
+            print("  Called by (%d):" % len(incoming))
+            for other_id, sfile, sloc in incoming:
+                label = _label_for(other_id, idx)
+                print("    %s<-%s %s%s  %s(from %s:%s)%s" % (
+                    GREEN, RST, BOLD, label, DIM, sfile, sloc, RST))
     print()
+
+
 
 
 def show_callees(symbol_name: str, root: str = "."):
@@ -1040,32 +1080,38 @@ def show_callees(symbol_name: str, root: str = "."):
 
     graph = load_codebase_graph(root)
     nodes = graph.get("nodes", [])
+    idx = _build_id_index(nodes)
 
-    matched = [n for n in nodes if n.get("label", "").lower() == symbol_name.lower()]
+    matched = [n for n in nodes if (n.get("label") or "").lower() == symbol_name.lower()]
     if not matched:
-        matched = [n for n in nodes if symbol_name.lower() in n.get("label", "").lower()]
-
+        matched = [n for n in nodes if symbol_name.lower() in (n.get("label") or "").lower()]
     if not matched:
-        print(f"\n{DIM}No symbol matching '{symbol_name}' found in call graph.{RST}\n")
+        print("\n%sNo symbol matching '%s' found in call graph.%s\n" % (DIM, symbol_name, RST))
         return
 
-    print(f"\n{BOLD}{CYAN}━━  Callees of '{symbol_name}' (What this function calls)  {RST}")
+    print("\n%s%s== Callees of '%s' (What this function calls) ==%s" % (BOLD, CYAN, symbol_name, RST))
     for node in matched:
-        print(f"\n{BOLD}[{node.get('type', 'func')}] {node.get('label')}{RST} {DIM}({node.get('source_file')}:{node.get('source_location')}){RST}")
-        callees = node.get("callees", [])
-        if not callees:
-            print(f"  {DIM}No downstream function calls recorded inside this definition.{RST}")
+        nid = node.get("id")
+        print("\n%s[%s] %s%s %s(%s:%s)%s" % (
+            BOLD, node.get("type", "func"), node.get("label"),
+            RST, DIM, node.get("source_file"), node.get("source_location"), RST))
+        outgoing = _edges_of(graph, nid, "out")
+        if not outgoing:
+            print("  %sNo downstream function calls recorded.%s" % (DIM, RST))
         else:
-            print(f"  Calls ({len(callees)} function(s)):")
-            for c in callees:
-                c_fn = c.split("::")[-1]
-                c_file = c.split("::")[0]
-                print(f"    {GREEN}→{RST} {BOLD}{c_fn}(){RST} {DIM}in {c_file}{RST}")
+            print("  Calls (%d):" % len(outgoing))
+            for other_id, sfile, sloc in outgoing:
+                label = _label_for(other_id, idx)
+                print("    %s->%s %s%s  %s(at %s:%s)%s" % (
+                    GREEN, RST, BOLD, label, DIM, sfile, sloc, RST))
     print()
 
 
-def show_stats(root: str = "."):
-    """Print overall graph statistics."""
+
+
+def show_graph(symbol_name: str, root: str = ".", fmt: str = "ascii",
+               depth: int = 1, direction: str = "both"):
+    """Render callers and callees of a symbol as a tree (ascii) or flowchart (mermaid)."""
     BOLD = "\033[1m"
     CYAN = "\033[96m"
     GREEN = "\033[92m"
@@ -1074,28 +1120,83 @@ def show_stats(root: str = "."):
 
     graph = load_codebase_graph(root)
     nodes = graph.get("nodes", [])
-    func_nodes = [n for n in nodes if n.get("type") != "file"]
-    call_links = [l for l in graph.get("links", []) if l.get("relation") == "calls"]
+    idx = _build_id_index(nodes)
 
-    print(f"\n{BOLD}{CYAN}╔══════════════════════════════════════════════════════════════╗{RST}")
-    print(f"{BOLD}{CYAN}║              PySlick AST Call-Graph Statistics               ║{RST}")
-    print(f"{BOLD}{CYAN}╚══════════════════════════════════════════════════════════════╝{RST}")
-    print(f"  • Source Files Indexed:       {BOLD}{graph.get('total_files', len(set(n.get('source_file') for n in nodes)))}{RST}")
-    print(f"  • Functions / Classes Mapped: {BOLD}{len(func_nodes)}{RST}")
-    print(f"  • Call Connections Resolved:  {BOLD}{len(call_links)}{RST}")
+    matched = [n for n in nodes if (n.get("label") or "").lower() == symbol_name.lower()]
+    if not matched:
+        matched = [n for n in nodes if symbol_name.lower() in (n.get("label") or "").lower()]
+    if not matched:
+        print("No symbol matching '%s' found in call graph." % symbol_name)
+        return
 
-    top_hubs = sorted(func_nodes, key=lambda n: len(n.get("callers", [])), reverse=True)[:10]
-    print(f"\n{BOLD}Top Centrality Functions (Most Called God-Nodes):{RST}")
-    for h in top_hubs:
-        callers_cnt = len(h.get("callers", []))
-        if callers_cnt > 0:
-            print(f"  {GREEN}★{RST} {BOLD}{h.get('label')}{RST} {DIM}({h.get('source_file')}){RST} — {callers_cnt} callers")
-    print()
+    node = matched[0]
+    nid = node.get("id")
+    root_label = node.get("label") or symbol_name
+
+    def expand(current_id, kind, level, seen):
+        if level > depth:
+            return []
+        out = []
+        for other_id, _, _ in _edges_of(graph, current_id, kind):
+            if other_id in seen:
+                continue
+            seen.add(other_id)
+            out.append((_label_for(other_id, idx), level))
+            out.extend(expand(other_id, kind, level + 1, seen))
+        return out
+
+    if fmt == "mermaid":
+        print("```mermaid")
+        print("flowchart LR")
+        emitted = 0
+        if direction in ("in", "both"):
+            for other_id, _, _ in _edges_of(graph, nid, "in"):
+                print("  %s --> %s" % (_sanitize_mermaid(_label_for(other_id, idx)),
+                                       _sanitize_mermaid(root_label)))
+                emitted += 1
+        if direction in ("out", "both"):
+            for other_id, _, _ in _edges_of(graph, nid, "out"):
+                print("  %s --> %s" % (_sanitize_mermaid(root_label),
+                                       _sanitize_mermaid(_label_for(other_id, idx))))
+                emitted += 1
+        if emitted == 0:
+            print("  %s" % _sanitize_mermaid(root_label))
+        print("```")
+        return
+
+    print("")
+    print("%s%s%s" % (BOLD, CYAN, root_label))
+    print("%s(%s:%s)%s" % (DIM, node.get("source_file", "?"),
+                          node.get("source_location", "?"), RST))
+    print("")
+
+    if direction in ("in", "both"):
+        incoming = _edges_of(graph, nid, "in")
+        print("%sIncoming (callers)%s: %d" % (BOLD, RST, len(incoming)))
+        if not incoming:
+            print("  (none)")
+        else:
+            for other_id, _, _ in incoming:
+                lbl = _label_for(other_id, idx)
+                print("  <- %s" % lbl)
+                for deeper, lvl in expand(other_id, "in", 2, {other_id, nid}):
+                    print("  %s<- %s" % ("  " * lvl, deeper))
+        print("")
+
+    if direction in ("out", "both"):
+        outgoing = _edges_of(graph, nid, "out")
+        print("%sOutgoing (callees)%s: %d" % (BOLD, RST, len(outgoing)))
+        if not outgoing:
+            print("  (none)")
+        else:
+            for other_id, _, _ in outgoing:
+                lbl = _label_for(other_id, idx)
+                print("  -> %s" % lbl)
+                for deeper, lvl in expand(other_id, "out", 2, {other_id, nid}):
+                    print("  %s-> %s" % ("  " * lvl, deeper))
+        print()
 
 
-# ---------------------------------------------------------------------------
-# 8. CLI Entrypoint for `pyslick graphify`
-# ---------------------------------------------------------------------------
 
 def cli_main(args: list[str] | None = None):
     """
@@ -1157,6 +1258,43 @@ def cli_main(args: list[str] | None = None):
 
     elif sub in ("stats", "summary", "overview"):
         show_stats(".")
+        return
+
+    elif sub == "graph":
+        # pyslick graphify graph <func> [--format=ascii|mermaid] [--depth N] [--direction in|out|both]
+        rest = args[1:]
+        if not rest:
+            print("Usage: pyslick graphify graph <func> [--format=ascii|mermaid] [--depth N] [--direction in|out|both]")
+            return
+        fmt = "ascii"
+        depth = 1
+        direction = "both"
+        positional = []
+        i = 0
+        while i < len(rest):
+            a = rest[i]
+            if a == "--format" and i + 1 < len(rest):
+                fmt = rest[i + 1]; i += 2
+            elif a.startswith("--format="):
+                fmt = a.split("=", 1)[1]; i += 1
+            elif a == "--depth" and i + 1 < len(rest):
+                try: depth = int(rest[i + 1])
+                except ValueError: pass
+                i += 2
+            elif a.startswith("--depth="):
+                try: depth = int(a.split("=", 1)[1])
+                except ValueError: pass
+                i += 1
+            elif a == "--direction" and i + 1 < len(rest):
+                direction = rest[i + 1]; i += 2
+            elif a.startswith("--direction="):
+                direction = a.split("=", 1)[1]; i += 1
+            else:
+                positional.append(a); i += 1
+        if not positional:
+            print("Usage: pyslick graphify graph <func> [--format=...] [--depth N] [--direction in|out|both]")
+            return
+        show_graph(positional[0], root=".", fmt=fmt, depth=depth, direction=direction)
         return
 
     elif sub in ("callers", "who-calls", "incoming"):
