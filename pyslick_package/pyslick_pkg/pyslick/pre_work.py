@@ -12,7 +12,7 @@ except ImportError:
     def _git_run(root, *args, timeout=8):
         try:
             r = subprocess.run(["git"] + list(args), cwd=root,
-                               capture_output=True, text=True,
+                               capture_output=True, encoding="utf-8", errors="strict",
                                timeout=timeout)
             return r.returncode, (r.stdout or ""), (r.stderr or "")
         except Exception as e:

@@ -217,7 +217,7 @@ def tool_get_file(path: str) -> str:
     if not p.exists():
         return f"ERROR: file not found: {path}"
     try:
-        return p.read_text(encoding="utf-8", errors="replace")
+        return p.read_text(encoding="utf-8-sig", errors="replace")
     except Exception as e:
         return f"ERROR reading {path}: {e}"
 
@@ -228,7 +228,7 @@ def tool_get_file_lines(path: str) -> str:
     if not p.exists():
         return f"ERROR: file not found: {path}"
     try:
-        lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = p.read_text(encoding="utf-8-sig", errors="replace").splitlines()
         return "\n".join(f"{i+1:3d}\t{line}" for i, line in enumerate(lines))
     except Exception as e:
         return f"ERROR reading {path}: {e}"
@@ -255,7 +255,7 @@ def tool_scan_lines(path: str, keyword: str) -> str:
     if not p.exists():
         return f"ERROR: file not found: {path}"
     try:
-        lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = p.read_text(encoding="utf-8-sig", errors="replace").splitlines()
         hits = [
             f"  {i+1:4d}: {line}"
             for i, line in enumerate(lines)

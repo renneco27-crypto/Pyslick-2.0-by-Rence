@@ -19,6 +19,15 @@ Then run from your project directory in PowerShell:
 """
 
 import sys
+
+# Restore SIGPIPE to default so piping through head/less terminates
+# silently instead of raising BrokenPipeError at interpreter shutdown.
+try:
+    import signal as _signal
+    if hasattr(_signal, "SIGPIPE"):
+        _signal.signal(_signal.SIGPIPE, _signal.SIG_DFL)
+except Exception:
+    pass
 import os
 import subprocess
 import io
@@ -27,8 +36,12 @@ from datetime import datetime
 
 # Set UTF-8 encoding for stdout/stderr (Windows PowerShell safe)
 try:
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError):
+        # Python < 3.7 or already-reconfigured stream; nothing to do.
+        pass
 except Exception:
     pass
 
@@ -438,6 +451,12 @@ Tip: reference an exact file with a leading slash, e.g. "/server.js" or
 
 ━━  Core AI & Recon Workflows  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+  pre-work "<task>" [--file <path>]
+      Git-aware pre-debug check. Searches every branch, every commit, and
+      every open PR for work that already matches your task. Run this
+      before writing any fix.
+      Example:  pyslick pre-work "fix padding" --file src/App.tsx
+
   recon-pack "<directive>" [--max-files N] [--max-lines N]
       Zero-API local context packer for DeepSeek, Claude Web & ChatGPT.
       Decomposes compound queries, uses BM25 semantic text index + AST graph
@@ -649,7 +668,7 @@ def main():
                     print(f"Error: {e}")
                     sys.exit(1)
 
-            elif command == "pre-work":
+            elif command in ("pre-work", "prework"):
                 try:
                     from .pre_work import run_pre_work
                     task = " ".join(a for a in args if not a.startswith("-"))
@@ -975,12 +994,14 @@ def main():
             elif command == "comment-scan":
                 try:
                     scan_project, scan_file, print_report = import_comment_blocks()
-                    target = args[0] if args else "."
+                    full = "--full" in args
+                    rest = [a for a in args if a != "--full"]
+                    target = rest[0] if rest else "."
                     if os.path.isfile(target):
                         nodes = scan_file(target)
                     else:
                         nodes = scan_project(target)
-                    print_report(nodes)
+                    print_report(nodes, full=full)
                 except Exception as e:
                     print(f"Error: {e}")
                     sys.exit(1)
@@ -1118,4 +1139,22 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _rc = 0
+    try:
+        main()
+    except SystemExit as _e:
+        _rc = _e.code if isinstance(_e.code, int) else 1
+    except Exception:
+        import traceback as _tb
+        _tb.print_exc()
+        _rc = 1
+    finally:
+        # Bypass Python shutdown flush. On Windows, a closed stdout pipe
+        # (e.g. piping to head) makes the interpreter-shutdown flush raise
+        # OSError, which Python logs as "Exception ignored in:".
+        # os._exit skips the shutdown path entirely.
+        try:
+            sys.stdout.flush()
+        except Exception:
+            pass
+        os._exit(_rc)

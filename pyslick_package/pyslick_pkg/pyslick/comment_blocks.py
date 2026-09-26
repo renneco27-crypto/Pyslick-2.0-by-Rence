@@ -343,32 +343,41 @@ def comment_nodes_as_graph_nodes(nodes: list[CommentNode]) -> list[dict]:
     ]
 
 
-def print_scan_report(nodes: list[CommentNode]):
+def print_scan_report(nodes: list[CommentNode], full: bool = False):
     markers = [n for n in nodes if n.type == "marker_block"]
     descriptive = [n for n in nodes if n.type == "descriptive_block"]
     unterminated = [n for n in markers if n.end_line == -1]
 
-    print(f"\n--- Comment Block Scan ---")
-    print(f"  {len(descriptive)} descriptive comment block(s)")
-    print(f"  {len(markers) - len(unterminated)} explicit pyslick:start/end block(s)")
+    print("\n--- Comment Block Scan ---")
+    print("  %d descriptive comment block(s)" % len(descriptive))
+    print("  %d explicit pyslick:start/end block(s)" % (len(markers) - len(unterminated)))
     if unterminated:
-        print(f"  \033[93m{len(unterminated)} UNTERMINATED marker(s) — missing pyslick:end:\033[0m")
+        print("  \033[93m%d UNTERMINATED marker(s) -- missing pyslick:end:\033[0m" % len(unterminated))
         for n in unterminated:
-            print(f"    {n.file}:{n.start_line}  '{n.comment_text}'")
+            print("    %s:%d  '%s'" % (n.file, n.start_line, n.comment_text))
 
     if descriptive:
-        print(f"\n  Descriptive blocks:")
-        for n in descriptive[:20]:
-            print(f"    {n.file}:{n.start_line}-{n.end_line}  \"{n.label[:70]}\"")
-        if len(descriptive) > 20:
-            print(f"    ... and {len(descriptive) - 20} more")
+        print("\n  Descriptive blocks:")
+        if not full:
+            for n in descriptive[:20]:
+                print("    %s:%d-%d  \"%s\"" % (n.file, n.start_line, n.end_line, n.label[:70]))
+            if len(descriptive) > 20:
+                print("    ... and %d more (run with --full to see all)" % (len(descriptive) - 20))
+        else:
+            by_file = {}
+            for n in descriptive:
+                by_file.setdefault(n.file, []).append(n)
+            for f in sorted(by_file.keys()):
+                items = by_file[f]
+                print("\n    --- %s (%d block(s)) ---" % (f, len(items)))
+                for n in items:
+                    print("      %d-%d  \"%s\"" % (n.start_line, n.end_line, n.label[:70]))
 
     if markers and len(markers) - len(unterminated) > 0:
-        print(f"\n  Marker blocks:")
+        print("\n  Marker blocks:")
         for n in markers:
             if n.end_line != -1:
-                print(f"    {n.file}:{n.start_line}-{n.end_line}  '{n.comment_text}'")
-
+                print("    %s:%d-%d  '%s'" % (n.file, n.start_line, n.end_line, n.comment_text))
 
 def main():
     import sys

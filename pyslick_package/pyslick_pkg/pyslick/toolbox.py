@@ -207,7 +207,7 @@ def mode_lines(filepath: str, start: int | None = None, end: int | None = None):
         print(f"{i + 1:03d}: {all_lines[i].rstrip()}")
 
     if lo > 1 or hi < total:
-        print(f"... ({total} lines total; showing {lo}-{hi})")
+        print(f"... ({total} all_lines total; showing {lo}-{hi})")
 
 
 
@@ -431,7 +431,7 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
 
     compiled = [re.compile(p) for p in patterns]
     hits = []
-    for i, line in enumerate(lines):
+    for i, line in enumerate(all_lines):
         for pat, raw in zip(compiled, patterns):
             if pat.search(line):
                 hits.append((i, raw))
@@ -449,25 +449,25 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
         for r_start, r_end, r_hits in ranges:
             if r_start == r_end:
                 j = r_start
-                if 1 <= j <= len(lines):
-                    clean_text = clean_line_for_display(lines[j-1])
+                if 1 <= j <= len(all_lines):
+                    clean_text = clean_line_for_display(all_lines[j-1])
                     print(f"{GREEN}>{RST} {DIM}{j:4d}:{RST} {YELL}[{matched_patterns.get(j, '')}]{RST} {clean_text}")
                 print()
                 continue
-            _print_function_range(lines, r_start, r_end,
+            _print_function_range(all_lines, r_start, r_end,
                                   set(r_hits), matched_patterns)
         return
     # Fallback: existing context-window output
     last_printed = -1
     for line_idx, matched_pattern in hits:
         start = max(0, line_idx - context)
-        end = min(len(lines), line_idx + context + 1)
+        end = min(len(all_lines), line_idx + context + 1)
         if start > last_printed + 1:
             print(f"{DIM}  ...{RST}")
         for j in range(start, end):
             marker = f"{GREEN}>{RST}" if j == line_idx else " "
             tag = f"{YELL}[{matched_pattern}]{RST} " if j == line_idx else ""
-            clean_text = clean_line_for_display(lines[j])
+            clean_text = clean_line_for_display(all_lines[j])
             print(f"{marker} {DIM}{j+1:4d}:{RST} {tag}{clean_text}")
         last_printed = end - 1
         print()

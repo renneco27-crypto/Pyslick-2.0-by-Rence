@@ -64,7 +64,7 @@ When the symptom is "wrong text appears," "field is empty," "values are reversed
 **Three tools, three jobs:**
 - **graphify** — data flow, function-to-function relationships
 - **pyslick** — semantic function grep, AST-level navigation
-- **PowerShell** — exact lines, byte-level inspection
+- **bash** — exact lines, byte-level inspection
 
 ---
 
@@ -87,7 +87,35 @@ When the symptom is "wrong text appears," "field is empty," "values are reversed
 
 ---
 
-## 5. PowerShell rules (never violate)
+## 5. Bash rules (primary)
+
+Every script: write to a file with a quoted heredoc, then run it.
+
+    cat > fix.py << 'PYEOF'
+    ...your Python code, any quotes, any parens, no escaping needed...
+    PYEOF
+    python fix.py
+
+The quoted delimiter `'PYEOF'` means bash does not touch the content.
+No variable expansion, no backtick execution, no transcoding.
+
+Read/write in Python, never in bash. Bash reads and writes text through
+the terminal codepage. Use Python with explicit encoding:
+
+    Path(p).read_text(encoding="utf-8-sig", errors="strict")
+    Path(p).write_text(text, encoding="utf-8")
+
+Rules:
+- `set -euo pipefail` at the top of every script.
+- Never `echo` multi-line content into a file. Use heredoc.
+- Never trust `cat` for anything with non-ASCII. Use Python.
+- Exit non-zero on failure only. Do not `exit 0` ceremonially.
+- Git Bash on Windows translates paths. `/c/Users/...` in bash, `C:\Users\...` in Python.
+- Check line endings before matching. CRLF vs LF. Never assume.
+
+---
+
+## 5b. PowerShell rules (appendix — if you're stuck in PowerShell)
 
 **Read:**  `[System.IO.File]::ReadAllText($p, UTF8Encoding($false,$true))`
 **Write:** `[System.IO.File]::WriteAllText($p, $t, UTF8Encoding($false))`
@@ -100,7 +128,7 @@ Never `Set-Content`, `Out-File`, `>`, `>>`, `Add-Content`.
 
 **Backup first.** Undo is `Copy-Item $bak\* back`, not `git reset`.
 
-**Save scripts to disk, don't paste.** Every `.ps1` called by another needs `exit 0` at the end.
+**Save scripts to disk, don't paste.** Never `exit 0` in PowerShell — a bare `Write-Host` at the end hides earlier failures. Exit non-zero on failure only.
 
 **`else` cannot start a new statement.** Same line as the closing `}` of `if`.
 
@@ -146,7 +174,8 @@ Every session bug went through all eight. Every time we skipped a step, we lost 
 
 Point PySlick at the standalone graph:
 
-    $env:GRAPHIFY_GRAPH = (Resolve-Path "graphify-out\graph.json").Path
+    $env:GRAPHIFY_GRAPH = (Resolve-Path "graphify-out\graph.json").Path   # PowerShell
+    export GRAPHIFY_GRAPH="$(realpath graphify-out/graph.json)"                 # bash
 
 ### grep performance rules
 
@@ -247,7 +276,7 @@ NET_CAPABILITY_VALIDATED, not transport. Plain transport check returns true on c
 | Reading the whole file | Finds nothing | Select-String or pyslick grep |
 | Guessing the file | Wrong fix | grep first |
 | Pasting multi-line scripts | Half-applied edits | Save .ps1, run with & |
-| Missing exit 0 at script end | False failure | Add exit 0 explicitly |
+| Ceremonial exit 0 hiding real failures | False success | Exit non-zero on failure only |
 | else on its own line | Parse error | Same line as closing } |
 | Set-Content / > / Out-File | BOM, encoding corruption | [System.IO.File]::WriteAllText |
 | errors="replace" in reads | Silent mojibake | errors="strict" + utf-8-sig |
@@ -322,14 +351,14 @@ without guessing.
 Turns "where does front get written?" from a 20-minute grep hunt into a
 5-second answer. Use it to find the writer, not read the file.
 
-## 2. PowerShell — the ground-truth workhorse
+## 2. bash — the ground-truth workhorse
 
     Get-ChildItem src -Recurse -Include *.ts,*.tsx |
       Select-String -Pattern "Why this step works"
 
     [System.IO.File]::ReadAllBytes("public\manifest.json")[0..3]
 
-Read/write without corrupting encoding — see the playbook's PowerShell rules.
+Read/write without corrupting encoding — see the playbook's bash rules.
 
 The one rule that saves hours: grep -> replace -> re-grep -> git diff.
 
@@ -395,7 +424,7 @@ Each probe eliminates a layer.
 | Did my edit land? | re-grep + git --no-pager diff |
 | Did I already fix this? | git log --all --grep + commit bodies |
 
-Always verify if changes landed via PowerShell.
+Always verify if changes landed via bash (or Python, when content has non-ASCII).
 
 ---
 

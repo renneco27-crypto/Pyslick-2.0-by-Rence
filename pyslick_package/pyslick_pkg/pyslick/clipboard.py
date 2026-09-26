@@ -78,13 +78,22 @@ class _Tee(io.TextIOBase):
         self._buf  = buf
 
     def write(self, s: str) -> int:
-        self._real.write(s)
-        self._real.flush()
-        self._buf.write(s)
+        try:
+            self._real.write(s)
+            self._real.flush()
+        except (BrokenPipeError, OSError):
+            pass
+        try:
+            self._buf.write(s)
+        except Exception:
+            pass
         return len(s)
 
     def flush(self):
-        self._real.flush()
+        try:
+            self._real.flush()
+        except (BrokenPipeError, OSError):
+            pass
 
     @property
     def encoding(self):
