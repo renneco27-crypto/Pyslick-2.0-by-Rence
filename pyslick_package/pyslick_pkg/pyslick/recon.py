@@ -611,6 +611,13 @@ def main():
               f"(max {max_attempts} attempts"
               f"{', test: ' + ' '.join(test_cmd) if test_cmd else ', no test-cmd given'}){RST}")
 
+    # Phase 0: pre-work -- has someone already fixed this?
+    try:
+        from .pre_work import run_pre_work
+        run_pre_work(directive, None)
+    except Exception as _e:
+        print(f"  (pre-work skipped: {_e})")
+
     phase1_orient()
 
     file_paths = phase2_locate(directive)
