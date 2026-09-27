@@ -579,7 +579,7 @@ Quick Start:
 # Whitelist, not blacklist: only commands that can actually WRITE files
 # trigger a checkpoint. This also means an unrecognized/typo'd command
 # (e.g. a bare "graphify") never triggers a checkpoint before failing.
-WRITE_COMMANDS = {"patchit", "recon"}
+WRITE_COMMANDS = {"patchit"}
 
 
 

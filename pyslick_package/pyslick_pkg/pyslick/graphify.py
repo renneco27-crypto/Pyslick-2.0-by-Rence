@@ -473,246 +473,46 @@ def _get_clean_code_snippet(file_path: str, start_line: int, end_line: int) -> s
         return ""
 
 
-def extract_codebase_graph(root: str = ".", out_dir: str = "graphify-out", quiet: bool = False) -> dict:
+def extract_codebase_graph(root: str = ".", out_dir: str = "graphify-out",
+                           quiet: bool = False) -> dict:
+    """Build or refresh the codebase graph via the standalone `graphify` CLI.
+
+    The actual extraction (AST parsing across 25+ languages, confidence
+    tagging, community detection) is done by the installed `graphifyy`
+    package. This function shells out to it and returns the resulting
+    graph.json as a dict.
+
+    Kept as a stable entry point so existing callers
+    (find_nearest_nodes.py, relations.py) don't need to change.
+
+    Requires: `graphify` on PATH (pip install graphifyy).
     """
-    Extract the full AST call-graph across the entire repository (Python, TypeScript,
-    JavaScript, Go, Rust, Java, C/C++, etc.).
-    
-    Extracts:
-      - Function, class, method definitions with exact line ranges and docstrings
-      - In-file and cross-file call links (who calls who)
-      - File import and definition relationships
-    Saves the result to `graphify-out/graph.json` and returns the graph dict.
-    """
-    abs_root = os.path.abspath(root)
-    out_dir_path = os.path.join(abs_root, out_dir)
-    os.makedirs(out_dir_path, exist_ok=True)
-    graph_file = os.path.join(out_dir_path, "graph.json")
-
-    # Import file collection & multi-language extraction tools
+    import subprocess as _sp
+    target = os.path.abspath(root)
     try:
-        from repomap import collect_files, extract_tags, is_generated_or_minified_file
-    except ImportError:
-        def collect_files(r):
-            skip = {"node_modules", ".git", ".next", "dist", "build", "__pycache__", ".venv", "out", "graphify-out"}
-            fs = []
-            for dp, dn, fns in os.walk(r):
-                dn[:] = [d for d in dn if d not in skip and not d.startswith(".")]
-                for fn in fns:
-                    if fn.endswith((".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".java", ".cpp", ".c", ".cs", ".rb", ".php")):
-                        fs.append(os.path.join(dp, fn))
-            return fs
-        extract_tags = None
-        def is_generated_or_minified_file(f): return False
+        r = _sp.run(
+            ["graphify", "extract", target, "--code-only"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if not quiet:
+            out = (r.stdout or "") + (r.stderr or "")
+            for line in out.splitlines():
+                if line.strip():
+                    print(line)
+        if r.returncode != 0:
+            if not quiet:
+                print("graphify extract exited with code %d" % r.returncode)
+    except FileNotFoundError:
+        if not quiet:
+            print("graphify CLI not found on PATH -- install with: pip install graphifyy")
+    except _sp.TimeoutExpired:
+        if not quiet:
+            print("graphify extract timed out after 300s")
 
-    all_files = collect_files(abs_root)
-    source_files = [f for f in all_files if not is_generated_or_minified_file(f)]
+    return load_codebase_graph(root)
 
-    nodes = []
-    links = []
-
-    # Map name -> list of node IDs defining that name (for resolving cross-file calls)
-    name_to_node_ids = defaultdict(list)
-    file_to_defs = defaultdict(list)
-    node_by_id = {}
-
-    if not quiet:
-        print(f"\n[\033[1m\033[96mgraphify\033[0m] Extracting AST call-graph across {len(source_files)} source files...")
-
-    for fpath in source_files:
-        rel_path = os.path.relpath(fpath, abs_root).replace("\\", "/")
-        ext = os.path.splitext(fpath)[1].lower()
-
-        # Add File Node
-        file_node_id = rel_path
-        file_node = {
-            "id": file_node_id,
-            "label": os.path.basename(rel_path),
-            "norm_label": os.path.basename(rel_path).lower(),
-            "type": "file",
-            "source_file": rel_path,
-        }
-        nodes.append(file_node)
-        node_by_id[file_node_id] = file_node
-
-        file_symbols = {}
-
-        if ext == ".py":
-            # Python AST parsing
-            try:
-                with open(fpath, "r", encoding="utf-8", errors="replace") as f:
-                    src = f.read()
-                flines = src.splitlines()
-                syms = _extract_symbols(fpath, src, flines)
-                for sym_name, sym in syms.items():
-                    node_id = f"{rel_path}::{sym_name}"
-                    s_node = {
-                        "id": node_id,
-                        "label": sym_name,
-                        "norm_label": sym_name.lower(),
-                        "type": sym["type"],
-                        "source_file": rel_path,
-                        "source_location": f"L{sym['start_line']}-L{sym['end_line']}",
-                        "start_line": sym["start_line"],
-                        "end_line": sym["end_line"],
-                        "signature": sym.get("signature", ""),
-                        "docstring": sym.get("docstring", ""),
-                        "decorators": sym.get("decorators", []),
-                        "parent": sym.get("parent"),
-                        "calls_made": sorted(list(sym.get("calls_made", set()))),
-                        "callees": [],
-                        "callers": [],
-                    }
-                    nodes.append(s_node)
-                    node_by_id[node_id] = s_node
-                    name_to_node_ids[sym_name].append(node_id)
-                    file_to_defs[rel_path].append(node_id)
-                    file_symbols[sym_name] = s_node
-
-                    # Link: File -> Defines -> Symbol
-                    links.append({
-                        "source": file_node_id,
-                        "target": node_id,
-                        "relation": "defines",
-                        "source_file": rel_path,
-                    })
-            except Exception:
-                pass
-
-        elif extract_tags is not None:
-            # Tree-Sitter parsing for TS, TSX, JS, Go, Rust, Java, etc.
-            try:
-                tags = extract_tags(fpath)
-                if tags:
-                    with open(fpath, "r", encoding="utf-8", errors="replace") as f:
-                        flines = f.read().splitlines()
-
-                    defs = [t for t in tags if t.is_def]
-                    calls = [t for t in tags if not t.is_def]
-
-                    for d in defs:
-                        node_id = f"{rel_path}::{d.name}"
-                        sig = flines[d.start_line - 1].strip() if 0 <= d.start_line - 1 < len(flines) else ""
-                        
-                        # Find calls made inside this definition's line range
-                        inner_calls = sorted(list({
-                            c.name for c in calls
-                            if d.start_line <= c.start_line <= d.end_line and c.name != d.name
-                        }))
-
-                        s_node = {
-                            "id": node_id,
-                            "label": d.name,
-                            "norm_label": d.name.lower(),
-                            "type": d.kind.replace("_definition", "").replace("_declaration", "").replace("_item", ""),
-                            "source_file": rel_path,
-                            "source_location": f"L{d.start_line}-L{d.end_line}",
-                            "start_line": d.start_line,
-                            "end_line": d.end_line,
-                            "signature": sig,
-                            "docstring": "",
-                            "decorators": [],
-                            "parent": None,
-                            "calls_made": inner_calls,
-                            "callees": [],
-                            "callers": [],
-                        }
-                        nodes.append(s_node)
-                        node_by_id[node_id] = s_node
-                        name_to_node_ids[d.name].append(node_id)
-                        file_to_defs[rel_path].append(node_id)
-                        file_symbols[d.name] = s_node
-
-                        links.append({
-                            "source": file_node_id,
-                            "target": node_id,
-                            "relation": "defines",
-                            "source_file": rel_path,
-                        })
-            except Exception:
-                pass
-
-    # Resolve call edges across the entire repository
-    seen_call_edges = set()
-    for node in nodes:
-        if node.get("type") == "file":
-            continue
-        caller_id = node["id"]
-        caller_file = node["source_file"]
-        calls_made = node.get("calls_made", [])
-
-        for called_name in calls_made:
-            target_ids = name_to_node_ids.get(called_name, [])
-            if not target_ids:
-                continue
-
-            # Prioritize in-file definition if available, otherwise include other matching defs
-            in_file_targets = [tid for tid in target_ids if node_by_id.get(tid, {}).get("source_file") == caller_file]
-            resolved_targets = in_file_targets if in_file_targets else target_ids[:3]
-
-            for target_id in resolved_targets:
-                if target_id == caller_id:
-                    continue
-                edge_key = (caller_id, target_id)
-                if edge_key not in seen_call_edges:
-                    seen_call_edges.add(edge_key)
-                    links.append({
-                        "source": caller_id,
-                        "target": target_id,
-                        "relation": "calls",
-                        "source_file": caller_file,
-                        "source_location": node.get("source_location", ""),
-                    })
-                    node["callees"].append(target_id)
-                    if target_id in node_by_id:
-                        node_by_id[target_id]["callers"].append(caller_id)
-
-    # Sort callers and callees
-    for node in nodes:
-        if "callees" in node:
-            node["callees"] = sorted(list(set(node["callees"])))
-        if "callers" in node:
-            node["callers"] = sorted(list(set(node["callers"])))
-
-    graph_data = {
-        "nodes": nodes,
-        "links": links,
-        "extracted_at": os.path.getmtime(abs_root) if os.path.exists(abs_root) else 0,
-        "total_files": len(source_files),
-        "total_functions": sum(1 for n in nodes if n.get("type") != "file"),
-        "total_call_edges": len([l for l in links if l.get("relation") == "calls"]),
-    }
-
-    with open(graph_file, "w", encoding="utf-8") as f:
-        json.dump(graph_data, f, indent=2)
-
-    # Also generate human-readable GRAPHIFY.md summary
-    md_file = os.path.join(out_dir_path, "GRAPHIFY.md")
-    try:
-        md_lines = [
-            "# Codebase Call-Graph & Data-Flow Index (graphify)",
-            f"\n- **Total Source Files**: {graph_data['total_files']}",
-            f"- **Total Functions / Classes**: {graph_data['total_functions']}",
-            f"- **Total Call Connections**: {graph_data['total_call_edges']}\n",
-            "## Top Connected Hub Functions (Most Called)",
-        ]
-        func_nodes = [n for n in nodes if n.get("type") != "file"]
-        top_hubs = sorted(func_nodes, key=lambda n: len(n.get("callers", [])), reverse=True)[:15]
-        for hub in top_hubs:
-            caller_count = len(hub.get("callers", []))
-            if caller_count > 0:
-                md_lines.append(f"- **`{hub['label']}`** (`{hub['source_file']}:{hub['source_location']}`) — called by **{caller_count}** function(s)")
-
-        with open(md_file, "w", encoding="utf-8") as mf:
-            mf.write("\n".join(md_lines))
-    except Exception:
-        pass
-
-    if not quiet:
-        print(f"✓ Call-graph successfully indexed: {graph_data['total_functions']} functions/classes, {graph_data['total_call_edges']} call edges")
-        print(f"  Saved to: \033[1m{os.path.relpath(graph_file, abs_root)}\033[0m\n")
-
-    return graph_data
 
 
 def load_codebase_graph(root: str = ".") -> dict:
@@ -1196,6 +996,57 @@ def show_graph(symbol_name: str, root: str = ".", fmt: str = "ascii",
                     print("  %s-> %s" % ("  " * lvl, deeper))
         print()
 
+
+
+def show_stats(root: str = "."):
+    """Print overall graph statistics (reads graphifyy's links array)."""
+    BOLD = "\033[1m"
+    CYAN = "\033[96m"
+    GREEN = "\033[92m"
+    DIM = "\033[2m"
+    RST = "\033[0m"
+
+    graph = load_codebase_graph(root)
+    nodes = graph.get("nodes", [])
+    links = graph.get("links", []) or []
+    func_nodes = [n for n in nodes if n.get("file_type") != "file" and n.get("_callable")]
+
+    call_links = [l for l in links if l.get("relation") == "calls"]
+
+    # In-degree map for God-Nodes: count incoming call edges per target.
+    in_degree = {}
+    for l in call_links:
+        t = l.get("target")
+        if t:
+            in_degree[t] = in_degree.get(t, 0) + 1
+
+    by_id = {n.get("id"): n for n in nodes if n.get("id")}
+
+    print("")
+    print("%s%s+==============================================================+%s" % (BOLD, CYAN, RST))
+    print("%s%s|              PySlick AST Call-Graph Statistics               |%s" % (BOLD, CYAN, RST))
+    print("%s%s+==============================================================+%s" % (BOLD, CYAN, RST))
+    print("  * Source Files Indexed:       %s%d%s" % (BOLD, graph.get("total_files", len(set(n.get("source_file") for n in nodes if n.get("source_file")))), RST))
+    print("  * Functions / Classes Mapped: %s%d%s" % (BOLD, len(func_nodes), RST))
+    print("  * Call Connections Resolved:  %s%d%s" % (BOLD, len(call_links), RST))
+    print("  * Total Nodes / Edges:        %s%d / %d%s" % (BOLD, len(nodes), len(links), RST))
+
+    # Top 10 by in-degree.
+    ranked = sorted(in_degree.items(), key=lambda kv: kv[1], reverse=True)[:10]
+    print("")
+    print("%sTop Centrality Functions (Most Called God-Nodes):%s" % (BOLD, RST))
+    shown = 0
+    for nid, cnt in ranked:
+        if cnt <= 0:
+            continue
+        n = by_id.get(nid)
+        label = (n.get("label") if n else None) or nid
+        sfile = (n.get("source_file") if n else None) or "?"
+        print("  %s*%s %s%s%s %s(%s)%s -- %d callers" % (GREEN, RST, BOLD, label, RST, DIM, sfile, RST, cnt))
+        shown += 1
+    if shown == 0:
+        print("  %s(none -- no calls edges in graph)%s" % (DIM, RST))
+    print("")
 
 
 def cli_main(args: list[str] | None = None):
