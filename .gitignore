@@ -22,3 +22,6 @@ Thumbs.db
 PySlick Session Handoff.txt
 HANDOFF-NEXT.md
 **/graphify-out/
+dist/
+*.egg-info/
+build/
