@@ -136,6 +136,36 @@ Never `Set-Content`, `Out-File`, `>`, `>>`, `Add-Content`.
 
 ---
 
+## 5c. Line endings -- never assume
+
+Git's `core.autocrlf` on Windows rewrites LF to CRLF on checkout, which
+silently changes every file behind your back. Anchors that matched
+yesterday fail today because `\n` is now `\r\n`.
+
+This repo ships a `.gitattributes` that forces:
+- `*.py` -- LF
+- `*.ps1` -- CRLF
+- `*.bat` -- CRLF
+- everything else -- `text=auto eol=lf`
+- binaries (`.png`, `.gguf`, `.sqlite`, `.pkl`) -- untouched
+
+If you see LF/CRLF warnings from git:
+
+    git config core.autocrlf false
+    git add --renormalize .
+    git commit -m "chore: normalize line endings"
+
+When writing anchors or comparing text:
+- read with `encoding="utf-8-sig"` (strips BOM)
+- split on universal newlines: `text.splitlines()` not `text.split("\n")`
+- or normalize first: `text = text.replace("\r\n", "\n")`
+
+The pattern that has bitten this repo twice: an anchor string uses `\n`
+but the file on disk uses `\r\n`, so the anchor never matches and the
+edit silently skips.
+
+---
+
 ## 6. The debugging ladder (in order)
 
 1. **Pre-work check.** `pyslick pre-work "<task>" --file <file>`. Has anyone already fixed this?
