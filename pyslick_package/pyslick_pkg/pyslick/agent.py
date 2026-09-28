@@ -122,8 +122,8 @@ from pathlib import Path
 # Set UTF-8 encoding for stdout/stderr (Windows PowerShell safe)
 if hasattr(sys.stdout, "reconfigure"):
     try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        sys.stdout.reconfigure(encoding="utf-8-sig", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8-sig", errors="replace")
     except Exception:
         pass
 
@@ -348,7 +348,7 @@ def tool_grep(path: str, patterns: list[str], context: int = 2) -> str:
         return "\n".join(out)
 
     try:
-        lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = p.read_text(encoding="utf-8-sig", errors="replace").splitlines()
         out = []
         seen_ranges: set[int] = set()
         for pat in patterns:
@@ -2020,7 +2020,7 @@ def _collect_all_files(root: str = ".") -> list[str]:
 def _first_comment_lines(filepath: str, max_lines: int = 5) -> list[str]:
     """Return the first meaningful comment/docstring lines from a file (up to max_lines)."""
     try:
-        raw = Path(filepath).read_text(encoding="utf-8", errors="replace").splitlines()
+        raw = Path(filepath).read_text(encoding="utf-8-sig", errors="replace").splitlines()
     except Exception:
         return []
     out: list[str] = []
@@ -2241,7 +2241,7 @@ def _graph_functions_with_comments(filepath: str) -> list[dict]:
     if not filepath.endswith(".py"):
         return []
     try:
-        source = Path(filepath).read_text(encoding="utf-8", errors="replace")
+        source = Path(filepath).read_text(encoding="utf-8-sig", errors="replace")
         tree = ast.parse(source, filename=filepath)
     except Exception:
         return []
@@ -2291,7 +2291,7 @@ def _rank_functions_by_connectivity(filepath: str, top_n: int = 3) -> list[dict]
     if not filepath.endswith(".py"):
         return []
     try:
-        source = Path(filepath).read_text(encoding="utf-8", errors="replace")
+        source = Path(filepath).read_text(encoding="utf-8-sig", errors="replace")
         tree = ast.parse(source, filename=filepath)
     except Exception:
         return []
@@ -2348,7 +2348,7 @@ def _print_file_size_graph(filepath: str) -> None:
     """
     total_lines = 0
     try:
-        total_lines = len(Path(filepath).read_text(encoding="utf-8", errors="replace").splitlines())
+        total_lines = len(Path(filepath).read_text(encoding="utf-8-sig", errors="replace").splitlines())
     except Exception:
         pass
 
@@ -2389,7 +2389,7 @@ def _load_graphify_semantic_index() -> dict:
     graphify_md = "graphify.md"
     if os.path.exists(graphify_md):
         try:
-            content = Path(graphify_md).read_text(encoding="utf-8", errors="replace")
+            content = Path(graphify_md).read_text(encoding="utf-8-sig", errors="replace")
             curr_comm = ""
             for line in content.splitlines():
                 # Community header: ### Community 0 — `package.json`  *(cohesion 0.15)*
@@ -3302,7 +3302,7 @@ def _run_relay_agent(directive: str) -> None:
     blocks    = []
     for f in matched:
         try:
-            content = Path(f).read_text(encoding="utf-8", errors="replace")
+            content = Path(f).read_text(encoding="utf-8-sig", errors="replace")
             blocks.append({"file": f, "content": content})
         except Exception:
             pass
@@ -3407,7 +3407,7 @@ def _god_recon(directive: str) -> bool:
         print(f"{DIM}  no graph found at {graph_path}. run: graphify extract .{RST}")
         return True
     try:
-        with open(graph_path, "r", encoding="utf-8", errors="replace") as _fh:
+        with open(graph_path, "r", encoding="utf-8-sig", errors="replace") as _fh:
             _g = _json.load(_fh)
     except Exception as _e:
         print(f"\n{BOLD}=== GOD RECON ==={RST}  {DIM}{directive}{RST}")
@@ -3873,7 +3873,7 @@ def _run_local_agent(directive: str) -> None:
                 if _src_file:
                     print(f"\n{BOLD}SOURCE{RST}  {_src_file}")
                     try:
-                        with open(_src_file, "r", encoding="utf-8", errors="replace") as _fh:
+                        with open(_src_file, "r", encoding="utf-8-sig", errors="replace") as _fh:
                             _src_lines = _fh.readlines()
                         _loc = _rel.get("evidence", [{}])[0].get("loc") or ""
                         _ln = int("".join(ch for ch in _loc if ch.isdigit()) or "1")
@@ -4208,7 +4208,7 @@ def _run_local_agent(directive: str) -> None:
         hits: list[tuple[str, int, str, bool]] = []
         for fp in files:
             try:
-                with open(fp, "r", encoding="utf-8", errors="replace") as fh:
+                with open(fp, "r", encoding="utf-8-sig", errors="replace") as fh:
                     for ln, line in enumerate(fh, 1):
                         if sym not in line:
                             continue
@@ -4293,7 +4293,7 @@ def _run_local_agent(directive: str) -> None:
         cols_by_file: dict[str, set[str]] = {}
         for fp in files:
             try:
-                with open(fp, "r", encoding="utf-8", errors="replace") as fh:
+                with open(fp, "r", encoding="utf-8-sig", errors="replace") as fh:
                     text = fh.read()
             except Exception:
                 continue
@@ -4406,7 +4406,7 @@ def _run_local_agent(directive: str) -> None:
         hits: list[tuple[str, int, str, bool]] = []
         for fp in files:
             try:
-                with open(fp, "r", encoding="utf-8", errors="replace") as fh:
+                with open(fp, "r", encoding="utf-8-sig", errors="replace") as fh:
                     for ln, line in enumerate(fh, 1):
                         if sym not in line:
                             continue
@@ -4488,7 +4488,7 @@ def _run_local_agent(directive: str) -> None:
         hits: list[tuple[str, int, str]] = []
         for fp in files:
             try:
-                with open(fp, "r", encoding="utf-8", errors="replace") as fh:
+                with open(fp, "r", encoding="utf-8-sig", errors="replace") as fh:
                     for ln, line in enumerate(fh, 1):
                         if sym not in line:
                             continue
@@ -4751,7 +4751,7 @@ def _run_local_agent(directive: str) -> None:
         # Check README.md for Run / Getting Started / Usage sections
         for readme_fn in ["README.md", "readme.md", "README.txt"]:
             if os.path.exists(readme_fn):
-                readme_text = Path(readme_fn).read_text(encoding="utf-8", errors="replace")
+                readme_text = Path(readme_fn).read_text(encoding="utf-8-sig", errors="replace")
                 run_sections = re.findall(
                     r"(#{1,3}\s+(?:Getting\s+Started|Running|Usage|Quick\s+Start|Installation|How\s+to\s+Run|How\s+to\s+Use)[^\n]*\n(?:(?!\n#{1,3}\s).)*)",
                     readme_text,
@@ -4895,7 +4895,7 @@ def _run_local_agent(directive: str) -> None:
 
         for fp in sorted(code_files):
             try:
-                line_cnt = len(Path(fp).read_text(encoding="utf-8", errors="replace").splitlines())
+                line_cnt = len(Path(fp).read_text(encoding="utf-8-sig", errors="replace").splitlines())
                 line_info = f"{DIM}({line_cnt} lines){RST}"
             except Exception:
                 line_info = ""
@@ -5423,7 +5423,7 @@ def _run_local_agent(directive: str) -> None:
             # --grep <pat>: print only matching lines with 2 ctx.
             _grep_m = re.search(r"--grep\s+(\S+)", active_directive or "")
             try:
-                with open(_exact_path, "r", encoding="utf-8", errors="replace") as _fh:
+                with open(_exact_path, "r", encoding="utf-8-sig", errors="replace") as _fh:
                     _lines = _fh.readlines()
             except Exception as _e:
                 hdr("File", _exact_path)
@@ -5629,7 +5629,7 @@ def _run_local_agent(directive: str) -> None:
                     total_errors += 1
             elif ext == ".py":
                 try:
-                    with open(fp, "r", encoding="utf-8", errors="replace") as _f:
+                    with open(fp, "r", encoding="utf-8-sig", errors="replace") as _f:
                         src = _f.read()
                     _ast.parse(src, filename=fp)
                 except SyntaxError as se:
