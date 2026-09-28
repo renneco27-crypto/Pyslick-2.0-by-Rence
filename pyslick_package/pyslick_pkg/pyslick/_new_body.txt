@@ -1,0 +1,82 @@
+    total_shown = 0
+    for filepath, score, matched_tokens in results:
+        if not os.path.isfile(filepath):
+            continue
+
+        try:
+            _fh = open(filepath, "r", encoding="utf-8-sig", errors="replace")
+        except OSError:
+            continue
+
+        print(f"{BOLD}{GREEN}{filepath}{RST} {DIM}(score: {score:.2f}){RST}")
+
+        hit_lines = []
+        matched_map = {}
+        compiled_tokens = []
+        for tok in q_tokens:
+            try:
+                compiled_tokens.append((tok, re.compile(r"\b" + re.escape(tok) + r"\b", re.IGNORECASE)))
+            except Exception:
+                compiled_tokens.append((tok, None))
+
+        with _fh:
+            for line_idx, line_text in enumerate(_fh):
+                lineno = line_idx + 1
+                if len(line_text) > 1500:
+                    continue
+                for tok, rx in compiled_tokens:
+                    matched = rx.search(line_text) if rx else (tok.lower() in line_text.lower())
+                    if not matched:
+                        continue
+                    hit_lines.append(lineno)
+                    strip_low = line_text.strip().lower()
+                    dq = chr(34) * 3
+                    sq = chr(39) * 3
+                    is_docstring = (dq in strip_low or sq in strip_low
+                                    or "/**" in strip_low or "*/" in strip_low)
+                    is_comment = strip_low.startswith(("//", "#", "*", "<!--")) or is_docstring
+                    is_marker = "pyslick:start" in strip_low or "pyslick:end" in strip_low
+                    is_def = any(strip_low.startswith(kw) for kw in
+                                 ("def ", "function ", "class ", "interface ",
+                                  "export function ", "export const ",
+                                  "export async function ", "export default ",
+                                  "public ", "private "))
+                    if is_marker:
+                        origin = "marker"
+                    elif is_docstring:
+                        origin = "docstring"
+                    elif is_comment:
+                        origin = "comment"
+                    elif is_def:
+                        origin = "def"
+                    else:
+                        origin = ""
+                    tag = f"{origin}:{tok}" if origin else tok
+                    matched_map[lineno] = tag
+                    clean_text = clean_line_for_display(line_text)
+                    print(f"{GREEN}>{RST} {DIM}{lineno:4d}:{RST} {YELL}[{tag}]{RST} {clean_text}")
+                    break
+
+        if not hit_lines:
+            print(f"  {DIM}(no matching lines){RST}")
+            print()
+            continue
+
+        ranges = _function_ranges_for_hits(filepath, hit_lines)
+        if ranges:
+            names = [f"{filepath}:{r_start}-{r_end}" for r_start, r_end, _r_hits in ranges]
+            print(f"  {DIM}--- {len(hit_lines)} hit(s) inside {len(ranges)} block(s): "
+                  f"{', '.join(names[:6])}{' ...' if len(names) > 6 else ''}{RST}")
+        else:
+            print(f"  {DIM}--- {len(hit_lines)} hit(s) (no enclosing function){RST}")
+        print()
+
+        total_shown += 1
+
+    if _nodes_by_id:
+        recs = _recommended_reads(query, _nodes_by_id, top_n=5)
+        if recs:
+            print(f"\n{BOLD}{CYAN}Recommended reads (from call graph):{RST}")
+            for label, sfile, sloc in recs:
+                print(f"  {GREEN}*{RST} {BOLD}{label}{RST}  {DIM}({sfile}:{sloc}){RST}")
+            print()

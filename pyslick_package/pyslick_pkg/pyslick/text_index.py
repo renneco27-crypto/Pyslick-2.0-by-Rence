@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 import os
 import re
+from pathlib import Path
 from collections import defaultdict
 
 from repomap import collect_files
@@ -214,8 +215,76 @@ _K1 = 1.5
 _B = 0.75
 
 
-def build_text_index(root: str = ".") -> dict:
+import pickle
+import hashlib as _hashlib
+import time as _time_mod
+
+
+def _index_cache_dir(root: str = ".") -> Path:
+    """Where the index cache lives for this repo."""
+    d = Path(root) / ".pyslick" / "cache"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _file_signature(root: str = ".") -> tuple:
+    """Return a hash of (path, mtime_ns, size) for every file we would index.
+
+    Cheap: uses os.scandir + os.stat, no content reads. If the signature
+    matches a saved cache, the cache is valid.
+    """
+    sig_parts = []
+    for path in sorted(collect_files(root)):
+        try:
+            st = os.stat(path)
+            sig_parts.append("%s:%d:%d" % (path, st.st_mtime_ns, st.st_size))
+        except OSError:
+            continue
+    return tuple(sig_parts)
+
+
+def _sig_hash(sig: tuple) -> str:
+    h = _hashlib.sha256()
+    for part in sig:
+        h.update(part.encode("utf-8", errors="replace"))
+        h.update(b"\n")
+    return h.hexdigest()
+
+
+def _load_cached_index(root: str = "."):
+    """Return (index, sig_hash) if cache is valid, else (None, current_sig_hash)."""
+    sig = _file_signature(root)
+    sig_hash = _sig_hash(sig)
+    cache_file = _index_cache_dir(root) / "text_index.pkl"
+    if not cache_file.is_file():
+        return None, sig_hash
+    try:
+        with open(cache_file, "rb") as f:
+            payload = pickle.load(f)
+    except Exception:
+        return None, sig_hash
+    if not isinstance(payload, dict):
+        return None, sig_hash
+    if payload.get("sig_hash") != sig_hash:
+        return None, sig_hash
+    return payload.get("index"), sig_hash
+
+
+def _save_cached_index(root: str, index: dict, sig_hash: str) -> None:
+    cache_file = _index_cache_dir(root) / "text_index.pkl"
+    try:
+        with open(cache_file, "wb") as f:
+            pickle.dump({"sig_hash": sig_hash, "index": index}, f, protocol=pickle.HIGHEST_PROTOCOL)
+    except Exception:
+        pass
+
+
+def build_text_index(root: str = ".", use_cache: bool = True) -> dict:
     """Walk the repo and build an in-memory BM25 index.
+
+    If use_cache=True (default), the index is cached to
+    <root>/.pyslick/cache/text_index.pkl and reloaded when no source file
+    has changed (mtime_ns + size signature). Cache miss rebuilds as before.
 
     Shape:
       {
@@ -225,6 +294,13 @@ def build_text_index(root: str = ".") -> dict:
         "n_docs":   int,
       }
     """
+    if use_cache:
+        cached, sig_hash = _load_cached_index(root)
+        if cached is not None:
+            return cached
+    else:
+        sig_hash = None
+
     files = collect_files(root)
     postings: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     doc_len: dict[str, int] = {}
@@ -243,12 +319,19 @@ def build_text_index(root: str = ".") -> dict:
     n_docs = len(doc_len)
     avg_len = (sum(doc_len.values()) / n_docs) if n_docs else 0.0
 
-    return {
-        "postings": {t: dict(f) for t, f in postings.items()},
+    postings_plain = {t: dict(f) for t, f in postings.items()}
+    result = {
+        "postings": postings_plain,
+        "sorted_tokens": sorted(postings_plain.keys()),
         "doc_len": doc_len,
         "avg_len": avg_len,
         "n_docs": n_docs,
     }
+    if use_cache:
+        if sig_hash is None:
+            sig_hash = _sig_hash(_file_signature(root))
+        _save_cached_index(root, result, sig_hash)
+    return result
 
 def find_files_by_name(query: str, files: list[str], top_k: int = 5) -> list[tuple[str, float, list[str]]]:
     """Filename-first search. Returns files whose basename matches a
@@ -327,12 +410,24 @@ def search_text_index(query: str, index: dict, top_k: int = 5) -> list[tuple[str
         files = postings.get(tok)
         if not files and len(tok) >= 4:
             # Prefix fallback: "auth" should match "authentication",
-            # "authorization", "authToken". Merge all matching postings.
-            merged: dict[str, int] = {}
-            for p_tok, p_files in postings.items():
-                if p_tok.startswith(tok):
-                    for fp, tf in p_files.items():
+            # "authorization", "authToken". Uses a precomputed sorted
+            # token list + binary search to avoid scanning every posting.
+            sorted_tokens = index.get("sorted_tokens")
+            if sorted_tokens:
+                import bisect
+                i = bisect.bisect_left(sorted_tokens, tok)
+                merged: dict[str, int] = {}
+                while i < len(sorted_tokens) and sorted_tokens[i].startswith(tok):
+                    for fp, tf in postings[sorted_tokens[i]].items():
                         merged[fp] = merged.get(fp, 0) + tf
+                    i += 1
+            else:
+                # Fallback for indexes built before this change
+                merged = {}
+                for p_tok, p_files in postings.items():
+                    if p_tok.startswith(tok):
+                        for fp, tf in p_files.items():
+                            merged[fp] = merged.get(fp, 0) + tf
             if merged:
                 files = merged
         if not files:

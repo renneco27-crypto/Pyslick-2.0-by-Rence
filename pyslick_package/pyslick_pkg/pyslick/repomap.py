@@ -146,7 +146,7 @@ EXT_TO_LANG = {
     ".rs": "rust",
     ".c": "c", ".h": "c",
     ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp", ".hpp": "cpp",
-    ".cs": "c_sharp",
+    ".cs": "csharp",
     ".rb": "ruby",
     ".php": "php",
     ".kt": "kotlin", ".kts": "kotlin",

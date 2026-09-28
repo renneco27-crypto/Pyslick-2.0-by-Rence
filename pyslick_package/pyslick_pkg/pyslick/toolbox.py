@@ -473,6 +473,97 @@ def mode_grep(filepath: str, patterns: list[str], context: int = 1):
         print()
 
 
+
+
+def _load_graph_degrees(root: str = "."):
+    """Return (degree_by_file, node_by_id, graph) from graph.json, or ({}, {}, {}).
+
+    degree_by_file: filepath -> total call edges touching nodes in that file
+    node_by_id:     node_id -> node dict
+    """
+    import json as _json
+    import os as _os
+    path = _os.environ.get("GRAPHIFY_GRAPH", "graphify-out/graph.json")
+    if not _os.path.isabs(path):
+        path = _os.path.join(root, path)
+    if not _os.path.isfile(path):
+        return {}, {}, {}
+    try:
+        with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
+            g = _json.load(f)
+    except Exception:
+        return {}, {}, {}
+    nodes = g.get("nodes", [])
+    links = g.get("links", [])
+    by_id = {n.get("id"): n for n in nodes if n.get("id")}
+    deg = {}
+    for l in links:
+        if l.get("relation") != "calls":
+            continue
+        for endpoint in (l.get("source"), l.get("target")):
+            n = by_id.get(endpoint)
+            if not n:
+                continue
+            f = n.get("source_file")
+            if f:
+                # Normalize to the same shape mode_semantic_grep uses
+                f_norm = f.replace("\\", "/")
+                deg[f_norm] = deg.get(f_norm, 0) + 1
+    return deg, by_id, g
+
+
+def _graph_degree_boost(filepath: str, deg: dict) -> float:
+    """Return a multiplier in [1.0, 1.5] based on how connected the file is.
+
+    A file with 50+ total call edges gets the full 1.5x boost; a leaf file
+    with 0 edges gets 1.0x. Never drops a score.
+    """
+    f = filepath.replace("\\", "/")
+    d = deg.get(f, 0)
+    if d <= 0:
+        return 1.0
+    # Saturating: min(degree / 50, 1.0) gives the boost fraction
+    return 1.0 + min(d / 50.0, 0.5)
+
+
+def _recommended_reads(query: str, by_id: dict, top_n: int = 5) -> list:
+    """Top graph functions whose label shares tokens with the query.
+
+    Returns list of (label, file, line, caller_count, callee_count).
+    """
+    import re as _re
+    if not by_id:
+        return []
+    # Query tokens, drop very common words
+    stop = {"where", "what", "how", "the", "is", "are", "for", "and",
+            "find", "show", "does", "did", "in", "on", "at", "with", "of",
+            "to", "a", "an", "this", "that", "work", "works"}
+    qt = [t.lower() for t in _re.findall(r"[A-Za-z_][A-Za-z0-9_]*", query)
+          if len(t) >= 3 and t.lower() not in stop]
+    if not qt:
+        return []
+    # Build in/out degree per node id
+    in_deg = {}
+    out_deg = {}
+    # Rebuild from graph if needed -- by_id only gives us nodes. We need links.
+    # Cheap workaround: recompute via the graph object passed into _load_graph_degrees.
+    # For this helper, just score by label token overlap.
+    scored = []
+    for nid, n in by_id.items():
+        label = (n.get("label") or "").lower()
+        if not label:
+            continue
+        # Count token overlap
+        label_tokens = set(_re.findall(r"[A-Za-z_][A-Za-z0-9_]*", label))
+        overlap = sum(1 for t in qt if any(t in lt or lt in t for lt in label_tokens))
+        if overlap == 0:
+            continue
+        scored.append((overlap, nid, n))
+    scored.sort(reverse=True, key=lambda x: x[0])
+    return [(n.get("label") or nid, n.get("source_file") or "?", n.get("source_location") or "?")
+            for _, nid, n in scored[:top_n]]
+
+
 def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int = 1, exact: bool = False, stream: bool = False):
     """Semantic grep across the repository using BM25 index + AST function snapping.
     
@@ -561,6 +652,24 @@ def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int
     print(f"{DIM}{'─' * 60}{RST}")
 
     # ── 4. Retrieve & Merge BM25 Results ───────────────────────────────────
+    # Print intent label (top-level classification)
+    _intent_label = "keyword"
+    try:
+        from relations import is_relation_query as _is_rel
+        from repomap import is_overview_query as _is_ov
+        if _is_ov(query):
+            _intent_label = "overview"
+        elif _is_rel(query):
+            _intent_label = "relationship"
+        elif len(subqueries) > 1:
+            _intent_label = "compound"
+    except Exception:
+        pass
+    print(f"{DIM}intent: {_intent_label}{RST}")
+
+    # Load graph degrees for ranking boost + recommended reads
+    _deg_by_file, _nodes_by_id, _graph_obj = _load_graph_degrees(root)
+
     idx = build_text_index(root)
     merged_results = []
     all_keywords = []
@@ -591,6 +700,15 @@ def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int
     keywords = list(dict.fromkeys(all_keywords))
     syn_terms = list(dict.fromkeys(all_syn_terms))
 
+    # Apply graph-degree boost and re-rank
+    if _deg_by_file:
+        _boosted = []
+        for fp, sc, mt in results:
+            _mult = _graph_degree_boost(fp, _deg_by_file)
+            _boosted.append((fp, sc * _mult, mt))
+        _boosted.sort(key=lambda r: r[1], reverse=True)
+        results = _boosted
+
     if not results:
         print(f"{DIM}No semantic matches found for '{query}'.{RST}")
         return
@@ -612,14 +730,12 @@ def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int
             continue
 
         try:
-            all_lines = __safe_read(filepath).splitlines(keepends=True)
+            _fh = open(filepath, "r", encoding="utf-8-sig", errors="replace")
         except OSError:
             continue
 
-        if not lines:
-            continue
+        print(f"{BOLD}{GREEN}{filepath}{RST} {DIM}(score: {score:.2f}){RST}")
 
-        # Find lines matching the search terms with semantic origin labeling using word boundaries
         hit_lines = []
         matched_map = {}
         compiled_tokens = []
@@ -629,21 +745,28 @@ def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int
             except Exception:
                 compiled_tokens.append((tok, None))
 
-        for line_idx, line_text in enumerate(lines):
-            # Skip massive lines
-            if len(line_text) > 1500:
-                continue
-            for tok, rx in compiled_tokens:
-                matched = rx.search(line_text) if rx else (tok.lower() in line_text.lower())
-                if matched:
-                    lineno = line_idx + 1
+        with _fh:
+            for line_idx, line_text in enumerate(_fh):
+                lineno = line_idx + 1
+                if len(line_text) > 1500:
+                    continue
+                for tok, rx in compiled_tokens:
+                    matched = rx.search(line_text) if rx else (tok.lower() in line_text.lower())
+                    if not matched:
+                        continue
                     hit_lines.append(lineno)
                     strip_low = line_text.strip().lower()
-                    is_docstring = '"""' in strip_low or "'''" in strip_low or "/**" in strip_low or "*/" in strip_low
+                    dq = chr(34) * 3
+                    sq = chr(39) * 3
+                    is_docstring = (dq in strip_low or sq in strip_low
+                                    or "/**" in strip_low or "*/" in strip_low)
                     is_comment = strip_low.startswith(("//", "#", "*", "<!--")) or is_docstring
                     is_marker = "pyslick:start" in strip_low or "pyslick:end" in strip_low
-                    is_def = any(strip_low.startswith(kw) for kw in ("def ", "function ", "class ", "interface ", "export function ", "export const ", "export async function ", "export default ", "public ", "private "))
-
+                    is_def = any(strip_low.startswith(kw) for kw in
+                                 ("def ", "function ", "class ", "interface ",
+                                  "export function ", "export const ",
+                                  "export async function ", "export default ",
+                                  "public ", "private "))
                     if is_marker:
                         origin = "marker"
                     elif is_docstring:
@@ -654,53 +777,35 @@ def mode_semantic_grep(query: str, root: str = ".", top_k: int = 5, context: int
                         origin = "def"
                     else:
                         origin = ""
-
-                    matched_map[lineno] = f"{origin}:{tok}" if origin else tok
+                    tag = f"{origin}:{tok}" if origin else tok
+                    matched_map[lineno] = tag
+                    clean_text = clean_line_for_display(line_text)
+                    print(f"{GREEN}>{RST} {DIM}{lineno:4d}:{RST} {YELL}[{tag}]{RST} {clean_text}")
                     break
 
         if not hit_lines:
-            # Fallback to first line if no specific token matched (e.g. filename match)
-            hit_lines = [1]
-            matched_map[1] = "file"
-
-        print(f"{BOLD}{GREEN}{filepath}{RST} {DIM}(score: {score:.2f}){RST} — {len(hit_lines)} match line(s)")
-        print(f"{DIM}  VS Code shortcut: code -g \"{filepath}:{hit_lines[0]}\"{RST}")
+            print(f"  {DIM}(no matching lines){RST}")
+            print()
+            continue
 
         ranges = _function_ranges_for_hits(filepath, hit_lines)
         if ranges:
-            max_ranges_to_show = 3
-            for r_idx, (r_start, r_end, r_hits) in enumerate(ranges[:max_ranges_to_show]):
-                if r_start == r_end:
-                    j = r_start
-                    if 1 <= j <= len(lines):
-                        clean_text = clean_line_for_display(lines[j-1])
-                        print(f"{GREEN}>{RST} {DIM}{j:4d}:{RST} {YELL}[{matched_map.get(j, '')}]{RST} {clean_text}")
-                    print()
-                    continue
-                _print_function_range(lines, r_start, r_end, set(r_hits), matched_map)
-            if len(ranges) > max_ranges_to_show:
-                print(f"  {DIM}... [{len(ranges) - max_ranges_to_show} more matched block(s) omitted in {filepath}]{RST}\n")
+            names = [f"{filepath}:{r_start}-{r_end}" for r_start, r_end, _r_hits in ranges]
+            print(f"  {DIM}--- {len(hit_lines)} hit(s) inside {len(ranges)} block(s): "
+                  f"{', '.join(names[:6])}{' ...' if len(names) > 6 else ''}{RST}")
         else:
-            # Context window fallback
-            last_printed = -1
-            for lineno in hit_lines[:5]:
-                line_idx = lineno - 1
-                start = max(0, line_idx - context)
-                end = min(len(lines), line_idx + context + 1)
-                if start > last_printed + 1:
-                    print(f"{DIM}  ...{RST}")
-                for j in range(start, end):
-                    marker = f"{GREEN}>{RST}" if j == line_idx else " "
-                    tag = f"{YELL}[{matched_map.get(j+1, '')}]{RST} " if j == line_idx else ""
-                    clean_text = clean_line_for_display(lines[j])
-                    print(f"{marker} {DIM}{j+1:4d}:{RST} {tag}{clean_text}")
-                last_printed = end - 1
-                print()
+            print(f"  {DIM}--- {len(hit_lines)} hit(s) (no enclosing function){RST}")
+        print()
 
         total_shown += 1
-        if total_shown >= top_k:
-            break
 
+    if _nodes_by_id:
+        recs = _recommended_reads(query, _nodes_by_id, top_n=5)
+        if recs:
+            print(f"\n{BOLD}{CYAN}Recommended reads (from call graph):{RST}")
+            for label, sfile, sloc in recs:
+                print(f"  {GREEN}*{RST} {BOLD}{label}{RST}  {DIM}({sfile}:{sloc}){RST}")
+            print()
 
 def main():
     parser = argparse.ArgumentParser(prog="pyslick", add_help=False)
