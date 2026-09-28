@@ -16,16 +16,43 @@ SKIP_DIRS = {
 PY_EXTS = {".py"}
 JS_EXTS = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
 
+FRAMEWORK_ALLOWLIST = {
+    # Python stdlib framework callbacks (http.server, watchdog, etc.)
+    "do_GET", "do_POST", "do_PUT", "do_DELETE", "do_OPTIONS",
+    "do_HEAD", "do_PATCH", "log_message", "log_request",
+    "setup", "finish", "handle",
+    "on_modified", "on_created", "on_deleted", "on_moved",
+    # Next.js App Router conventions -- called by the framework, never
+    # by user code, so they look like orphans to a plain call graph.
+    "RootLayout", "Page", "OfflinePage", "Loading", "Error",
+    "NotFound", "Head", "Metadata",
+    "generateMetadata", "generateStaticParams",
+    "middleware",
+    # React entry components rendered imperatively by scripts
+    "AdSenseInit",
+}
+
 
 def collect_files(root="."):
+    """Walk the tree, pruning SKIP_DIRS before descending.
+
+    Using os.walk(topdown=True) with dirnames[:] reassignment avoids
+    enumerating node_modules, .next, dist, and other huge directories.
+    Path.rglob yields every file first and filters after -- on a real
+    Next.js repo that means walking 40k+ node_modules entries for
+    nothing.
+    """
+    import os
     out = []
-    for p in Path(root).rglob("*"):
-        if not p.is_file():
-            continue
-        if any(part in SKIP_DIRS for part in p.parts):
-            continue
-        if p.suffix.lower() in PY_EXTS | JS_EXTS:
-            out.append(p)
+    exts = PY_EXTS | JS_EXTS
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in SKIP_DIRS and not d.startswith(".")
+        ]
+        for fn in filenames:
+            if os.path.splitext(fn)[1].lower() in exts:
+                out.append(Path(dirpath) / fn)
     return out
 
 

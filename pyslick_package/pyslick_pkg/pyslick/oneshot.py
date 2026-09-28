@@ -21,19 +21,24 @@ REPLACEMENT = "\ufffd"
 
 
 def collect_files(root="."):
-    root_p = Path(root)
+    """Walk the tree, pruning SKIP_DIRS before descending, and return
+    files sorted by size ascending. Same fix as orphans.collect_files:
+    rglob enumerates node_modules before the filter runs."""
+    import os
     out = []
-    for p in root_p.rglob("*"):
-        if not p.is_file():
-            continue
-        if any(part in SKIP_DIRS for part in p.parts):
-            continue
-        if p.suffix.lower() not in CODE_EXTS:
-            continue
-        try:
-            out.append((p, p.stat().st_size))
-        except OSError:
-            continue
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in SKIP_DIRS and not d.startswith(".")
+        ]
+        for fn in filenames:
+            if os.path.splitext(fn)[1].lower() not in CODE_EXTS:
+                continue
+            fp = Path(dirpath) / fn
+            try:
+                out.append((fp, fp.stat().st_size))
+            except OSError:
+                continue
     out.sort(key=lambda t: t[1])
     return [p for p, _ in out]
 
