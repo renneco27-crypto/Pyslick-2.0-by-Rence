@@ -80,6 +80,7 @@ SKIP_DIRS = {
 # Substrings in directory paths that always indicate build artifacts
 SKIP_DIR_PARTS = {"/build/", "\\build\\", "/out/", "\\out\\", "/dist/", "\\dist\\",
                   "/intermediates/", "\\intermediates\\", "/generated/", "\\generated\\",
+                  "/app/src/main/assets/", "\\app\\src\\main\\assets\\",
                   "/outputs/", "\\outputs\\", "/.next/", "\\.next\\", "/node_modules/", "\\node_modules\\"}
 
 # Files that are generated bundles, sourcemaps, minified, or lockfiles

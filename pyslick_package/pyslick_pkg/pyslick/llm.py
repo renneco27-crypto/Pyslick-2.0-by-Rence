@@ -58,8 +58,17 @@ def is_available() -> bool:
     return find_model_path() is not None
 
 
+
+# Set PYSLICK_NO_LLM=1 to skip the local LLM entirely. Commands that
+# only need BM25 + synonyms (recon-pack, grep, text-search) should
+# not wait 30-120s for a multi-GB llama model to load just to expand
+# a query with a few extra keywords.
+_LLM_DISABLED = os.environ.get("PYSLICK_NO_LLM", "").strip() in ("1", "true", "yes")
+
 def _load():
     global _llm_singleton, _load_attempted
+    if _LLM_DISABLED:
+        return None
     if _llm_singleton is not None or _load_attempted:
         return _llm_singleton
     _load_attempted = True

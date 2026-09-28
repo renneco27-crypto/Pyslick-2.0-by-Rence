@@ -9,6 +9,9 @@ SKIP_DIRS = {
     "node_modules", ".git", "dist", "build", "__pycache__", ".next",
     ".venv", "venv", "graphify-out", ".pyslick", ".pyslick_context",
     "coverage", ".cache", ".turbo",
+    "out", "models", ".gradle", "target", "bin", "obj",
+    ".pnpm", ".gemini", ".agents", "android_capacitor_backup",
+    "outputs", ".idea", ".vscode", "captures", "intermediates", "generated",
 }
 CODE_EXTS = {
     ".py", ".pyi", ".pyw",

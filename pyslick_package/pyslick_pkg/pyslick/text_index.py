@@ -440,6 +440,80 @@ def search_text_index(query: str, index: dict, top_k: int = 5) -> list[tuple[str
             scores[filepath] += idf * (tf * (_K1 + 1)) / denom
             matched[filepath].add(tok)
 
+    # Query-token overlap boost. BM25 alone lets a rare synonym dominate
+    # a common query term -- e.g. "supabase cache" against a file that
+    # only contains "persist" (a synonym) can score higher than a file
+    # containing both actual query words. Multiply each file's score by
+    # a factor based on how many distinct ORIGINAL query tokens appear
+    # in the file. Files matching more of the user's actual words win.
+    import re as _re
+    _stop = {"where", "what", "how", "the", "is", "are", "for", "and",
+             "find", "show", "does", "did", "in", "on", "at", "with", "of",
+             "to", "a", "an", "this", "that", "work", "works"}
+    _primary = [w.lower() for w in _re.findall(r"[A-Za-z_][A-Za-z0-9_]*", query)
+                if w.lower() not in _stop and len(w) >= 3]
+    _primary = list(dict.fromkeys(_primary))
+
+    if _primary:
+        _n = len(_primary)
+        for fp in list(scores.keys()):
+            _hits = matched.get(fp, set())
+            _overlap = sum(1 for w in _primary if w in _hits)
+            if _overlap == 0:
+                # No primary token matched -- heavy penalty, don't remove
+                # (a synonym-only hit may still be the right file when the
+                # user's words are all stopwords).
+                scores[fp] *= 0.15
+            else:
+                # 1 token: 1.2x, all tokens: 2.0x
+                scores[fp] *= 1.0 + 0.2 + (_overlap - 1) / max(_n, 1) * 0.8
+
+    # Synonym-only floor: if the query has primary tokens and a file
+    # matched none of them, drop it. Synonym expansion is a recall
+    # tool, not a precision tool -- a file that only matched via
+    # 'storage' for the query 'cache' should not appear in results.
+    _floor_applied = True
+    if _primary:
+        _orig_scores = dict(scores)
+        scores = {fp: sc for fp, sc in scores.items()
+                  if any(w in matched.get(fp, set()) for w in _primary)}
+        if not scores:
+            # Floor removed everything -- restore, the user's query
+            # tokens were all stopword-ish and synonyms are the only
+            # real signal.
+            scores = _orig_scores
+    # Filename boost: a file literally named after a query token should
+    # outrank a long file that merely mentions the term many times. BM25
+    # length normalization is the wrong signal here -- supabase.ts (15
+    # lines) should beat relayQueue.ts (long, mentions supabase 20x).
+    import os as _os_nb
+    _name_boost = True
+    if _primary:
+        for fp in list(scores.keys()):
+            _base = _os_nb.path.basename(fp).lower()
+            for _w in _primary:
+                if _w in _base:
+                    scores[fp] *= 3.0
+                    break
+    # Test-file downweight: test_*.ts, *.test.ts, *.spec.ts, and files
+    # under __tests__/ or tests/ should not outrank real source even if
+    # the filename contains a query token.
+    _test_downweight = True
+    for fp in list(scores.keys()):
+        _norm = fp.replace('\\', '/').lower()
+        _base = _os_nb.path.basename(_norm)
+        _is_test = (
+            _base.startswith('test_')
+            or _base.endswith('.test.ts') or _base.endswith('.test.tsx')
+            or _base.endswith('.test.js') or _base.endswith('.test.jsx')
+            or _base.endswith('.spec.ts') or _base.endswith('.spec.tsx')
+            or _base.endswith('.spec.js') or _base.endswith('.spec.jsx')
+            or '/__tests__/' in _norm
+            or '/tests/' in _norm
+            or '/test/' in _norm
+        )
+        if _is_test:
+            scores[fp] *= 0.3
     ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:top_k]
     return [(fp, sc, sorted(matched[fp])) for fp, sc in ranked]
 
