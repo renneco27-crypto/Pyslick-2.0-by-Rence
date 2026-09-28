@@ -99,6 +99,13 @@ Every script: write to a file with a quoted heredoc, then run it.
 The quoted delimiter `'PYEOF'` means bash does not touch the content.
 No variable expansion, no backtick execution, no transcoding.
 
+A quoted heredoc does NOT expand `\n`. If your Python anchor is written
+as `"...\n..."` inside a `<< 'PYEOF'` block, bash writes the two
+characters backslash-n, not a newline. When the script must match a
+multiline anchor, use **line-based matching**
+(`for i, ln in enumerate(lines): if ln == target:`) instead of
+`text.replace("...\n...", ...)`.
+
 Read/write in Python, never in bash. Bash reads and writes text through
 the terminal codepage. Use Python with explicit encoding:
 
@@ -316,6 +323,8 @@ NET_CAPABILITY_VALIDATED, not transport. Plain transport check returns true on c
 | Fixing the renderer | Bug returns | Fix the writer |
 | Ignoring git history | Reinvents fixes | git log --all --grep first |
 | "I fixed it" without a test | Trust lost | Screenshot or GTFO |
+| Inserting lines inside `enumerate(lines)` | Silent index shift; half-applied edits | Find all target indices first, then insert highest-index-first |
+| Bare `except Exception: pass` | Hides real bugs for the project lifetime | Add a `print` or a log when you see one |
 
 ---
 
