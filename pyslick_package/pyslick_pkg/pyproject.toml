@@ -21,10 +21,13 @@ dependencies = [
     "nltk>=3.8",
     "yake>=0.4",
     "transformers>=4.30",
+    "graphifyy>=0.9",
+    "ftfy>=6.0",
 ]
 
 [project.optional-dependencies]
 llm = ["llama-cpp-python>=0.2", "sentence-transformers>=2.0"]
+search = ["codebase-index>=2.0"]
 
 [project.scripts]
 pyslick = "pyslick:main"

@@ -7,6 +7,13 @@ of calling open() directly.
 
 from pathlib import Path
 
+try:
+    from ftfy import fix_text as _ftfy_fix
+    _FTFY_OK = True
+except Exception:
+    _ftfy_fix = None
+    _FTFY_OK = False
+
 BOM = chr(0xFEFF)
 REPLACEMENT = chr(0xFFFD)
 
@@ -21,13 +28,20 @@ def safe_read(path):
     """
     try:
         text = Path(path).read_text(encoding="utf-8-sig", errors="strict")
-        return text, None
     except UnicodeDecodeError as e:
         return "", "non-UTF-8 bytes at offset %d: %s" % (e.start, e.reason)
     except Exception as e:
         return "", str(e)
-
-
+    # Defensive mojibake repair. If ftfy is installed, repair multi-layer
+    # UTF-8 / cp1252 corruption on the way out. If not, return as-is.
+    if _FTFY_OK:
+        try:
+            fixed = _ftfy_fix(text)
+            if fixed != text:
+                text = fixed
+        except Exception:
+            pass
+    return text, None
 def safe_read_lines(path):
     """Same as safe_read but returns a list of lines."""
     text, err = safe_read(path)

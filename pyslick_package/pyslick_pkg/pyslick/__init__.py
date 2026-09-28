@@ -503,6 +503,13 @@ Tip: reference an exact file with a leading slash, e.g. "/server.js" or
       Targeted in-file pattern search with function enclosure expansion.
       Example:  pyslick grep src/sw.ts CACHE_URLS --context 3
 
+  search "<query>" [--limit N] [--json]
+      Ranked implementation search via codebase-index. Returns compact
+      file:line hits + recommended_reads. Use when you want "which
+      function implements X" rather than "where does X appear anywhere".
+      Example:  pyslick search "where is the intent classifier"
+      Example:  pyslick search "how does graphify query work" --limit 5
+
   deps [target] / imports [target]
       Scan all project manifests (package.json, pyproject.toml, etc.) and
       source code to list declared dependencies and all file import locations.
@@ -874,6 +881,45 @@ def main():
 
                     print("Error: {}".format(_e))
 
+                    sys.exit(1)
+
+            elif command == "search":
+                try:
+                    import subprocess as _sp
+                    query = " ".join(a for a in args if not a.startswith("-"))
+                    if not query:
+                        print("Error: search requires a query")
+                        sys.exit(1)
+                    extra = []
+                    if "--json" in args:
+                        extra.append("--json")
+                    if "--limit" in args:
+                        i = args.index("--limit")
+                        if i + 1 < len(args):
+                            extra.extend(["--limit", args[i + 1]])
+                    cmd = [sys.executable, "-m", "codebase_index", "search", "--compact"] + extra + [query]
+                    try:
+                        r = _sp.run(cmd, capture_output=True, text=True, timeout=60)
+                    except FileNotFoundError:
+                        print("Error: codebase-index not installed. Run: pip install codebase-index")
+                        sys.exit(1)
+                    except _sp.TimeoutExpired:
+                        print("Error: search timed out after 60s")
+                        sys.exit(1)
+                    try:
+                        from ftfy import fix_text as _fix_text
+                    except Exception:
+                        _fix_text = None
+                    def _clean(s):
+                        if not s:
+                            return s
+                        return _fix_text(s) if _fix_text else s
+                    if r.stdout:
+                        print(_clean(r.stdout).rstrip())
+                    if r.returncode != 0 and r.stderr:
+                        print(_clean(r.stderr).rstrip())
+                except Exception as e:
+                    print(f"Error: {e}")
                     sys.exit(1)
 
             elif command == "graphify":
