@@ -638,7 +638,11 @@ def search_text_index_auto(
             if fp not in seen:
                 merged.append((fp, sc, tk))
         seed = merged[:top_k]
-    if len(seed) != 2:
+    # Only YAKE-expand when BM25 found nothing useful. If it already
+    # returned 2+ files, those are the answer -- adding keywords to the
+    # scoring query changes what counts as a "primary" token and lets
+    # synonym-only files slip back in (background.js beating supabase.ts).
+    if len(seed) >= 2:
         return seed, []
 
     extractor = _load_yake()

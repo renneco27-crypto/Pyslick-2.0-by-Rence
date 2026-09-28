@@ -331,7 +331,16 @@ def gather_candidate_files(directive: str, expanded: str) -> list[str]:
             t_idx = build_text_index(".")
             hits, _ = search_text_index_auto(expanded or directive, t_idx)
             for h in hits:
-                _add_path(h.file)
+                # search_text_index_auto returns [(filepath, score, tokens), ...]
+                # not objects. The old code did h.file, which raised
+                # AttributeError and was silently swallowed by the except
+                # below -- meaning BM25 results never contributed to the
+                # candidate list. That's why recon-pack returned graph-
+                # fuzzy matches instead of the ranked BM25 hits.
+                if isinstance(h, tuple) and len(h) >= 1:
+                    _add_path(h[0])
+                elif isinstance(h, str):
+                    _add_path(h)
         except Exception:
             pass
 
