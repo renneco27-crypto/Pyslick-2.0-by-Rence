@@ -41,6 +41,11 @@ def _load_nltk():
     global _STOPWORDS, _STEMMER
     if _STOPWORDS is not None:
         return
+    import os as _os
+    if _os.environ.get("PYSLICK_USE_NLTK") != "1":
+        _STOPWORDS = set(_STEM_FALLBACK)
+        _STEMMER = None
+        return
     try:
         from nltk.corpus import stopwords as _sw
         from nltk.stem import SnowballStemmer
@@ -49,7 +54,6 @@ def _load_nltk():
     except Exception:
         _STOPWORDS = set(_STEM_FALLBACK)
         _STEMMER = None
-
 
 def _tokenize_for_index(text: str) -> list[str]:
     """Lowercase, split camelCase and snake_case, strip stopwords, stem.
@@ -472,6 +476,17 @@ def search_text_index(query: str, index: dict, top_k: int = 5) -> list[tuple[str
     # matched none of them, drop it. Synonym expansion is a recall
     # tool, not a precision tool -- a file that only matched via
     # 'storage' for the query 'cache' should not appear in results.
+        # --- Infra-file penalty (added 2026-10-20) ---
+    _INFRA_FILES = {
+        "synonyms.py", "intent_vocab.json", "learned_intents.json",
+        "user_weights.json", "frustration_vocab.json", "patchit_vocab.json",
+        "__init__.py",
+    }
+    import os as _os
+    for _fp in list(scores.keys()):
+        if _os.path.basename(_fp) in _INFRA_FILES:
+            scores[_fp] *= 0.05
+
     _floor_applied = True
     if _primary:
         _orig_scores = dict(scores)
